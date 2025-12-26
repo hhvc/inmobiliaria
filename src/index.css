@@ -1,0 +1,301 @@
+/* === Estilos globales === */
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #242424;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* === Ajustes base === */
+html,
+body {
+  margin: 0;
+  padding: 0; /* reseteo */
+  box-sizing: border-box;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+/* 🧩 IMPORTANTE: padding para evitar solapamiento con navbar fijo */
+body {
+  padding-top: 70px; /* ajusta según altura del navbar */
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: none;
+}
+a:hover {
+  color: #535bf2;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* === Tema claro === */
+@media (prefers-color-scheme: light) {
+  :root {
+    color: #213547;
+    background-color: #ffffff;
+  }
+  a:hover {
+    color: #747bff;
+  }
+  button {
+    background-color: #f9f9f9;
+  }
+}
+
+/* === Header === */
+header {
+  position: relative;
+}
+
+.intro-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.img-responsive {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.img-centered {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* === Responsividad de header === */
+@media (max-width: 768px) {
+  header {
+    height: 70vh !important;
+  }
+  .intro-content img {
+    max-width: 200px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  header {
+    height: 60vh !important;
+  }
+  .intro-content img {
+    max-width: 150px !important;
+  }
+}
+
+/* === Navbar === */
+.navbar {
+  margin-bottom: 0;
+  border: none;
+  transition: all 0.3s ease;
+}
+
+.navbar-fixed-top {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1030;
+}
+
+.navbar-inverse {
+  background-color: rgba(0, 0, 0, 0.8);
+  border-color: transparent;
+}
+
+.navbar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.navbar-brand img {
+  max-height: 50px;
+  width: auto;
+}
+
+.navbar-nav {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navbar-nav li a {
+  color: #fff;
+  padding: 10px 15px;
+  display: block;
+  transition: color 0.3s ease;
+}
+.navbar-nav li a:hover {
+  color: #f05f40;
+}
+
+.navbar-right {
+  margin-left: auto;
+}
+
+/* === Navbar móvil === */
+@media (max-width: 768px) {
+  .navbar-collapse {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: rgba(0, 0, 0, 0.9);
+    padding: 10px 0;
+  }
+
+  .navbar-nav {
+    flex-direction: column;
+  }
+
+  .navbar-nav li {
+    text-align: center;
+  }
+
+  .navbar-nav li a {
+    padding: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .navbar-nav li:last-child a {
+    border-bottom: none;
+  }
+}
+
+/* === Botón WhatsApp === */
+.btn-wsp {
+  position: fixed;
+  width: 60px;
+  height: 60px;
+  bottom: 30px;
+  right: 30px;
+  background: #25d366;
+  color: #fff;
+  border-radius: 50%;
+  text-align: center;
+  font-size: 30px;
+  box-shadow: 0px 1px 10px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  transition: all 300ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-wsp:hover {
+  background: #20bd5a;
+  transform: scale(1.1);
+}
+.btn-wsp svg {
+  filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+/* Responsive botón WhatsApp */
+@media (max-width: 768px) {
+  .btn-wsp {
+    width: 50px;
+    height: 50px;
+    bottom: 20px;
+    right: 20px;
+  }
+}
+@media (max-width: 480px) {
+  .btn-wsp {
+    width: 45px;
+    height: 45px;
+    bottom: 15px;
+    right: 15px;
+  }
+}
+
+/* === Dropdown menú usuario === */
+.navbar-dark .navbar-nav .nav-link {
+  color: rgba(255, 255, 255, 0.85);
+}
+.navbar-dark .navbar-nav .nav-link:hover {
+  color: #fff;
+}
+
+.dropdown-menu {
+  border: none;
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.dropdown-item {
+  padding: 0.5rem 1rem;
+  color: #212529 !important;
+  background-color: transparent !important;
+}
+.dropdown-item:hover {
+  color: #0d6efd !important;
+  background-color: #f8f9fa !important;
+}
+
+/* === Avatar usuario === */
+.navbar .rounded-circle {
+  object-fit: cover;
+}
+
+/* === Modal === */
+.modal-backdrop {
+  background-color: rgba(0, 0, 0, 0.5);
+}
+.modal-content {
+  border: none;
+  border-radius: 0.5rem;
+}
+
+/* === Botones deshabilitados === */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* === FIX: visibilidad de items dentro del menú de usuario === */
+.dropdown-menu .dropdown-item,
+.dropdown-menu .nav-link {
+  color: #212529 !important; /* texto visible */
+  background-color: transparent !important;
+}
+
+.dropdown-menu .dropdown-item:hover,
+.dropdown-menu .nav-link:hover {
+  color: #0d6efd !important; /* azul Bootstrap */
+  background-color: #f8f9fa !important;
+}

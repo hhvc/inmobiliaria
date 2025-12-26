@@ -1,0 +1,8 @@
+{
+  "projects": {
+    "default": "inmobiliaria-bcc63",
+    "inmobiliaria": "inmobiliaria-bcc63"
+  },
+  "targets": {},
+  "etags": {}
+}
