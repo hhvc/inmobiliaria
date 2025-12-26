@@ -66,9 +66,9 @@ const Navbar = () => {
             onClick={(e) => handleScroll(e, "page-top")}
           >
             <img
-              src="/assets/img/logo.png"
+              src="/src/assets/img/logo.png"
               className="img-fluid"
-              alt="Cañada al Lago"
+              alt="LaDocTaProp"
               style={{ maxHeight: "50px" }}
             />
           </a>
@@ -91,9 +91,9 @@ const Navbar = () => {
             <ul className="navbar-nav ms-auto">
               {[
                 { id: "about", label: "Inicio" },
-                { id: "cabañas", label: "Cabañas" },
+                { id: "cabañas", label: "Inmuebles" },
                 { id: "fotos", label: "Fotos" },
-                { id: "actividades", label: "Actividades" },
+                {/* { id: "actividades", label: "Actividades" }, */},
                 { id: "contact", label: "Contacto" },
               ].map(({ id, label }) => (
                 <li className="nav-item" key={id}>

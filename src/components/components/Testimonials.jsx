@@ -141,7 +141,7 @@ const Testimonials = () => {
         <div className="container">
           <div className="row">
             <div className="col-lg-12 text-center mb-4">
-              <h2>Los saludos de los huéspedes</h2>
+              <h2>Comentarios de nuestros clientes</h2>
             </div>
           </div>
           <div className="row">
@@ -162,9 +162,9 @@ const Testimonials = () => {
       <div className="container">
         <div className="row">
           <div className="col-lg-12 text-center mb-4">
-            <h2>Los saludos de los huéspedes</h2>
+            <h2>Comentarios de nuestros clientes</h2>
             <p className="text-muted">
-              Comentarios de nuestros huéspedes - ¿Ya nos visitaste?{" "}
+              ¿Quieres compartir tu experiencia con otros clientes?{" "}
               <button
                 className="btn btn-link p-0 text-primary"
                 onClick={() => setShowForm(!showForm)}

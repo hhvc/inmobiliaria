@@ -24,11 +24,11 @@ const About = () => {
                   <div className="bg-primary text-white rounded-circle p-3 me-3">
                     <i className="fas fa-home fs-4"></i>
                   </div>
-                  <h2 className="h3 text-primary mb-0">Sobre Cañada al Lago</h2>
+                  <h2 className="h3 text-primary mb-0">Sobre LaDocTaProp</h2>
                 </div>
 
                 <p className="fs-5 text-justify">
-                  <strong>Cañada al Lago</strong> es un complejo turístico único
+                  <strong>LaDocTaProp</strong> es una inmobiliaria turístico único
                   formado por casas y cabañas hogareñas ubicado en la pintoresca
                   localidad de
                   <strong> Villa Parque Siquiman</strong>, con vistas

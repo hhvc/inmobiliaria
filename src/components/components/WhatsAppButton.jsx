@@ -8,7 +8,7 @@ const WhatsAppButton = () => {
       className="btn-wsp"
       target="_blank"
       rel="noopener noreferrer"
-      href="https://api.whatsapp.com/send?phone=5491151337229"
+      href="https://api.whatsapp.com/send?phone=5493513910444"
       onClick={handleWhatsAppClick}
       style={{
         position: "fixed",

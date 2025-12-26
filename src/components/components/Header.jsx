@@ -2,7 +2,7 @@ const Header = () => {
   return (
     <header
       style={{
-        backgroundImage: "url('/assets/img/bg-header.jpg')",
+        backgroundImage: "url('src/assets/img/bgTop2.jpg')",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
@@ -13,17 +13,17 @@ const Header = () => {
         textAlign: "center",
       }}
     >
-      <div className="intro-content">
+      {/* <div className="intro-content">
         <img
-          src="/assets/img/profile@2x.png"
+          src="/src/assets/img/profile@2x.png"
           className="img-fluid"
-          alt="Cañada al Lago"
+          alt="LaDocTaProp"
           style={{
             maxWidth: "300px",
             height: "auto",
           }}
         />
-      </div>
+      </div> */}
     </header>
   );
 };

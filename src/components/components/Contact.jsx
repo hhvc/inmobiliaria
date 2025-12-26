@@ -216,21 +216,21 @@ const Contact = () => {
               </h4>
               <p>
                 <a href="mailto:canadaallago@gmail.com">
-                  canadaallago@gmail.com
+                  póximamente
                 </a>
               </p>
 
               <h4>
                 <i className="fa fa-phone"></i> Teléfono
               </h4>
-              <p>(+54 9) 351 252-5252</p>
+              <p>(+54 9) 351 391-0444</p>
 
               <h4>
                 <i className="fa fa-map-marker"></i> Dirección
               </h4>
               <p>
-                Villa Parque Siquiman, <br />
-                Córdoba, Argentina.
+                Rosario de Santa Fe 126 3°H, B° Centro <br />
+                CÓRDOBA, Provincia de Córdoba, Argentina.
               </p>
             </div>
           </div>

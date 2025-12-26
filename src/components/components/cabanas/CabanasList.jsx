@@ -41,7 +41,7 @@ const CabanasList = () => {
         setCabanas(cabanasData);
       } catch (error) {
         console.error("Error cargando cabañas:", error);
-        setError("Error al cargar las cabañas. Por favor, recarga la página.");
+        setError("Error al cargar inmuebles. Por favor, recarga la página.");
       } finally {
         setLoading(false);
       }
@@ -83,14 +83,14 @@ const CabanasList = () => {
     return (
       <section
         className="pricing py-5"
-        style={{ backgroundImage: "url('/assets/img/bgTop2.jpg')" }}
+        style={{ backgroundImage: "url('/src/assets/img/bgTop2.jpg')" }}
       >
         <div className="container">
           <div className="text-center py-5">
             <div className="spinner-border text-light" role="status">
               <span className="visually-hidden">Cargando...</span>
             </div>
-            <p className="text-white mt-2">Cargando cabañas...</p>
+            <p className="text-white mt-2">Cargando inmuebles...</p>
           </div>
         </div>
       </section>
@@ -101,7 +101,7 @@ const CabanasList = () => {
     return (
       <section
         className="pricing py-5"
-        style={{ backgroundImage: "url('/assets/img/bgTop2.jpg')" }}
+        style={{ backgroundImage: "url('/src/assets/img/bgTop2.jpg')" }}
       >
         <div className="container">
           <div className="alert alert-danger text-center">{error}</div>
@@ -114,14 +114,14 @@ const CabanasList = () => {
     <section
       id="cabañas"
       className="pricing py-5"
-      style={{ backgroundImage: "url('/assets/img/bgTop2.jpg')" }}
+      style={{ backgroundImage: "url('/src/assets/img/bgTop2.jpg')" }}
     >
       <div className="container">
         <div className="row text-center mb-4">
           <div className="col-lg-12">
-            <h1 className="text-muted mb-3">Nuestras Cabañas</h1>
+            <h1 className="text-muted mb-3">Inmuebles destacados</h1>
             <p className="text-muted-50 lead">
-              Elige el lugar perfecto para tu escapada inolvidable
+              ¿Estás buscando un inmueble? Fíjate en nuestros destacados, si no está lo que buscas, escríbenos que tenemos más opciones!
             </p>
           </div>
         </div>
@@ -212,13 +212,13 @@ const CabanasList = () => {
             <div className="alert alert-info text-white bg-transparent border-light">
               <h4>
                 {filtroDestacadas
-                  ? "No hay cabañas destacadas disponibles"
-                  : "No hay cabañas disponibles"}
+                  ? "No hay inmuebles destacadas disponibles"
+                  : "No hay inmuebles disponibles"}
               </h4>
               <p className="mb-0">
                 {filtroDestacadas
                   ? "Intenta desactivar el filtro de destacadas para ver todas las opciones."
-                  : "Estamos preparando nuevas opciones para ti. Próximamente más cabañas."}
+                  : "Estamos preparando nuevas opciones para ti. Próximamente más inmuebles."}
               </p>
               {filtroDestacadas && (
                 <button
@@ -240,7 +240,7 @@ const CabanasList = () => {
                     <div className="card-body py-2">
                       <div className="row text-center">
                         <div className="col-md-3">
-                          <small className="text-white-50">Cabañas</small>
+                          <small className="text-white-50">Inmuebles</small>
                           <div className="text-white fw-bold">
                             {cabanas.length}
                           </div>
