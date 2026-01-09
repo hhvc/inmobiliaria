@@ -1,41 +1,50 @@
-import { useState } from "react";
+// src/components/components/Navbar.jsx
+import { useState, useCallback } from "react";
 import { useAuth } from "../../context/auth/useAuth";
 import { Link, useNavigate } from "react-router-dom";
 import Login from "../auth/Login";
+
+const MENU_ITEMS = [
+  { id: "about", label: "Inicio" },
+  { id: "cabañas", label: "Inmuebles" },
+  { id: "fotos", label: "Fotos" },
+  // { id: "actividades", label: "Actividades" },
+  { id: "contact", label: "Contacto" },
+];
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+
   const { user, logout, hasRole } = useAuth();
   const navigate = useNavigate();
 
-  const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
-  const toggleUserMenu = () => setIsUserMenuOpen(!isUserMenuOpen);
-  const closeMenus = () => {
+  const closeMenus = useCallback(() => {
     setIsMenuOpen(false);
     setIsUserMenuOpen(false);
-  };
+  }, []);
 
-  /** 🧭 Mueve a la página principal y hace scroll a la sección */
+  const toggleMenu = () => setIsMenuOpen((prev) => !prev);
+  const toggleUserMenu = () => setIsUserMenuOpen((prev) => !prev);
+
+  /** 🧭 Scroll suave con redirección inteligente */
   const handleScroll = (e, targetId) => {
     e.preventDefault();
     closeMenus();
 
-    // Si no estás en "/", te redirige primero y luego hace scroll
-    if (window.location.pathname !== "/") {
-      navigate("/");
-      setTimeout(() => {
-        const target = document.getElementById(targetId);
-        if (target) {
-          target.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }, 300); // Espera a que se monte el DOM del home
-    } else {
+    const scrollToTarget = () => {
       const target = document.getElementById(targetId);
       if (target) {
         target.scrollIntoView({ behavior: "smooth", block: "start" });
       }
+    };
+
+    if (window.location.pathname !== "/") {
+      navigate("/");
+      setTimeout(scrollToTarget, 300);
+    } else {
+      scrollToTarget();
     }
   };
 
@@ -60,6 +69,7 @@ const Navbar = () => {
     <>
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
         <div className="container">
+          {/* Logo */}
           <a
             className="navbar-brand"
             href="#page-top"
@@ -67,12 +77,13 @@ const Navbar = () => {
           >
             <img
               src="/assets/img/Logo.png"
-              className="img-fluid"
               alt="LaDocTaProp"
+              className="img-fluid"
               style={{ maxHeight: "50px" }}
             />
           </a>
 
+          {/* Toggler */}
           <button
             className="navbar-toggler"
             type="button"
@@ -84,18 +95,13 @@ const Navbar = () => {
             <span className="navbar-toggler-icon"></span>
           </button>
 
+          {/* Menú */}
           <div
             className={`collapse navbar-collapse ${isMenuOpen ? "show" : ""}`}
             id="navbarNav"
           >
             <ul className="navbar-nav ms-auto">
-              {[
-                { id: "about", label: "Inicio" },
-                { id: "cabañas", label: "Inmuebles" },
-                { id: "fotos", label: "Fotos" },
-                {/* { id: "actividades", label: "Actividades" }, */},
-                { id: "contact", label: "Contacto" },
-              ].map(({ id, label }) => (
+              {MENU_ITEMS.map(({ id, label }) => (
                 <li className="nav-item" key={id}>
                   <a
                     href={`#${id}`}
@@ -107,19 +113,19 @@ const Navbar = () => {
                 </li>
               ))}
 
-              {/* Menú de usuario */}
-              <li
-                className={`nav-item dropdown ${isUserMenuOpen ? "show" : ""}`}
-              >
+              {/* Usuario */}
+              <li className="nav-item dropdown">
                 {user ? (
                   <>
-                    <a
-                      className="nav-link dropdown-toggle"
-                      href="#"
-                      role="button"
+                    <button
+                      className="nav-link dropdown-toggle btn btn-link"
                       onClick={toggleUserMenu}
                       aria-expanded={isUserMenuOpen}
-                      style={{ cursor: "pointer" }}
+                      style={{
+                        border: "none",
+                        background: "none",
+                        color: "rgba(255,255,255,0.85)",
+                      }}
                     >
                       {user.photoURL ? (
                         <img
@@ -132,32 +138,31 @@ const Navbar = () => {
                         <i className="fa fa-user me-2"></i>
                       )}
                       {user.displayName || "Usuario"}
-                    </a>
+                    </button>
+
                     <ul
                       className={`dropdown-menu dropdown-menu-end ${
                         isUserMenuOpen ? "show" : ""
                       }`}
                     >
-                      <li>
-                        <div className="dropdown-item-text">
-                          <small>Conectado como</small>
-                          <br />
-                          <strong>{user.displayName || user.email}</strong>
-                          <br />
-                          <small className="text-muted">
-                            Rol: <strong>{user.role}</strong>
-                          </small>
-                        </div>
+                      <li className="px-3 py-2">
+                        <small className="text-muted">Conectado como</small>
+                        <br />
+                        <strong>{user.displayName || user.email}</strong>
+                        <br />
+                        <small className="text-muted">
+                          Rol: <strong>{user.role}</strong>
+                        </small>
                       </li>
+
                       <li>
                         <hr className="dropdown-divider" />
                       </li>
 
-                      {/* 🧱 Dashboard visible para admin */}
                       {hasRole("admin") && (
                         <li>
                           <Link
-                            className="nav-link ps-3"
+                            className="dropdown-item"
                             to="/admin/dashboard"
                             onClick={closeMenus}
                           >
@@ -186,7 +191,6 @@ const Navbar = () => {
                       border: "none",
                       background: "none",
                       color: "rgba(255,255,255,0.85)",
-                      textDecoration: "none",
                     }}
                   >
                     <i className="fa fa-user me-2"></i>
@@ -199,7 +203,7 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Modal de Login */}
+      {/* Modal Login */}
       {showLoginModal && (
         <div
           className="modal show d-block"
@@ -218,7 +222,7 @@ const Navbar = () => {
                   className="btn-close"
                   onClick={closeLoginModal}
                   aria-label="Close"
-                ></button>
+                />
               </div>
               <div className="modal-body">
                 <Login />
