@@ -2,7 +2,7 @@ const Header = () => {
   return (
     <header
       style={{
-        backgroundImage: "url('src/assets/img/bgTop2.jpg')",
+        backgroundImage: "url('/assets/img/EnConstrucción.jpg')",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
@@ -15,7 +15,7 @@ const Header = () => {
     >
       {/* <div className="intro-content">
         <img
-          src="/src/assets/img/profile@2x.png"
+          src="/assets/img/profile@2x.png"
           className="img-fluid"
           alt="LaDocTaProp"
           style={{

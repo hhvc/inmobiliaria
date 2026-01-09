@@ -3,10 +3,11 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getAnalytics } from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
-// 🚀 NUEVO: Importar App Check y su proveedor
+import { getStorage } from "firebase/storage";
 import {
   initializeAppCheck,
   ReCaptchaEnterpriseProvider,
+  getToken,
 } from "firebase/app-check";
 
 const firebaseConfig = {
@@ -19,15 +20,16 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// INICIALIZACIÓN MEJORADA
+// INICIALIZACIÓN
 const app = initializeApp(firebaseConfig);
+// 🔥 ACTIVAR MODO DEPURACIÓN SOLO EN LOCALHOST
+if (typeof window !== "undefined" && window.location.hostname === "localhost") {
+  self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+  console.log("🔧 Modo depuración de App Check activado para localhost.");
+}
 const auth = getAuth(app);
 export const db = getFirestore(app);
-
-// TEMPORAL: Hacer auth global para diagnóstico
-if (typeof window !== "undefined") {
-  window._firebaseAuth = auth;
-}
+export const storage = getStorage(app);
 
 console.log("✅ Firebase configurado:", {
   appName: app.name,
@@ -35,21 +37,42 @@ console.log("✅ Firebase configurado:", {
   auth: !!auth,
 });
 
-// 🚀 NUEVO: Inicializar Firebase App Check
+// 🚀 PROMESA GLOBAL para App Check Ready
+let appCheck;
+let appCheckReadyPromise = Promise.resolve();
+
 if (typeof window !== "undefined") {
-  // Aquí la clave de App Check **DEBE** ser la misma clave de reCAPTCHA Enterprise que usas en tu index.html.
   const appCheckSiteKey = import.meta.env.VITE_RECAPTCHA_ENTERPRISE_SITE_KEY;
 
   if (!appCheckSiteKey) {
     console.error(
-      "❌ VITE_RECAPTCHA_ENTERPRISE_SITE_KEY no definida para App Check. App Check no se inicializará."
+      "❌ VITE_RECAPTCHA_ENTERPRISE_SITE_KEY no definida. App Check no se inicializará."
     );
   } else {
-    initializeAppCheck(app, {
+    appCheck = initializeAppCheck(app, {
       provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
-      isTokenAutoRefreshEnabled: true, // Para que App Check refresque sus tokens automáticamente
+      isTokenAutoRefreshEnabled: true,
     });
     console.log("✅ Firebase App Check inicializado con reCAPTCHA Enterprise.");
+
+    // 🔥 PROMESA CORREGIDA: Se elimina el parámetro 'reject' no utilizado
+    appCheckReadyPromise = new Promise((resolve) => {
+      getToken(appCheck, false)
+        .then((tokenResult) => {
+          console.log(
+            "✅ Primer token de App Check obtenido. App Check está LISTO."
+          );
+          resolve({ token: tokenResult.token, success: true });
+        })
+        .catch((error) => {
+          console.error(
+            "❌ Error obteniendo el primer token de App Check:",
+            error
+          );
+          // 🔥 Aún resolvemos la promesa, pero con un estado de fallo
+          resolve({ token: null, success: false, error: error.message });
+        });
+    });
   }
 }
 
@@ -57,3 +80,6 @@ export { auth };
 export const analytics =
   typeof window !== "undefined" ? getAnalytics(app) : null;
 export default app;
+
+// 🔥 EXPORTAR la promesa (ahora devuelve un objeto con más información)
+export { appCheckReadyPromise };

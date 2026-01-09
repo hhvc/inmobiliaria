@@ -216,7 +216,7 @@ const Contact = () => {
               </h4>
               <p>
                 <a href="mailto:canadaallago@gmail.com">
-                  póximamente
+                  ladoctaprop@gmail.com
                 </a>
               </p>
 

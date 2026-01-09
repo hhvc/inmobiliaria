@@ -1,3 +1,4 @@
+// src/components/components/DynamicGallery.jsx
 import { useState, useCallback, useEffect } from "react";
 import { useGalleryImages } from "../../hooks/useGalleryImages";
 
@@ -89,9 +90,9 @@ const DynamicGallery = () => {
   return (
     <>
       <section id="fotos" className="py-5 bg-light">
-        <div className="container">
+        {/* <div className="container"> */}
           {/* Título Principal */}
-          <div className="row text-center mb-5">
+          {/* <div className="row text-center mb-5">
             <div className="col-lg-12">
               <h1 className="display-4 fw-bold text-primary mb-3">
                 El lugar y sus momentos 🌅
@@ -105,12 +106,12 @@ const DynamicGallery = () => {
                 paisaje te esperan.
               </p>
             </div>
-          </div>
+          </div> */}
 
           {/* Sección de Actividades */}
-          <div className="row mb-5">
-            <div className="col-lg-6">
-              <div className="card border-0 shadow-sm h-100">
+          {/* <div className="row mb-5">
+            <div className="col-lg-6"> */}
+              {/* <div className="card border-0 shadow-sm h-100">
                 <div className="card-body p-4">
                   <h2 className="h3 text-success fw-bold mb-3">
                     Actividades y recreación 🚣‍♀
@@ -156,10 +157,10 @@ const DynamicGallery = () => {
                   </ul>
                 </div>
               </div>
-            </div>
-            <div className="col-lg-6 mt-4 mt-lg-0">
+            </div> */}
+            {/* <div className="col-lg-6 mt-4 mt-lg-0"> */}
               {/* Imagen representativa de actividades - se mostrará si hay imágenes */}
-              {images.length > 0 && (
+              {/* {images.length > 0 && (
                 <div className="card border-0 shadow-sm h-100">
                   <div
                     className="card-body p-0 rounded overflow-hidden"
@@ -181,10 +182,10 @@ const DynamicGallery = () => {
                 </div>
               )}
             </div>
-          </div>
+          </div> */}
 
           {/* Sección de Cabañas y Villa Parque Siquiman */}
-          <div className="row mb-5">
+          {/* <div className="row mb-5">
             <div className="col-lg-6 mb-4 mb-lg-0">
               <div className="card border-0 shadow-sm h-100 bg-warning bg-opacity-10">
                 <div className="card-body p-4">
@@ -219,15 +220,14 @@ const DynamicGallery = () => {
                 </div>
               </div>
             </div>
-          </div>
+          </div> */}
 
           {/* Galería de Imágenes */}
           <div className="row text-center mb-4">
             <div className="col-lg-12">
               <h2 className="h1 text-primary mb-2">📸 Galería de Recuerdos</h2>
               <p className="text-muted fs-5">
-                Descubre los momentos especiales que te esperan en Villa Parque
-                Siquiman
+                Imágenes de nuestra ciudad y momentos que nos gusta compartir
               </p>
             </div>
           </div>
@@ -260,15 +260,15 @@ const DynamicGallery = () => {
                       }}
                       loading="lazy"
                     />
-                    <div className="card-body p-2 text-center">
+                    {/* <div className="card-body p-2 text-center">
                       <small className="text-muted">Imagen {index + 1}</small>
-                    </div>
+                    </div> */}
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        {/* </div> */}
       </section>
 
       {/* Modal para imágenes (se mantiene igual) */}

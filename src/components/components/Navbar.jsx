@@ -66,7 +66,7 @@ const Navbar = () => {
             onClick={(e) => handleScroll(e, "page-top")}
           >
             <img
-              src="/src/assets/img/logo.png"
+              src="/assets/img/Logo.png"
               className="img-fluid"
               alt="LaDocTaProp"
               style={{ maxHeight: "50px" }}

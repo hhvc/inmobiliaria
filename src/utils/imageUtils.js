@@ -1,6 +1,10 @@
-import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
+// src/utils/imageUtils.js
+// 🔥 1. Importa la instancia de storage desde tu configuración
+import { storage } from "../firebase/config"; // Ajusta la ruta según tu estructura
+// 🔥 2. Importa las funciones desde firebase/storage
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// Función para redimensionar imagen
+// Función para redimensionar imagen (sin cambios)
 export const resizeImage = (file, maxWidth = 800, maxHeight = 600) => {
   return new Promise((resolve) => {
     const canvas = document.createElement("canvas");
@@ -10,7 +14,6 @@ export const resizeImage = (file, maxWidth = 800, maxHeight = 600) => {
     img.onload = () => {
       let { width, height } = img;
 
-      // Calcular nuevas dimensiones manteniendo aspect ratio
       if (width > maxWidth) {
         height = (height * maxWidth) / width;
         width = maxWidth;
@@ -22,7 +25,6 @@ export const resizeImage = (file, maxWidth = 800, maxHeight = 600) => {
 
       canvas.width = width;
       canvas.height = height;
-
       ctx.drawImage(img, 0, 0, width, height);
       canvas.toBlob(resolve, file.type, 0.8);
     };
@@ -34,12 +36,11 @@ export const resizeImage = (file, maxWidth = 800, maxHeight = 600) => {
 // Subir imagen a Firebase Storage
 export const uploadImage = async (file, storagePath = "cabanas") => {
   try {
-    // Redimensionar imagen antes de subir
     const resizedBlob = await resizeImage(file);
     const timestamp = Date.now();
     const fileName = `${storagePath}/${timestamp}_${file.name}`;
-    const storage = getStorage();
-    const storageRef = ref(storage, fileName);
+    // 🔥 3. Usa la instancia de storage importada (con App Check configurado)
+    const storageRef = ref(storage, fileName); // <-- ¡Cambio crucial!
 
     await uploadBytes(storageRef, resizedBlob);
     const downloadURL = await getDownloadURL(storageRef);
@@ -51,7 +52,7 @@ export const uploadImage = async (file, storagePath = "cabanas") => {
   }
 };
 
-// Subir múltiples imágenes
+// Subir múltiples imágenes (sin cambios en la lógica)
 export const uploadMultipleImages = async (files, storagePath = "cabanas") => {
   try {
     const uploadPromises = files.map((file) => uploadImage(file, storagePath));
@@ -63,7 +64,7 @@ export const uploadMultipleImages = async (files, storagePath = "cabanas") => {
   }
 };
 
-// Validar tipos de archivo de imagen
+// Validar tipos de archivo de imagen (sin cambios)
 export const validateImageFile = (file) => {
   const validTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
   const maxSize = 5 * 1024 * 1024; // 5MB

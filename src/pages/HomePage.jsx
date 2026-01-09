@@ -11,7 +11,7 @@ const HomePage = () => {
     <>
       <Header />
       {/* <About /> */}
-      <CabanasList />
+      {/* <CabanasList /> */}
       <DynamicGallery />
       {/* <Activities /> */}
       <Contact />

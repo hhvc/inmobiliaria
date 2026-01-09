@@ -47,20 +47,20 @@ const Testimonials = () => {
         setTestimonials([
           {
             id: 1,
-            text: `"Pasamos nuestra luna de miel en Siquiman, fueron dos semanas inolvidables. El lugar es precioso y fueron muy cariñosos con nosotros. Esperamos volver a verlos este verano. ¡Gracias por todo!"`,
-            author: "Gastón y Marian M.",
+            text: `"Éste es un comentario de prueba. Pronto será reemplazado por un comentario real"`,
+            author: "Usuario de prueba",
             createdAt: new Date(),
           },
           {
             id: 2,
-            text: `Gracias chicos por su buena onda, la pasamos genial. Cariños.`,
-            author: "Familia Bustos Argañaraz",
+            text: `Otra prueba`,
+            author: "Usuario de prueba",
             createdAt: new Date(),
           },
           {
             id: 3,
-            text: `Veníamos buscando hace tiempo un lugar para escaparnos un finde y recargar las pilas, y lo encontramos. Pasamos un finde hermoso, muchas gracias.`,
-            author: "dr Pepe Carena y familia",
+            text: `Última prueba`,
+            author: "Usuario de prueba",
             createdAt: new Date(),
           },
         ]);

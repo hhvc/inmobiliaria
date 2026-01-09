@@ -1,12 +1,12 @@
+// src/hooks/useGalleryImages.js
 import { useState, useEffect, useCallback } from "react";
-import {
-  getStorage,
-  ref,
-  listAll,
-  getDownloadURL,
-  deleteObject,
-} from "firebase/storage";
+// Importa storage y la promesa desde TU configuración
+import { storage, appCheckReadyPromise } from "../firebase/config";
+import { ref, listAll, getDownloadURL, deleteObject } from "firebase/storage";
 import { uploadMultipleImages } from "../utils/imageUtils";
+
+// 🔥 Mueve las constantes inmutables FUERA del componente
+const GALLERY_FOLDER = "gallery";
 
 export const useGalleryImages = () => {
   const [images, setImages] = useState([]);
@@ -14,16 +14,19 @@ export const useGalleryImages = () => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
 
-  const storage = getStorage();
-  const galleryFolder = "gallery";
-
   // Cargar imágenes de la galería - usamos useCallback para memoizar
   const loadImages = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const storageRef = ref(storage, galleryFolder);
+      console.log(
+        "⏳ [useGalleryImages] Esperando a que App Check esté listo..."
+      );
+      await appCheckReadyPromise;
+      console.log("✅ [useGalleryImages] App Check listo. Iniciando carga...");
+
+      const storageRef = ref(storage, GALLERY_FOLDER); // Usa la constante externa
       const result = await listAll(storageRef);
 
       const urlPromises = result.items.map((itemRef) =>
@@ -40,13 +43,22 @@ export const useGalleryImages = () => {
       }));
 
       setImages(imagesData);
+      console.log(
+        `✅ [useGalleryImages] ${imagesData.length} imágenes cargadas.`
+      );
     } catch (err) {
-      console.error("Error loading gallery images:", err);
-      setError("Error al cargar las imágenes de la galería");
+      console.error("❌ [useGalleryImages] Error cargando imágenes:", err);
+      if (err.code === "storage/unauthorized") {
+        setError(
+          "Error de permisos. La verificación de seguridad de la aplicación falló. Recarga la página."
+        );
+      } else {
+        setError("Error al cargar las imágenes de la galería");
+      }
     } finally {
       setLoading(false);
     }
-  }, [storage]); // Dependencias: storage
+  }, []); // 🔥 Array de dependencias VACÍO: storage es constante importada, GALLERY_FOLDER es externa
 
   // Subir imágenes
   const uploadImages = async (files) => {
@@ -54,14 +66,18 @@ export const useGalleryImages = () => {
       setUploading(true);
       setError(null);
 
-      const urls = await uploadMultipleImages(files, galleryFolder);
+      // 🔥 Esperar a que App Check esté listo también para subidas
+      await appCheckReadyPromise;
+
+      // ⚠️ IMPORTANTE: Asegúrate de que `uploadMultipleImages` use la misma instancia de `storage`.
+      const urls = await uploadMultipleImages(files, GALLERY_FOLDER);
 
       // Recargar las imágenes después de subir
       await loadImages();
 
       return urls;
     } catch (err) {
-      console.error("Error uploading images:", err);
+      console.error("❌ [useGalleryImages] Error subiendo imágenes:", err);
       setError("Error al subir las imágenes");
       throw err;
     } finally {
@@ -73,10 +89,12 @@ export const useGalleryImages = () => {
   const deleteImage = async (imageRef) => {
     try {
       setError(null);
+      // 🔥 Esperar a que App Check esté listo también para eliminaciones
+      await appCheckReadyPromise;
       await deleteObject(imageRef);
       await loadImages(); // Recargar la lista
     } catch (err) {
-      console.error("Error deleting image:", err);
+      console.error("❌ [useGalleryImages] Error eliminando imagen:", err);
       setError("Error al eliminar la imagen");
       throw err;
     }
@@ -85,7 +103,7 @@ export const useGalleryImages = () => {
   // Cargar imágenes al montar el hook
   useEffect(() => {
     loadImages();
-  }, [loadImages]); // Ahora loadImages es estable gracias a useCallback
+  }, [loadImages]); // loadImages es estable porque sus dependencias (vacías) no cambian
 
   return {
     images,
