@@ -1,18 +1,6 @@
 const Header = () => {
   return (
-    <header
-      style={{
-        backgroundImage: "url('/assets/img/EnConstrucción.jpg')",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-        height: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        textAlign: "center",
-      }}
-    >
+    <header>
       {/* <div className="intro-content">
         <img
           src="/assets/img/profile@2x.png"

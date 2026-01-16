@@ -12,7 +12,7 @@ const HomePage = () => {
       <Header />
       {/* <About /> */}
       {/* <CabanasList /> */}
-      <DynamicGallery />
+      {/* <DynamicGallery /> */}
       {/* <Activities /> */}
       <Contact />
       <Testimonials />

@@ -26,7 +26,12 @@ body {
 
 /* 🧩 IMPORTANTE: padding para evitar solapamiento con navbar fijo */
 body {
-  padding-top: 70px; /* ajusta según altura del navbar */
+  padding-top: 70px; /* navbar fijo */
+  background-image: url("/assets/img/EnConstrucción.jpg");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 a {
@@ -298,4 +303,55 @@ header {
 .dropdown-menu .nav-link:hover {
   color: #0d6efd !important; /* azul Bootstrap */
   background-color: #f8f9fa !important;
+}
+
+/*ESTILOS SECCIONES*/
+/* === Secciones sobre fondo global === */
+.section-transparent {
+  background: transparent;
+  position: relative;
+}
+
+/* === Panel de contenido (legible siempre) === */
+.section-panel {
+  background: rgba(255, 255, 255, 0.8); /* más sólido */
+  backdrop-filter: blur(6px);
+  border-radius: 1rem;
+  padding: 3rem 2rem;
+  color: #212529; /* FUERZA color de texto */
+}
+
+/* Ajuste fino solo para mobile */
+@media (max-width: 768px) {
+  .section-panel {
+    background: rgba(255, 255, 255, 0.8);
+    padding: 2rem 1.25rem;
+  }
+
+  .section-panel .text-muted {
+    color: #495057 !important;
+  }
+}
+
+/* === Imágenes de cards === */
+.card-img-cover {
+  object-fit: cover;
+}
+
+.card-img-200 {
+  height: 200px;
+}
+
+.card-img-300 {
+  height: 300px;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+/* === Modal galería fullscreen === */
+.modal-gallery {
+  display: block;
+  background-color: rgba(0, 0, 0, 0.9);
 }

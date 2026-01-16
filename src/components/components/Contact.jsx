@@ -85,8 +85,8 @@ const Contact = () => {
   };
 
   return (
-    <section id="contact">
-      <div className="container">
+    <section id="contact" className="section-transparent">
+      <div className="container section-panel">
         <div className="row">
           <div className="col-md-12 text-center mb-4">
             <h1>Contacto</h1>
