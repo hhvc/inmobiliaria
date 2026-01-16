@@ -45,6 +45,11 @@ export const useDashboardStats = () => {
 
     // Usuarios
     totalUsuarios: 0,
+
+    // Inmobiliarias (nuevas estadísticas)
+    totalInmobiliarias: 0,
+    inmobiliariasActivas: 0,
+    inmobiliariasHoy: 0,
   });
 
   const [loading, setLoading] = useState(true);
@@ -55,24 +60,35 @@ export const useDashboardStats = () => {
       try {
         setLoading(true);
 
-        // Obtener estadísticas de cabañas
-        const cabanasRef = collection(db, "cabanas");
-        const cabanasSnapshot = await getDocs(cabanasRef);
-        const cabanasData = cabanasSnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
+        // ====================================================
+        // 1. Obtener estadísticas de cabañas
+        // ====================================================
+        let totalCabanas = 0;
+        let cabanasDisponibles = 0;
+        let cabanasDestacadas = 0;
 
-        // Calcular estadísticas de cabañas
-        const totalCabanas = cabanasData.length;
-        const cabanasDisponibles = cabanasData.filter(
-          (cabana) => cabana.disponible
-        ).length;
-        const cabanasDestacadas = cabanasData.filter(
-          (cabana) => cabana.destacada
-        ).length;
+        try {
+          const cabanasRef = collection(db, "cabanas");
+          const cabanasSnapshot = await getDocs(cabanasRef);
+          const cabanasData = cabanasSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
 
-        // Obtener estadísticas de usuarios
+          totalCabanas = cabanasData.length;
+          cabanasDisponibles = cabanasData.filter(
+            (cabana) => cabana.disponible
+          ).length;
+          cabanasDestacadas = cabanasData.filter(
+            (cabana) => cabana.destacada
+          ).length;
+        } catch (cabanasError) {
+          console.log("Colección de cabañas no disponible:", cabanasError);
+        }
+
+        // ====================================================
+        // 2. Obtener estadísticas de usuarios
+        // ====================================================
         let totalUsuarios = 0;
         try {
           const usuariosRef = collection(db, "users");
@@ -82,7 +98,9 @@ export const useDashboardStats = () => {
           console.log("Colección de usuarios no disponible:", userError);
         }
 
-        // Obtener estadísticas de contactos
+        // ====================================================
+        // 3. Obtener estadísticas de contactos
+        // ====================================================
         let totalContactos = 0;
         let contactosNoLeidos = 0;
         let contactosHoy = 0;
@@ -114,7 +132,9 @@ export const useDashboardStats = () => {
           console.log("Colección de contactos no disponible:", contactosError);
         }
 
-        // Obtener estadísticas de reservas
+        // ====================================================
+        // 4. Obtener estadísticas de reservas
+        // ====================================================
         let totalReservas = 0;
         let reservasPendientes = 0;
         let reservasConfirmadas = 0;
@@ -162,6 +182,43 @@ export const useDashboardStats = () => {
           console.log("Colección de reservas no disponible:", reservasError);
         }
 
+        // ====================================================
+        // 5. Obtener estadísticas de inmobiliarias (NUEVO)
+        // ====================================================
+        let totalInmobiliarias = 0;
+        let inmobiliariasActivas = 0;
+        let inmobiliariasHoy = 0;
+
+        try {
+          const inmobiliariasRef = collection(db, "inmobiliarias");
+          const inmobiliariasSnapshot = await getDocs(inmobiliariasRef);
+          const inmobiliariasData = inmobiliariasSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+
+          totalInmobiliarias = inmobiliariasData.length;
+          inmobiliariasActivas = inmobiliariasData.filter(
+            (inmobiliaria) => inmobiliaria.activa === true
+          ).length;
+
+          // Inmobiliarias creadas hoy
+          const hoy = new Date();
+          hoy.setHours(0, 0, 0, 0);
+          inmobiliariasHoy = inmobiliariasData.filter((inmobiliaria) => {
+            const fechaCreacion = getFirestoreDate(inmobiliaria.createdAt);
+            return fechaCreacion && fechaCreacion >= hoy;
+          }).length;
+        } catch (inmobiliariasError) {
+          console.log(
+            "Colección de inmobiliarias no disponible:",
+            inmobiliariasError
+          );
+        }
+
+        // ====================================================
+        // 6. Actualizar estado con todas las estadísticas
+        // ====================================================
         setStats({
           // Cabañas
           totalCabanas,
@@ -184,6 +241,11 @@ export const useDashboardStats = () => {
 
           // Usuarios
           totalUsuarios,
+
+          // Inmobiliarias (nuevo)
+          totalInmobiliarias,
+          inmobiliariasActivas,
+          inmobiliariasHoy,
         });
       } catch (err) {
         console.error("Error fetching dashboard stats:", err);

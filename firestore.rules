@@ -1,25 +1,83 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: usuario logueado
+    /* ============================
+       Helpers generales
+       ============================ */
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Helper: usuario admin
-    function isAdmin() {
-      return isSignedIn() &&
-        request.auth.token.role == 'admin';
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    // 🔓 Lectura pública
-    match /{document=**} {
-      allow read: if true;
+    function userRole() {
+      return isSignedIn() && userDoc().data.role;
+    }
 
-      // 🔐 Escritura solo admin
-      allow write: if isAdmin();
+    function isRoot() {
+      return isSignedIn() && userRole() == "root";
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userRole() == "admin";
+    }
+
+    function adminHasInmobiliaria(inmoId) {
+      return isAdmin() &&
+        inmoId in userDoc().data.inmobiliarias;
+    }
+
+    /* ============================
+       Colección USERS
+       ============================ */
+
+    match /users/{userId} {
+      // Cada usuario puede leerse a sí mismo
+      allow read: if isSignedIn() && request.auth.uid == userId;
+
+      // Solo root puede escribir usuarios (gestión de roles)
+      allow write: if isRoot();
+    }
+
+    /* ============================
+       Colección INMOBILIARIAS
+       ============================ */
+
+    match /inmobiliarias/{inmoId} {
+
+      // 🔍 Lectura:
+      // - root ve todo
+      // - admin solo sus inmobiliarias
+      allow read: if
+        isRoot() ||
+        adminHasInmobiliaria(inmoId);
+
+      // ✍️ Escritura:
+      // - solo root (crear / editar / borrar)
+      allow write: if isRoot();
+    }
+
+    /* ============================
+       Colección INMUEBLES (futuro)
+       ============================ */
+
+    match /inmuebles/{inmuebleId} {
+      // Por ahora cerrado
+      allow read, write: if false;
+    }
+
+    /* ============================
+       Regla por defecto
+       ============================ */
+
+    // 🔒 Todo lo que no esté definido arriba queda cerrado
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
-

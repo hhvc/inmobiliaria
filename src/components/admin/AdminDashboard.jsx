@@ -1,3 +1,4 @@
+// src/components/admin/AdminDashboard.jsx
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/auth/useAuth";
 import { useDashboardStats } from "../../hooks/useDashboardStats";
@@ -51,6 +52,82 @@ const AdminDashboard = () => {
           )}
 
           {/* Tarjetas de estadísticas rápidas */}
+          <div className="row mb-5">
+            {/* Tarjeta de Total Inmobiliarias */}
+            <div className="col-md-2 mt-3">
+              <div
+                className="card text-white"
+                style={{ backgroundColor: "#6610f2" }}
+              >
+                <div className="card-body text-center">
+                  <i className="fa fa-building fa-2x mb-2"></i>
+                  {loading ? (
+                    <div
+                      className="spinner-border spinner-border-sm"
+                      role="status"
+                    >
+                      <span className="visually-hidden">Cargando...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="mb-0">{stats.totalInmobiliarias}</h4>
+                      <small>Total Inmobiliarias</small>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Tarjeta de Inmobiliarias Activas */}
+            <div className="col-md-2 mt-3">
+              <div
+                className="card text-white"
+                style={{ backgroundColor: "#20c997" }}
+              >
+                <div className="card-body text-center">
+                  <i className="fa fa-check-circle fa-2x mb-2"></i>
+                  {loading ? (
+                    <div
+                      className="spinner-border spinner-border-sm"
+                      role="status"
+                    >
+                      <span className="visually-hidden">Cargando...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="mb-0">{stats.inmobiliariasActivas}</h4>
+                      <small>Inmobiliarias Activas</small>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Tarjeta de Inmobiliarias Hoy */}
+            <div className="col-md-2 mt-3">
+              <div
+                className="card text-white"
+                style={{ backgroundColor: "#fd7e14" }}
+              >
+                <div className="card-body text-center">
+                  <i className="fa fa-calendar-day fa-2x mb-2"></i>
+                  {loading ? (
+                    <div
+                      className="spinner-border spinner-border-sm"
+                      role="status"
+                    >
+                      <span className="visually-hidden">Cargando...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="mb-0">{stats.inmobiliariasHoy}</h4>
+                      <small>Inmobiliarias Hoy</small>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
           <div className="row mb-5">
             {/* Cabañas */}
             <div className="col-md-2">
@@ -319,6 +396,35 @@ const AdminDashboard = () => {
 
           {/* Módulos de administración */}
           <div className="row">
+            {/* Gestión de Inmobiliarias - NUEVA TARJETA */}
+            <div className="col-md-6 col-lg-4 mb-4">
+              <div className="card h-100 shadow-sm">
+                <div className="card-body text-center">
+                  <i
+                    className="fa fa-city fa-3x mb-3"
+                    style={{ color: "#6610f2" }}
+                  ></i>
+                  <h5 className="card-title">🏢 Gestión de Inmobiliarias</h5>
+                  <p className="card-text">
+                    Administra todas las inmobiliarias asociadas: crear, editar,
+                    activar/desactivar y configurar propiedades.
+                  </p>
+                  <Link
+                    to="/admin/inmobiliarias"
+                    className="btn"
+                    style={{ backgroundColor: "#6610f2", color: "white" }}
+                  >
+                    Gestionar Inmobiliarias
+                    {stats.inmobiliariasActivas > 0 && (
+                      <span className="badge bg-success ms-1">
+                        {stats.inmobiliariasActivas} activas
+                      </span>
+                    )}
+                  </Link>
+                </div>
+              </div>
+            </div>
+
             {/* Gestión de Reservas - AHORA ACTIVO */}
             <div className="col-md-6 col-lg-4 mb-4">
               <div className="card h-100 shadow-sm">
@@ -492,6 +598,13 @@ const AdminDashboard = () => {
             </div>
             <div className="card-body">
               <div className="d-flex gap-2 flex-wrap">
+                <Link
+                  to="/admin/inmobiliarias/nueva"
+                  className="btn"
+                  style={{ backgroundColor: "#6610f2", color: "white" }}
+                >
+                  ➕ Agregar Nueva Inmobiliaria
+                </Link>
                 <Link to="/admin/cabanasform" className="btn btn-primary">
                   ➕ Agregar Nueva Cabaña
                 </Link>

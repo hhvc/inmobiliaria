@@ -2,22 +2,42 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
+    /* ================= Helpers ================= */
+
     function isSignedIn() {
       return request.auth != null;
     }
 
     function isAdmin() {
       return isSignedIn() &&
-        request.auth.token.role == 'admin';
+        (request.auth.token.role == 'admin' ||
+         request.auth.token.role == 'root');
     }
 
-    match /{allPaths=**} {
-      // 🔓 lectura pública (galerías, imágenes, etc.)
+    /* ================= Inmobiliarias =================
+       Estructura esperada:
+       /inmobiliarias/{inmobiliariaId}/
+         ├── logo.png
+         └── backgrounds/
+             ├── primary.jpg
+             ├── secondary.jpg
+             └── tertiary.jpg
+    */
+
+    match /inmobiliarias/{inmobiliariaId}/{allPaths=**} {
+
+      // 🔓 Lectura pública (logos, fondos, branding público)
       allow read: if true;
 
-      // 🔐 solo admin puede subir / borrar
+      // 🔐 Escritura solo admin / root
       allow write: if isAdmin();
+    }
+
+    /* ================= Fallback ================= */
+
+    // ❌ Bloqueo total fuera de paths permitidos
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
-

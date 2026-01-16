@@ -27,6 +27,12 @@ import Calendar from "./components/admin/calendar/Calendar";
 import ReservationManagement from "./components/admin/ReservationManagement";
 import TestimonialManagement from "./components/admin/TestimonialManagement";
 
+// Componentes de Inmobiliarias
+import InmobiliariaListPage from "./inmobiliaria/pages/InmobiliariaListPage";
+import InmobiliariaCreatePage from "./inmobiliaria/pages/InmobiliariaCreatePage";
+import InmobiliariaEditPage from "./inmobiliaria/pages/InmobiliariaEditPage";
+import InmobiliariaPublicPage from "./inmobiliaria/pages/InmobiliariaPublicPage";
+
 function App() {
   useEffect(() => {
     // Mover el componente Login al modal cuando esté disponible
@@ -52,7 +58,39 @@ function App() {
             <Route path="/contacto" element={<Contact />} />
             <Route path="/reservar" element={<ReservationPage />} />
 
-            {/* Rutas protegidas para administradores */}
+            {/* Ruta pública para ver inmobiliaria por slug */}
+            <Route
+              path="/inmobiliaria/:slug"
+              element={<InmobiliariaPublicPage />}
+            />
+
+            {/* Rutas protegidas para administradores - Inmobiliarias */}
+            <Route
+              path="/admin/inmobiliarias"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmobiliariaListPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/inmobiliarias/nueva"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmobiliariaCreatePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/inmobiliarias/:id/editar"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmobiliariaEditPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Rutas protegidas para administradores - Dashboard y otras */}
             <Route
               path="/admin/dashboard"
               element={
