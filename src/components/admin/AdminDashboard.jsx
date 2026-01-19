@@ -127,8 +127,109 @@ const AdminDashboard = () => {
                 </div>
               </div>
             </div>
+
+            {/* Tarjeta de Total Inmuebles */}
+            <div className="col-md-2 mt-3">
+              <div
+                className="card text-white"
+                style={{ backgroundColor: "#17a2b8" }}
+              >
+                <div className="card-body text-center">
+                  <i className="fa fa-building fa-2x mb-2"></i>
+                  {loading ? (
+                    <div
+                      className="spinner-border spinner-border-sm"
+                      role="status"
+                    >
+                      <span className="visually-hidden">Cargando...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="mb-0">{stats.totalInmuebles}</h4>
+                      <small>Total Inmuebles</small>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Tarjeta de Inmuebles Activos */}
+            <div className="col-md-2 mt-3">
+              <div
+                className="card text-white"
+                style={{ backgroundColor: "#28a745" }}
+              >
+                <div className="card-body text-center">
+                  <i className="fa fa-check-circle fa-2x mb-2"></i>
+                  {loading ? (
+                    <div
+                      className="spinner-border spinner-border-sm"
+                      role="status"
+                    >
+                      <span className="visually-hidden">Cargando...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="mb-0">{stats.inmueblesActivos}</h4>
+                      <small>Inmuebles Activos</small>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Tarjeta de Inmuebles Hoy */}
+            <div className="col-md-2 mt-3">
+              <div
+                className="card text-white"
+                style={{ backgroundColor: "#6f42c1" }}
+              >
+                <div className="card-body text-center">
+                  <i className="fa fa-calendar-day fa-2x mb-2"></i>
+                  {loading ? (
+                    <div
+                      className="spinner-border spinner-border-sm"
+                      role="status"
+                    >
+                      <span className="visually-hidden">Cargando...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="mb-0">{stats.inmueblesHoy}</h4>
+                      <small>Inmuebles Hoy</small>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
+
           <div className="row mb-5">
+            {/* Inmuebles Destacados */}
+            <div className="col-md-2 mt-3">
+              <div
+                className="card text-white"
+                style={{ backgroundColor: "#ffc107" }}
+              >
+                <div className="card-body text-center">
+                  <i className="fa fa-star fa-2x mb-2"></i>
+                  {loading ? (
+                    <div
+                      className="spinner-border spinner-border-sm"
+                      role="status"
+                    >
+                      <span className="visually-hidden">Cargando...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <h4 className="mb-0">{stats.inmueblesDestacados}</h4>
+                      <small>Inmuebles Destacados</small>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* Cabañas */}
             <div className="col-md-2">
               <div className="card bg-primary text-white">
@@ -396,7 +497,7 @@ const AdminDashboard = () => {
 
           {/* Módulos de administración */}
           <div className="row">
-            {/* Gestión de Inmobiliarias - NUEVA TARJETA */}
+            {/* Gestión de Inmobiliarias */}
             <div className="col-md-6 col-lg-4 mb-4">
               <div className="card h-100 shadow-sm">
                 <div className="card-body text-center">
@@ -425,7 +526,36 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Gestión de Reservas - AHORA ACTIVO */}
+            {/* Gestión de Inmuebles - NUEVA TARJETA */}
+            <div className="col-md-6 col-lg-4 mb-4">
+              <div className="card h-100 shadow-sm">
+                <div className="card-body text-center">
+                  <i
+                    className="fa fa-home fa-3x mb-3"
+                    style={{ color: "#17a2b8" }}
+                  ></i>
+                  <h5 className="card-title">🏠 Gestión de Inmuebles</h5>
+                  <p className="card-text">
+                    Administra propiedades: casas, departamentos, terrenos.
+                    Crear, editar, destacar y gestionar imágenes.
+                  </p>
+                  <Link
+                    to="/admin/inmuebles"
+                    className="btn"
+                    style={{ backgroundColor: "#17a2b8", color: "white" }}
+                  >
+                    Gestionar Inmuebles
+                    {stats.totalInmuebles > 0 && (
+                      <span className="badge bg-success ms-1">
+                        {stats.totalInmuebles} propiedades
+                      </span>
+                    )}
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Gestión de Reservas */}
             <div className="col-md-6 col-lg-4 mb-4">
               <div className="card h-100 shadow-sm">
                 <div className="card-body text-center">
@@ -451,8 +581,8 @@ const AdminDashboard = () => {
             <div className="col-md-6 col-lg-4 mb-4">
               <div className="card h-100 shadow-sm">
                 <div className="card-body text-center">
-                  <i className="fa fa-home fa-3x text-primary mb-3"></i>
-                  <h5 className="card-title">🏠 Gestión de Cabañas</h5>
+                  <i className="fa fa-campground fa-3x text-primary mb-3"></i>
+                  <h5 className="card-title">⛺ Gestión de Cabañas</h5>
                   <p className="card-text">
                     Administra todas las cabañas: crear, editar, eliminar y
                     configurar precios.
@@ -603,10 +733,17 @@ const AdminDashboard = () => {
                   className="btn"
                   style={{ backgroundColor: "#6610f2", color: "white" }}
                 >
-                  ➕ Agregar Nueva Inmobiliaria
+                  ➕ Nueva Inmobiliaria
+                </Link>
+                <Link
+                  to="/admin/inmuebles/nuevo"
+                  className="btn"
+                  style={{ backgroundColor: "#17a2b8", color: "white" }}
+                >
+                  ➕ Nuevo Inmueble
                 </Link>
                 <Link to="/admin/cabanasform" className="btn btn-primary">
-                  ➕ Agregar Nueva Cabaña
+                  ➕ Nueva Cabaña
                 </Link>
                 <Link to="/admin/reservas" className="btn btn-success">
                   📅 Ver Reservas

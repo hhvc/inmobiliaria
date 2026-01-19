@@ -46,10 +46,18 @@ export const useDashboardStats = () => {
     // Usuarios
     totalUsuarios: 0,
 
-    // Inmobiliarias (nuevas estadísticas)
+    // Inmobiliarias
     totalInmobiliarias: 0,
     inmobiliariasActivas: 0,
     inmobiliariasHoy: 0,
+
+    // Inmuebles (nuevas estadísticas)
+    totalInmuebles: 0,
+    inmueblesActivos: 0,
+    inmueblesHoy: 0,
+    inmueblesDestacados: 0,
+    inmueblesPorTipo: {},
+    inmueblesPorOperacion: {},
   });
 
   const [loading, setLoading] = useState(true);
@@ -183,7 +191,7 @@ export const useDashboardStats = () => {
         }
 
         // ====================================================
-        // 5. Obtener estadísticas de inmobiliarias (NUEVO)
+        // 5. Obtener estadísticas de inmobiliarias
         // ====================================================
         let totalInmobiliarias = 0;
         let inmobiliariasActivas = 0;
@@ -217,7 +225,59 @@ export const useDashboardStats = () => {
         }
 
         // ====================================================
-        // 6. Actualizar estado con todas las estadísticas
+        // 6. Obtener estadísticas de inmuebles (NUEVO)
+        // ====================================================
+        let totalInmuebles = 0;
+        let inmueblesActivos = 0;
+        let inmueblesHoy = 0;
+        let inmueblesDestacados = 0;
+        const inmueblesPorTipo = {};
+        const inmueblesPorOperacion = {};
+
+        try {
+          const inmueblesRef = collection(db, "inmuebles");
+          const inmueblesSnapshot = await getDocs(inmueblesRef);
+          const inmueblesData = inmueblesSnapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+
+          totalInmuebles = inmueblesData.length;
+
+          // Para determinar si un inmueble está activo, asumimos que está activo a menos que tenga un campo 'activo' en false
+          // O podríamos considerar todos los inmuebles como activos si no hay campo de estado
+          inmueblesActivos = inmueblesData.filter(
+            (inmueble) => inmueble.activo !== false
+          ).length;
+
+          // Inmuebles destacados
+          inmueblesDestacados = inmueblesData.filter(
+            (inmueble) => inmueble.destacado === true
+          ).length;
+
+          // Inmuebles creados hoy
+          const hoy = new Date();
+          hoy.setHours(0, 0, 0, 0);
+          inmueblesHoy = inmueblesData.filter((inmueble) => {
+            const fechaCreacion = getFirestoreDate(inmueble.createdAt);
+            return fechaCreacion && fechaCreacion >= hoy;
+          }).length;
+
+          // Estadísticas por tipo
+          inmueblesData.forEach((inmueble) => {
+            const tipo = inmueble.tipo || "sin_tipo";
+            inmueblesPorTipo[tipo] = (inmueblesPorTipo[tipo] || 0) + 1;
+
+            const operacion = inmueble.operacion || "sin_operacion";
+            inmueblesPorOperacion[operacion] =
+              (inmueblesPorOperacion[operacion] || 0) + 1;
+          });
+        } catch (inmueblesError) {
+          console.log("Colección de inmuebles no disponible:", inmueblesError);
+        }
+
+        // ====================================================
+        // 7. Actualizar estado con todas las estadísticas
         // ====================================================
         setStats({
           // Cabañas
@@ -242,10 +302,18 @@ export const useDashboardStats = () => {
           // Usuarios
           totalUsuarios,
 
-          // Inmobiliarias (nuevo)
+          // Inmobiliarias
           totalInmobiliarias,
           inmobiliariasActivas,
           inmobiliariasHoy,
+
+          // Inmuebles (nuevo)
+          totalInmuebles,
+          inmueblesActivos,
+          inmueblesHoy,
+          inmueblesDestacados,
+          inmueblesPorTipo,
+          inmueblesPorOperacion,
         });
       } catch (err) {
         console.error("Error fetching dashboard stats:", err);

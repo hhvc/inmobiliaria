@@ -33,6 +33,12 @@ import InmobiliariaCreatePage from "./inmobiliaria/pages/InmobiliariaCreatePage"
 import InmobiliariaEditPage from "./inmobiliaria/pages/InmobiliariaEditPage";
 import InmobiliariaPublicPage from "./inmobiliaria/pages/InmobiliariaPublicPage";
 
+// Componentes de Inmuebles
+import InmuebleListPage from "./inmueble/pages/InmuebleListPage";
+import InmuebleCreatePage from "./inmueble/pages/InmuebleCreatePage";
+import InmuebleEditPage from "./inmueble/pages/InmuebleEditPage";
+import InmueblePublicPage from "./inmueble/pages/InmueblePublicPage";
+
 function App() {
   useEffect(() => {
     // Mover el componente Login al modal cuando esté disponible
@@ -64,6 +70,9 @@ function App() {
               element={<InmobiliariaPublicPage />}
             />
 
+            {/* Ruta pública para ver inmueble por slug */}
+            <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
+
             {/* Rutas protegidas para administradores - Inmobiliarias */}
             <Route
               path="/admin/inmobiliarias"
@@ -86,6 +95,32 @@ function App() {
               element={
                 <ProtectedRoute role="admin">
                   <InmobiliariaEditPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* Rutas protegidas para administradores - Inmuebles */}
+            <Route
+              path="/admin/inmuebles"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmuebleListPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/inmuebles/nuevo"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmuebleCreatePage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/inmuebles/:id/editar"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmuebleEditPage />
                 </ProtectedRoute>
               }
             />

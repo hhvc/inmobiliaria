@@ -16,20 +16,34 @@ service cloud.firestore {
     }
 
     function userRole() {
-      return isSignedIn() && userDoc().data.role;
+      return isSignedIn() ? userDoc().data.role : null;
     }
 
     function isRoot() {
-      return isSignedIn() && userRole() == "root";
+      return userRole() == "root";
     }
 
     function isAdmin() {
-      return isSignedIn() && userRole() == "admin";
+      return userRole() == "admin";
     }
 
     function adminHasInmobiliaria(inmoId) {
-      return isAdmin() &&
-        inmoId in userDoc().data.inmobiliarias;
+      return isAdmin()
+        && inmoId in userDoc().data.inmobiliarias;
+    }
+
+    function isOwner(resource) {
+      return isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    function belongsToUserInmobiliaria(inmoId) {
+      return isSignedIn()
+        && inmoId in userDoc().data.inmobiliarias;
+    }
+
+    function isPublicInmueble(resource) {
+      return resource.data.estado == "activo";
     }
 
     /* ============================
@@ -37,10 +51,12 @@ service cloud.firestore {
        ============================ */
 
     match /users/{userId} {
-      // Cada usuario puede leerse a sí mismo
-      allow read: if isSignedIn() && request.auth.uid == userId;
 
-      // Solo root puede escribir usuarios (gestión de roles)
+      // Cada usuario puede verse a sí mismo
+      allow read: if isSignedIn()
+        && request.auth.uid == userId;
+
+      // Solo root gestiona usuarios y roles
       allow write: if isRoot();
     }
 
@@ -50,32 +66,74 @@ service cloud.firestore {
 
     match /inmobiliarias/{inmoId} {
 
-      // 🔍 Lectura:
+      // Lectura:
       // - root ve todo
       // - admin solo sus inmobiliarias
       allow read: if
         isRoot() ||
         adminHasInmobiliaria(inmoId);
 
-      // ✍️ Escritura:
-      // - solo root (crear / editar / borrar)
+      // Escritura:
+      // - solo root
       allow write: if isRoot();
     }
 
     /* ============================
-       Colección INMUEBLES (futuro)
+       Colección INMUEBLES
        ============================ */
 
     match /inmuebles/{inmuebleId} {
-      // Por ahora cerrado
-      allow read, write: if false;
+
+      // 🔍 LECTURA
+      allow read: if
+        // público (detalle público)
+        isPublicInmueble(resource)
+        // admin de la inmobiliaria
+        || adminHasInmobiliaria(resource.data.inmobiliariaId)
+        // owner
+        || isOwner(resource)
+        // root
+        || isRoot();
+
+      // ✍️ CREAR
+      allow create: if
+        isSignedIn()
+        && (
+          // root crea cualquiera
+          isRoot()
+
+          // admin crea solo para sus inmobiliarias
+          || (
+            isAdmin()
+            && belongsToUserInmobiliaria(request.resource.data.inmobiliariaId)
+            && request.resource.data.ownerId == request.auth.uid
+          )
+        );
+
+      // ✏️ ACTUALIZAR
+      allow update: if
+        isSignedIn()
+        && (
+          // root todo
+          isRoot()
+
+          // admin de la inmobiliaria
+          || adminHasInmobiliaria(resource.data.inmobiliariaId)
+
+          // owner del inmueble
+          || isOwner(resource)
+        );
+
+      // 🗑️ BORRAR
+      allow delete: if
+        isRoot()
+        || adminHasInmobiliaria(resource.data.inmobiliariaId);
     }
 
     /* ============================
        Regla por defecto
        ============================ */
 
-    // 🔒 Todo lo que no esté definido arriba queda cerrado
     match /{document=**} {
       allow read, write: if false;
     }

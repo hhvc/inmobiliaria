@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
+    "@hello-pangea/dnd": "^18.0.1",
     "bootstrap": "^5.3.8",
     "firebase": "^12.4.0",
     "firebase-admin": "^13.5.0",
