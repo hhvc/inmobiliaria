@@ -6,12 +6,78 @@ import { useAuth } from "../../context/auth/useAuth";
 import { createInmueble } from "../services/inmueble.service";
 import { canCreateInmueble } from "../helpers/permissions";
 
+/* =========================
+   Valores iniciales
+   ========================= */
+
+const INITIAL_VALUES = {
+  titulo: "",
+  descripcion: "",
+  tipo: "",
+  operacion: "",
+  precio: "",
+  moneda: "USD",
+  expensas: "",
+
+  direccion: {
+    calle: "",
+    numero: "",
+    barrio: "",
+    ciudad: "",
+  },
+
+  superficie: {
+    total: "",
+    cubierta: "",
+    descubierta: "",
+  },
+
+  ambientes: "",
+  dormitorios: "",
+  banos: "",
+  cocheras: "",
+
+  destacado: false,
+
+  // 🔑 CLAVE para evitar el crash
+  images: [],
+};
+
 const InmuebleCreatePage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const [values, setValues] = useState(INITIAL_VALUES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  /* =========================
+     Handlers de formulario
+     ========================= */
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setValues((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleNestedChange = (group, field, value) => {
+    if (!group) {
+      setValues((prev) => ({ ...prev, [field]: value }));
+      return;
+    }
+
+    setValues((prev) => ({
+      ...prev,
+      [group]: {
+        ...prev[group],
+        [field]: value,
+      },
+    }));
+  };
+
+  /* =========================
+     Crear inmueble
+     ========================= */
 
   const handleCreate = async (formValues) => {
     try {
@@ -22,7 +88,7 @@ const InmuebleCreatePage = () => {
         throw new Error("No se pudo determinar el usuario o la inmobiliaria");
       }
 
-      // 🔐 Permiso frontend (UX, no seguridad)
+      // 🔐 Permiso frontend (UX)
       if (!canCreateInmueble(user, user.inmobiliariaId)) {
         throw new Error("No tenés permisos para crear inmuebles");
       }
@@ -30,14 +96,11 @@ const InmuebleCreatePage = () => {
       const inmuebleData = {
         ...formValues,
 
-        // 🔐 Asociación
         ownerId: user.uid,
         inmobiliariaId: user.inmobiliariaId,
 
-        // 📌 Estado inicial
         estado: "activo",
 
-        // 🕒 Timestamps
         createdAt: new Date(),
         updatedAt: new Date(),
       };
@@ -58,6 +121,10 @@ const InmuebleCreatePage = () => {
     }
   };
 
+  /* =========================
+     Render
+     ========================= */
+
   return (
     <section className="page-container">
       <header className="page-header">
@@ -68,9 +135,16 @@ const InmuebleCreatePage = () => {
       {error && <div className="error-box">{error}</div>}
 
       <InmuebleForm
-        onSubmit={handleCreate}
+        values={values}
+        errors={{}}
         loading={loading}
+        initialLoading={false}
         isEditMode={false}
+        handleChange={handleChange}
+        handleNestedChange={handleNestedChange}
+        handleSubmit={handleCreate}
+        inmuebleId={null}
+        inmobiliariaId={user?.inmobiliariaId}
       />
     </section>
   );

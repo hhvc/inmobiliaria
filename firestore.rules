@@ -32,14 +32,14 @@ service cloud.firestore {
         && inmoId in userDoc().data.inmobiliarias;
     }
 
-    function isOwner(resource) {
-      return isSignedIn()
-        && resource.data.ownerId == request.auth.uid;
-    }
-
     function belongsToUserInmobiliaria(inmoId) {
       return isSignedIn()
         && inmoId in userDoc().data.inmobiliarias;
+    }
+
+    function isOwner(resource) {
+      return isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
     }
 
     function isPublicInmueble(resource) {
@@ -47,91 +47,86 @@ service cloud.firestore {
     }
 
     /* ============================
-       Colección USERS
+       USERS
        ============================ */
 
     match /users/{userId} {
-
-      // Cada usuario puede verse a sí mismo
       allow read: if isSignedIn()
         && request.auth.uid == userId;
 
-      // Solo root gestiona usuarios y roles
       allow write: if isRoot();
     }
 
     /* ============================
-       Colección INMOBILIARIAS
+       INMOBILIARIAS
        ============================ */
 
     match /inmobiliarias/{inmoId} {
 
-      // Lectura:
-      // - root ve todo
-      // - admin solo sus inmobiliarias
       allow read: if
-        isRoot() ||
-        adminHasInmobiliaria(inmoId);
+        isRoot()
+        || adminHasInmobiliaria(inmoId);
 
-      // Escritura:
-      // - solo root
       allow write: if isRoot();
+
+      /* ============================
+         SUBCOLECCIÓN INMUEBLES
+         ============================ */
+
+      match /inmuebles/{inmuebleId} {
+
+        allow read: if
+          isPublicInmueble(resource)
+          || adminHasInmobiliaria(inmoId)
+          || isOwner(resource)
+          || isRoot();
+
+        allow create: if
+          isSignedIn()
+          && (
+            isRoot()
+            || (
+              isAdmin()
+              && belongsToUserInmobiliaria(inmoId)
+              && request.resource.data.ownerId == request.auth.uid
+            )
+          );
+
+        allow update: if
+          isSignedIn()
+          && (
+            isRoot()
+            || adminHasInmobiliaria(inmoId)
+            || isOwner(resource)
+          );
+
+        allow delete: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId);
+      }
     }
 
     /* ============================
-       Colección INMUEBLES
+       TESTIMONIALS
+       (comentarios públicos)
        ============================ */
 
-    match /inmuebles/{inmuebleId} {
+    match /testimonials/{testimonialId} {
 
-      // 🔍 LECTURA
-      allow read: if
-        // público (detalle público)
-        isPublicInmueble(resource)
-        // admin de la inmobiliaria
-        || adminHasInmobiliaria(resource.data.inmobiliariaId)
-        // owner
-        || isOwner(resource)
-        // root
-        || isRoot();
+      // Lectura pública
+      allow read: if true;
 
-      // ✍️ CREAR
-      allow create: if
-        isSignedIn()
-        && (
-          // root crea cualquiera
-          isRoot()
+      // Crear comentario:
+      // cualquier usuario logueado (sin rol)
+      allow create: if isSignedIn();
 
-          // admin crea solo para sus inmobiliarias
-          || (
-            isAdmin()
-            && belongsToUserInmobiliaria(request.resource.data.inmobiliariaId)
-            && request.resource.data.ownerId == request.auth.uid
-          )
-        );
-
-      // ✏️ ACTUALIZAR
-      allow update: if
-        isSignedIn()
-        && (
-          // root todo
-          isRoot()
-
-          // admin de la inmobiliaria
-          || adminHasInmobiliaria(resource.data.inmobiliariaId)
-
-          // owner del inmueble
-          || isOwner(resource)
-        );
-
-      // 🗑️ BORRAR
-      allow delete: if
-        isRoot()
-        || adminHasInmobiliaria(resource.data.inmobiliariaId);
+      // Editar / borrar:
+      // solo admin o root
+      allow update, delete: if isAdmin() || isRoot();
     }
 
     /* ============================
-       Regla por defecto
+       CIERRE TOTAL
        ============================ */
 
     match /{document=**} {

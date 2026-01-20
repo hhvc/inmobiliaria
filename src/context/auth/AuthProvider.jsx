@@ -55,6 +55,8 @@ export const AuthProvider = ({ children }) => {
         const userRef = doc(db, "users", userData.uid);
         const userSnap = await getDoc(userRef);
 
+        const now = new Date();
+
         if (!userSnap.exists()) {
           await setDoc(userRef, {
             uid: userData.uid,
@@ -62,16 +64,42 @@ export const AuthProvider = ({ children }) => {
             displayName:
               userData.displayName || additionalData.displayName || "",
             photoURL: userData.photoURL || "",
-            role: "usuario",
+
+            /* =========================
+             ROLES (retrocompatible)
+             ========================= */
+
+            // Rol principal (NO se elimina)
+            role: additionalData.role || "usuario",
+
+            // Roles múltiples (nuevo)
+            roles: additionalData.roles || ["usuario"],
+
+            /* =========================
+             INMOBILIARIAS
+             ========================= */
+
+            // Un usuario puede pertenecer a varias inmobiliarias
+            inmobiliarias: additionalData.inmobiliarias || [],
+
+            /* =========================
+             METADATA
+             ========================= */
+
             status: "activo",
-            createdAt: new Date(),
-            lastLogin: new Date(),
+            createdAt: now,
+            lastLogin: now,
+
             ...additionalData,
           });
-          console.log("✅ Usuario creado en Firestore con rol 'usuario'");
+
+          console.log(
+            "✅ Usuario creado en Firestore (role + roles, retrocompatible)"
+          );
         } else {
+          // Solo actualizamos datos de sesión
           await updateDoc(userRef, {
-            lastLogin: new Date(),
+            lastLogin: now,
           });
         }
       } catch (error) {
@@ -82,7 +110,7 @@ export const AuthProvider = ({ children }) => {
     []
   );
 
-  // Función para obtener datos completos del usuario - memoizada CORRECTAMENTE
+  // Función para obtener datos completos del usuario - memoizada
   const getUserWithRole = useCallback(
     async (firebaseUser) => {
       if (!firebaseUser) return null;
@@ -93,27 +121,60 @@ export const AuthProvider = ({ children }) => {
 
         if (userSnap.exists()) {
           const userData = userSnap.data();
+
           return {
             ...firebaseUser,
+
+            /* =========================
+             RETROCOMPATIBILIDAD
+             ========================= */
+
+            // Rol principal (para UX / vistas)
             role: userData.role || "usuario",
+
+            // Estado del usuario
             status: userData.status || "activo",
+
+            /* =========================
+             NUEVO ESQUEMA
+             ========================= */
+
+            // Roles múltiples (permisos)
+            roles: Array.isArray(userData.roles)
+              ? userData.roles
+              : [userData.role || "usuario"],
+
+            // Inmobiliarias asociadas
+            inmobiliarias: Array.isArray(userData.inmobiliarias)
+              ? userData.inmobiliarias
+              : [],
+
+            // Datos crudos (por si algún componente los usa)
             userData: userData,
           };
         } else {
+          // Usuario no existe → lo creamos
           await createUserInFirestore(firebaseUser);
+
           return {
             ...firebaseUser,
             role: "usuario",
             status: "activo",
+            roles: ["usuario"],
+            inmobiliarias: [],
             userData: {},
           };
         }
       } catch (error) {
         console.error("❌ Error obteniendo datos del usuario:", error);
+
+        // Fallback seguro
         return {
           ...firebaseUser,
           role: "usuario",
           status: "activo",
+          roles: ["usuario"],
+          inmobiliarias: [],
           userData: {},
         };
       }
@@ -290,7 +351,6 @@ export const AuthProvider = ({ children }) => {
     [recaptchaReady, handleError]
   );
 
-  // ✅ CORREGIDO: parámetro 'error' eliminado
   const cancelPhoneAuth = useCallback(() => {
     try {
       if (recaptchaVerifierRef.current) {
@@ -333,8 +393,11 @@ export const AuthProvider = ({ children }) => {
     async (userId, newRole, newStatus = "activo") => {
       try {
         const userRef = doc(db, "users", userId);
+
         await updateDoc(userRef, {
-          role: newRole,
+          role: newRole, // compatibilidad legacy
+          primaryRole: newRole, // nuevo esquema
+          roles: [newRole], // mínimo seguro
           status: newStatus,
           updatedAt: new Date(),
         });
@@ -343,9 +406,11 @@ export const AuthProvider = ({ children }) => {
           const updatedUser = await getUserWithRole(user);
           setUser(updatedUser);
         }
+
         return true;
       } catch (error) {
-        throw new Error("Error al actualizar el rol del usuario.", error);
+        console.error("❌ Error actualizando rol:", error);
+        throw new Error("Error al actualizar el rol del usuario.");
       }
     },
     [user, getUserWithRole]
@@ -354,9 +419,21 @@ export const AuthProvider = ({ children }) => {
   const hasRole = useCallback(
     (requiredRole) => {
       if (!user) return false;
+
+      // Soporte nuevo esquema
+      if (Array.isArray(user.roles)) {
+        return user.roles.includes(requiredRole);
+      }
+
+      // Fallback legacy
       if (user.role === "admin") return true;
 
-      const rolesHierarchy = { usuario: 1, colaborador: 2, admin: 3 };
+      const rolesHierarchy = {
+        usuario: 1,
+        colaborador: 2,
+        admin: 3,
+      };
+
       return rolesHierarchy[user.role] >= rolesHierarchy[requiredRole];
     },
     [user]
@@ -366,18 +443,27 @@ export const AuthProvider = ({ children }) => {
     return user && user.status === "activo";
   }, [user]);
 
-  // useEffect principal - CON DEPENDENCIAS CORRECTAS
+  // useEffect principal
   useEffect(() => {
+    let isMounted = true;
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!isMounted) return;
+
       if (currentUser) {
         const userWithRole = await getUserWithRole(currentUser);
-        setUser(userWithRole);
+        if (isMounted) setUser(userWithRole);
       } else {
         setUser(null);
       }
-      setLoading(false);
+
+      if (isMounted) setLoading(false);
     });
-    return unsubscribe;
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [getUserWithRole]);
 
   // useEffect de limpieza

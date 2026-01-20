@@ -6,6 +6,7 @@ import ProtectedRoute from "./components/components/ProtectedRoute";
 // Componentes de páginas
 import HomePage from "./pages/HomePage";
 import ReservationPage from "./pages/ReservationPage";
+import UserProfilePage from "./pages/UserProfilePage";
 
 // Componentes generales
 import Navbar from "./components/components/Navbar";
@@ -26,6 +27,7 @@ import ContactMessages from "./components/admin/ContactMessages";
 import Calendar from "./components/admin/calendar/Calendar";
 import ReservationManagement from "./components/admin/ReservationManagement";
 import TestimonialManagement from "./components/admin/TestimonialManagement";
+import InmuebleAdminPage from "./inmueble/pages/InmuebleAdminPage";
 
 // Componentes de Inmobiliarias
 import InmobiliariaListPage from "./inmobiliaria/pages/InmobiliariaListPage";
@@ -73,6 +75,16 @@ function App() {
             {/* Ruta pública para ver inmueble por slug */}
             <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
 
+            {/* Rutas protegidas para usuarios - Solo para usuarios logueados */}
+            <Route
+              path="/perfil"
+              element={
+                <ProtectedRoute>
+                  <UserProfilePage />
+                </ProtectedRoute>
+              }
+            />
+
             {/* Rutas protegidas para administradores - Inmobiliarias */}
             <Route
               path="/admin/inmobiliarias"
@@ -104,7 +116,7 @@ function App() {
               path="/admin/inmuebles"
               element={
                 <ProtectedRoute role="admin">
-                  <InmuebleListPage />
+                  <InmuebleAdminPage />
                 </ProtectedRoute>
               }
             />
