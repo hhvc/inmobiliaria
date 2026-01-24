@@ -51,10 +51,15 @@ service cloud.firestore {
        ============================ */
 
     match /users/{userId} {
-      allow read: if isSignedIn()
-        && request.auth.uid == userId;
 
-      allow write: if isRoot();
+      // El usuario puede leer su propio perfil
+      allow read: if isSignedIn() && request.auth.uid == userId;
+
+      // El usuario puede CREAR su propio doc (solo si no existe)
+      allow create: if isSignedIn() && request.auth.uid == userId && !exists(/databases/$(database)/documents/users/$(userId));
+
+      // Solo root puede modificar o borrar usuarios
+      allow update, delete: if isRoot();
     }
 
     /* ============================

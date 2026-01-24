@@ -7,16 +7,29 @@
    Roles
    ============================ */
 
-export const isRoot = (user) => user?.role === "root";
+export const hasRole = (user, role) => {
+  if (!user) return false;
 
-export const isAdmin = (user) => user?.role === "admin";
+  // Nuevo esquema
+  if (Array.isArray(user.roles)) {
+    return user.roles.includes(role);
+  }
+
+  // Fallback legacy
+  return user.role === role;
+};
+
+export const isRoot = (user) => hasRole(user, "root");
+export const isAdmin = (user) => hasRole(user, "admin");
 
 /* ============================
    Inmobiliarias
    ============================ */
 
 export const userHasInmobiliaria = (user, inmobiliariaId) => {
-  if (!user || !Array.isArray(user.inmobiliarias)) return false;
+  if (!user || !inmobiliariaId) return false;
+  if (!Array.isArray(user.inmobiliarias)) return false;
+
   return user.inmobiliarias.includes(inmobiliariaId);
 };
 
@@ -91,8 +104,5 @@ export const canDeleteInmueble = (user, inmueble) => {
 
   if (isRoot(user)) return true;
 
-  return (
-    isAdmin(user) &&
-    userHasInmobiliaria(user, inmueble.inmobiliariaId)
-  );
+  return isAdmin(user) && userHasInmobiliaria(user, inmueble.inmobiliariaId);
 };

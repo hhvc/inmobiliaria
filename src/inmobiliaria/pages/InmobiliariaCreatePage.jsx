@@ -78,7 +78,7 @@ export default function InmobiliariaCreatePage() {
       }
 
       alert("✅ Inmobiliaria creada correctamente");
-      navigate("/inmobiliarias");
+      navigate("/admin/inmobiliarias");
     } catch (err) {
       console.error("Error creando inmobiliaria:", err);
       setError(err?.message || "Ocurrió un error al crear la inmobiliaria");
@@ -88,7 +88,7 @@ export default function InmobiliariaCreatePage() {
   };
 
   const handleCancel = () => {
-    navigate("/inmobiliarias");
+    navigate("/admin/inmobiliarias");
   };
 
   return (

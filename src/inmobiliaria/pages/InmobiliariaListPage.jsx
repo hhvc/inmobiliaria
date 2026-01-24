@@ -35,7 +35,7 @@ export default function InmobiliariaListPage() {
         <h3>🏢 Inmobiliarias</h3>
         <button
           className="btn btn-primary"
-          onClick={() => navigate("/inmobiliarias/nueva")}
+          onClick={() => navigate("/admin/inmobiliarias/nueva")}
         >
           ➕ Nueva Inmobiliaria
         </button>

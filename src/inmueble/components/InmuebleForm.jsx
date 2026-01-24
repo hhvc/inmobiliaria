@@ -4,6 +4,8 @@ import {
   TIPOS_INMUEBLE_OPCIONES,
 } from "../utils/inmuebleSchema";
 
+import { INMUEBLE_ESTADOS_ARRAY } from "../../domain/inmueble/inmueble.constants";
+
 import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
 
@@ -245,16 +247,42 @@ const InmuebleForm = ({
       {/* =========================
           Publicación
          ========================= */}
-      <div className="form-check mb-4">
-        <input
-          className="form-check-input"
-          type="checkbox"
-          checked={values.destacado}
-          onChange={(e) =>
-            handleNestedChange("destacado", null, e.target.checked)
-          }
-        />
-        <label className="form-check-label">Destacado</label>
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Publicación</div>
+        <div className="card-body row g-3 align-items-end">
+          <div className="col-md-4">
+            <label className="form-label">Estado *</label>
+            <select
+              name="estado"
+              className={`form-select ${errors.estado ? "is-invalid" : ""}`}
+              value={values.estado}
+              onChange={handleChange}
+            >
+              {INMUEBLE_ESTADOS_ARRAY.map((estado) => (
+                <option key={estado} value={estado}>
+                  {estado.charAt(0).toUpperCase() + estado.slice(1)}
+                </option>
+              ))}
+            </select>
+            {errors.estado && (
+              <div className="invalid-feedback">{errors.estado}</div>
+            )}
+          </div>
+
+          <div className="col-md-4">
+            <div className="form-check mt-4">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                checked={values.destacado}
+                onChange={(e) =>
+                  handleNestedChange("destacado", null, e.target.checked)
+                }
+              />
+              <label className="form-check-label">Destacado</label>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* =========================
@@ -269,8 +297,8 @@ const InmuebleForm = ({
           {loading
             ? "Guardando..."
             : isEditMode
-            ? "Actualizar inmueble"
-            : "Crear inmueble"}
+              ? "Actualizar inmueble"
+              : "Crear inmueble"}
         </button>
       </div>
     </form>

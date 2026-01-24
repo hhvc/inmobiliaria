@@ -13,6 +13,7 @@ import {
   startAfter,
   serverTimestamp,
 } from "firebase/firestore";
+import { validateInmuebleEstado } from "../../domain/inmueble/inmueble.validators";
 
 /* =========================================================
    Helpers
@@ -28,16 +29,20 @@ const inmueblesCollection = (inmobiliariaId) =>
 /**
  * Crear inmueble
  */
-export const createInmueble = async (data) => {
-  if (!data?.inmobiliariaId) {
+export const createInmueble = async (inmobiliariaId, data) => {
+  if (!inmobiliariaId) {
     throw new Error("inmobiliariaId es requerido");
   }
 
-  const ref = inmueblesCollection(data.inmobiliariaId);
+  if (!data) {
+    throw new Error("Datos del inmueble requeridos");
+  }
+
+  const ref = inmueblesCollection(inmobiliariaId);
 
   const docRef = await addDoc(ref, {
     ...data,
-    deleted: false, // 🔒 soft delete future-proof
+    deleted: false,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -73,7 +78,7 @@ export const getInmuebleById = async (inmobiliariaId, inmuebleId) => {
  */
 export const getInmueblesByInmobiliaria = async (
   inmobiliariaId,
-  { estado, tipo, operacion, destacado, pageSize = 20, lastDoc = null } = {}
+  { estado, tipo, operacion, destacado, pageSize = 20, lastDoc = null } = {},
 ) => {
   if (!inmobiliariaId) return { data: [], lastDoc: null };
 
@@ -116,7 +121,7 @@ export const getInmueblesByInmobiliaria = async (
  */
 export const getPublicInmuebles = async (
   inmobiliariaId,
-  { tipo, operacion, pageSize = 12, lastDoc = null } = {}
+  { tipo, operacion, pageSize = 12, lastDoc = null } = {},
 ) => {
   if (!inmobiliariaId) return { data: [], lastDoc: null };
 
@@ -155,8 +160,16 @@ export const getPublicInmuebles = async (
    ========================================================= */
 
 export const updateInmueble = async (inmobiliariaId, inmuebleId, data) => {
-  if (!inmobiliariaId || !inmuebleId) {
-    throw new Error("IDs requeridos");
+  if (!inmobiliariaId) {
+    throw new Error("inmobiliariaId es requerido");
+  }
+
+  if (!inmuebleId) {
+    throw new Error("inmuebleId es requerido");
+  }
+
+  if (!data || typeof data !== "object") {
+    throw new Error("Datos del inmueble inválidos");
   }
 
   const ref = doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
@@ -170,19 +183,27 @@ export const updateInmueble = async (inmobiliariaId, inmuebleId, data) => {
 /**
  * Cambiar estado
  */
+const ESTADOS_VALIDOS = Object.freeze(["activo", "inactivo", "pausado"]);
+
 export const updateInmuebleEstado = async (
   inmobiliariaId,
   inmuebleId,
-  estado
+  estado,
 ) => {
-  if (!inmobiliariaId || !inmuebleId || !estado) {
-    throw new Error("Parámetros inválidos");
+  if (!inmobiliariaId) {
+    throw new Error("inmobiliariaId es requerido");
   }
+
+  if (!inmuebleId) {
+    throw new Error("inmuebleId es requerido");
+  }
+
+  const estadoValidado = validateInmuebleEstado(estado);
 
   const ref = doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
 
   await updateDoc(ref, {
-    estado,
+    estado: estadoValidado,
     updatedAt: serverTimestamp(),
   });
 };

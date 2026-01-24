@@ -7,7 +7,7 @@ import {
   orderBy,
   addDoc,
 } from "firebase/firestore";
-import { db } from "../../firebase/config"; // Ajusta la ruta según tu estructura
+import { db } from "../firebase/config"; // Ajusta la ruta según tu estructura
 
 const Testimonials = () => {
   const [currentTestimonial, setCurrentTestimonial] = useState(0);

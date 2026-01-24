@@ -1,8 +1,9 @@
 // src/components/components/Navbar.jsx
 import { useState, useCallback } from "react";
-import { useAuth } from "../../context/auth/useAuth";
+import { useAuth } from "../context/auth/useAuth";
 import { Link, useNavigate } from "react-router-dom";
-import Login from "../auth/Login";
+import Login from "./auth/Login";
+import InmobiliariaSelector from "./context/InmobiliariaSelector";
 
 const MENU_ITEMS = [
   { id: "about", label: "Inicio" },
@@ -113,6 +114,15 @@ const Navbar = () => {
                 </li>
               ))}
 
+              {/* 🔑 Selector de Inmobiliaria Activa */}
+              {user &&
+                Array.isArray(user.inmobiliarias) &&
+                user.inmobiliarias.length > 1 && (
+                  <li className="nav-item d-flex align-items-center me-3">
+                    <InmobiliariaSelector />
+                  </li>
+                )}
+
               {/* Usuario */}
               <li className="nav-item dropdown">
                 {user ? (
@@ -171,6 +181,21 @@ const Navbar = () => {
                           </Link>
                         </li>
                       )}
+
+                      <li>
+                        <Link
+                          className="dropdown-item"
+                          to="/perfil"
+                          onClick={closeMenus}
+                        >
+                          <i className="fa fa-user-circle me-2"></i>
+                          Mi Perfil
+                        </Link>
+                      </li>
+
+                      <li>
+                        <hr className="dropdown-divider" />
+                      </li>
 
                       <li>
                         <button

@@ -11,7 +11,7 @@ import {
   deleteDoc,
 } from "firebase/firestore";
 import { db } from "../../firebase/config";
-import ReservationSystem from "../components/ReservationSystem";
+import ReservationSystem from "../ReservationSystem";
 import { useAuth } from "../../context/auth/useAuth";
 import CabanaSelector from "./reservation-components/CabanaSelector";
 import ReservationFilters from "./reservation-components/ReservationFilters";

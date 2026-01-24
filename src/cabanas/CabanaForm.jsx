@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useCabanaForm } from "../../../hooks/useCabanaForm";
+import { useCabanaForm } from "../hooks/useCabanaForm";
 
 const CabanaForm = ({
   cabanaExistente = null,

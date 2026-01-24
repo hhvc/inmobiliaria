@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "./context/auth/AuthProvider";
-import ProtectedRoute from "./components/components/ProtectedRoute";
+import ProtectedRoute from "./components/ProtectedRoute";
 
 // Componentes de páginas
 import HomePage from "./pages/HomePage";
@@ -9,20 +9,20 @@ import ReservationPage from "./pages/ReservationPage";
 import UserProfilePage from "./pages/UserProfilePage";
 
 // Componentes generales
-import Navbar from "./components/components/Navbar";
-import Footer from "./components/components/Footer";
-import WhatsAppButton from "./components/components/WhatsAppButton";
+import Navbar from "./components/Navbar";
+import Footer from "./components/Footer";
+import WhatsAppButton from "./components/WhatsAppButton";
 import Login from "./components/auth/Login";
-import DynamicGallery from "./components/components/DynamicGallery";
-import Contact from "./components/components/Contact";
-import AccessDenied from "./components/components/AccessDenied";
+import DynamicGallery from "./components/DynamicGallery";
+import Contact from "./components/Contact";
+import AccessDenied from "./components/AccessDenied";
 
 // Componentes de administración
 import AdminDashboard from "./components/admin/AdminDashboard";
 import GalleryManager from "./components/admin/GalleryManager";
-import CabanasList from "./components/components/cabanas/CabanasList";
-import AdminCabanas from "./components/components/cabanas/AdminCabanas";
-import CabanaForm from "./components/components/cabanas/CabanaForm";
+import CabanasList from "./cabanas/CabanasList";
+import AdminCabanas from "./cabanas/AdminCabanas";
+import CabanaForm from "./cabanas/CabanaForm";
 import ContactMessages from "./components/admin/ContactMessages";
 import Calendar from "./components/admin/calendar/Calendar";
 import ReservationManagement from "./components/admin/ReservationManagement";
@@ -75,7 +75,7 @@ function App() {
             {/* Ruta pública para ver inmueble por slug */}
             <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
 
-            {/* Rutas protegidas para usuarios - Solo para usuarios logueados */}
+            {/* Rutas protegidas para usuarios - Solo para usuarios autenticado */}
             <Route
               path="/perfil"
               element={
@@ -221,8 +221,7 @@ function App() {
                     inexistente.
                   </h1>
                   <h3>
-                    Por favor, revisa la dirección o toca el logo de Cañada Al
-                    Lago para navegar desde el inicio
+                    Por favor, revisa la dirección o ponte en contacto con el administrador.
                   </h3>
                 </div>
               }

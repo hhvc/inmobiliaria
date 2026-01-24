@@ -12,6 +12,28 @@ import {
 } from "firebase/firestore";
 
 import { db, auth } from "../../firebase/config";
+import { setActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
+
+/**
+ * 🔹 helper interno
+ */
+const normalizeTimestamp = (value) => {
+  if (!value) return null;
+
+  // Firestore Timestamp
+  if (typeof value.toDate === "function") {
+    return value.toDate();
+  }
+
+  // JS Date
+  if (value instanceof Date) {
+    return value;
+  }
+
+  // ISO string o number
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
 
 /**
  * 🔹 Colección principal
@@ -21,9 +43,11 @@ const inmobiliariasRef = collection(db, COLLECTION_NAME);
 
 /**
  * 🏢 Crear inmobiliaria con nueva estructura
+ * 👉 y dejarla como inmobiliaria activa
  */
 export async function createInmobiliaria(data) {
   const currentUser = auth.currentUser;
+
   if (!currentUser?.uid) {
     throw new Error("Usuario no autenticado");
   }
@@ -33,7 +57,6 @@ export async function createInmobiliaria(data) {
     throw new Error("Faltan campos requeridos: nombre, slug o cuit");
   }
 
-  // Estructura principal con todos los campos nuevos
   const payload = {
     // Información básica
     nombre: data.nombre.trim(),
@@ -54,10 +77,10 @@ export async function createInmobiliaria(data) {
       },
     },
 
-    // Branding (se actualizará más tarde con las imágenes)
+    // Branding
     branding: data.branding || {},
 
-    // Auditoría y seguridad
+    // Seguridad / auditoría
     admins: [currentUser.uid],
     createdBy: currentUser.uid,
     createdAt: serverTimestamp(),
@@ -66,7 +89,11 @@ export async function createInmobiliaria(data) {
 
   try {
     const docRef = await addDoc(inmobiliariasRef, payload);
-    console.log(`✅ Inmobiliaria creada con ID: ${docRef.id}`);
+
+    // ✅ Setear inmobiliaria activa
+    setActiveInmobiliariaId(docRef.id);
+
+    console.log(`✅ Inmobiliaria creada y activada: ${docRef.id}`);
     return docRef.id;
   } catch (error) {
     console.error("❌ Error al crear inmobiliaria:", error);
@@ -86,29 +113,33 @@ export async function updateInmobiliaria(id, data) {
   }
 
   const ref = doc(db, COLLECTION_NAME, id);
-
-  // Verificar que el usuario sea admin de esta inmobiliaria
   const snap = await getDoc(ref);
+
   if (!snap.exists()) {
     throw new Error("Inmobiliaria no encontrada");
   }
 
   const inmobiliariaData = snap.data();
-  if (
-    !inmobiliariaData.admins?.includes(currentUser.uid) &&
-    currentUser.role !== "root"
-  ) {
+
+  /**
+   * 🔐 Validación de permisos (cliente)
+   * - Admin de la inmobiliaria
+   * - Root lo valida Firestore Rules
+   */
+  if (!inmobiliariaData.admins?.includes(currentUser.uid)) {
     throw new Error("No tienes permiso para editar esta inmobiliaria");
   }
 
-  // Preparar payload para actualización
+  // Payload base
   const updateData = {
     ...data,
     updatedAt: serverTimestamp(),
     updatedBy: currentUser.uid,
   };
 
-  // Si se está actualizando configuracion, hacer merge profundo
+  /**
+   * 🧠 Merge profundo de configuración
+   */
   if (data.configuracion && inmobiliariaData.configuracion) {
     updateData.configuracion = {
       ...inmobiliariaData.configuracion,
@@ -142,12 +173,11 @@ export async function getInmobiliariaById(id) {
 
   const data = snap.data();
 
-  // Convertir timestamps de Firebase a fechas legibles
   return {
     id: snap.id,
     ...data,
-    createdAt: data.createdAt?.toDate() || null,
-    updatedAt: data.updatedAt?.toDate() || null,
+    createdAt: normalizeTimestamp(data.createdAt),
+    updatedAt: normalizeTimestamp(data.updatedAt),
   };
 }
 
@@ -162,14 +192,14 @@ export async function getInmobiliariaBySlug(slug) {
 
   if (snapshot.empty) return null;
 
-  const doc = snapshot.docs[0];
-  const data = doc.data();
+  const docSnap = snapshot.docs[0];
+  const data = docSnap.data();
 
   return {
-    id: doc.id,
+    id: docSnap.id,
     ...data,
-    createdAt: data.createdAt?.toDate() || null,
-    updatedAt: data.updatedAt?.toDate() || null,
+    createdAt: normalizeTimestamp(data.createdAt),
+    updatedAt: normalizeTimestamp(data.updatedAt),
   };
 }
 
@@ -182,18 +212,15 @@ export async function getAllInmobiliarias() {
     throw new Error("Usuario no autenticado");
   }
 
-  // Solo usuarios root pueden ver todas las inmobiliarias
-  // En una implementación real, verificarías el rol del usuario
-  const q = query(inmobiliariasRef);
-  const snapshot = await getDocs(q);
+  const snapshot = await getDocs(inmobiliariasRef);
 
-  return snapshot.docs.map((doc) => {
-    const data = doc.data();
+  return snapshot.docs.map((docSnap) => {
+    const data = docSnap.data();
     return {
-      id: doc.id,
+      id: docSnap.id,
       ...data,
-      createdAt: data.createdAt?.toDate() || null,
-      updatedAt: data.updatedAt?.toDate() || null,
+      createdAt: normalizeTimestamp(data.createdAt),
+      updatedAt: normalizeTimestamp(data.updatedAt),
     };
   });
 }
@@ -202,30 +229,55 @@ export async function getAllInmobiliarias() {
  * 📋 Listar inmobiliarias según rol (manteniendo compatibilidad)
  */
 export async function getInmobiliariasByRole(user) {
-  if (!user?.uid) throw new Error("Usuario no autenticado");
-
-  let q;
-
-  if (user.role === "root") {
-    q = query(inmobiliariasRef);
-  } else if (user.role === "admin") {
-    q = query(inmobiliariasRef, where("admins", "array-contains", user.uid));
-  } else {
-    // futuros roles → no ven nada
-    return [];
+  if (!user?.uid) {
+    throw new Error("Usuario no autenticado");
   }
 
-  const snapshot = await getDocs(q);
+  /* =========================
+     ROOT → todas
+     ========================= */
+  if (user.role === "root") {
+    const snapshot = await getDocs(inmobiliariasRef);
 
-  return snapshot.docs.map((doc) => {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      ...data,
-      createdAt: data.createdAt?.toDate() || null,
-      updatedAt: data.updatedAt?.toDate() || null,
-    };
-  });
+    return snapshot.docs.map((docSnap) => {
+      const data = docSnap.data();
+      return {
+        id: docSnap.id,
+        ...data,
+        createdAt: normalizeTimestamp(data.createdAt),
+        updatedAt: normalizeTimestamp(data.updatedAt),
+      };
+    });
+  }
+
+  /* =========================
+     ADMIN → solo asignadas
+     ========================= */
+  if (user.role === "admin") {
+    const inmoIds = user.inmobiliarias || [];
+    if (inmoIds.length === 0) return [];
+
+    const inmobiliarias = await Promise.all(
+      inmoIds.map(async (inmoId) => {
+        const ref = doc(db, COLLECTION_NAME, inmoId);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()) return null;
+
+        const data = snap.data();
+        return {
+          id: snap.id,
+          ...data,
+          createdAt: normalizeTimestamp(data.createdAt),
+          updatedAt: normalizeTimestamp(data.updatedAt),
+        };
+      }),
+    );
+
+    return inmobiliarias.filter(Boolean);
+  }
+
+  return [];
 }
 
 /**
@@ -239,7 +291,10 @@ export async function deleteInmobiliaria(id) {
     throw new Error("Usuario no autenticado");
   }
 
-  // Verificar permisos antes de eliminar
+  if (currentUser.role !== "root") {
+    throw new Error("Solo usuarios root pueden eliminar inmobiliarias");
+  }
+
   const ref = doc(db, COLLECTION_NAME, id);
   const snap = await getDoc(ref);
 
@@ -247,54 +302,105 @@ export async function deleteInmobiliaria(id) {
     throw new Error("Inmobiliaria no encontrada");
   }
 
-  const inmobiliariaData = snap.data();
-  if (
-    !inmobiliariaData.admins?.includes(currentUser.uid) &&
-    currentUser.role !== "root"
-  ) {
-    throw new Error("No tienes permiso para eliminar esta inmobiliaria");
-  }
-
   await deleteDoc(ref);
-  console.log(`🗑️ Inmobiliaria ${id} eliminada`);
+
+  console.log(`🗑️ Inmobiliaria ${id} eliminada definitivamente`);
 }
 
 /**
  * 👥 Agregar admin a inmobiliaria
  */
 export async function addAdminToInmobiliaria(inmobiliariaId, userId) {
+  if (!inmobiliariaId || !userId) {
+    throw new Error("Faltan parámetros requeridos");
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
   const ref = doc(db, COLLECTION_NAME, inmobiliariaId);
   const snap = await getDoc(ref);
 
-  if (!snap.exists()) throw new Error("Inmobiliaria no encontrada");
+  if (!snap.exists()) {
+    throw new Error("Inmobiliaria no encontrada");
+  }
 
   const data = snap.data();
+
+  const isRoot = currentUser.role === "root";
+  const isAdmin = data.admins?.includes(currentUser.uid);
+
+  if (!isRoot && !isAdmin) {
+    throw new Error("No tienes permiso para modificar los admins");
+  }
+
   const admins = new Set(data.admins || []);
   admins.add(userId);
 
   await updateDoc(ref, {
     admins: Array.from(admins),
     updatedAt: serverTimestamp(),
+    updatedBy: currentUser.uid,
   });
+
+  console.log(`👥 Usuario ${userId} agregado como admin`);
 }
 
 /**
  * 👤 Quitar admin de inmobiliaria
  */
 export async function removeAdminFromInmobiliaria(inmobiliariaId, userId) {
+  if (!inmobiliariaId || !userId) {
+    throw new Error("Faltan parámetros requeridos");
+  }
+
+  const currentUser = auth.currentUser;
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
   const ref = doc(db, COLLECTION_NAME, inmobiliariaId);
   const snap = await getDoc(ref);
 
-  if (!snap.exists()) throw new Error("Inmobiliaria no encontrada");
+  if (!snap.exists()) {
+    throw new Error("Inmobiliaria no encontrada");
+  }
 
-  const admins = (snap.data().admins || []).filter((uid) => uid !== userId);
+  const data = snap.data();
+
+  const isRoot = currentUser.role === "root";
+  const isAdmin = data.admins?.includes(currentUser.uid);
+
+  if (!isRoot && !isAdmin) {
+    throw new Error("No tienes permiso para modificar los admins");
+  }
+
+  const currentAdmins = data.admins || [];
+
+  if (!currentAdmins.includes(userId)) {
+    return; // nada que hacer
+  }
+
+  if (currentAdmins.length <= 1) {
+    throw new Error("La inmobiliaria debe tener al menos un administrador");
+  }
+
+  const admins = currentAdmins.filter((uid) => uid !== userId);
 
   await updateDoc(ref, {
     admins,
     updatedAt: serverTimestamp(),
+    updatedBy: currentUser.uid,
   });
+
+  console.log(`👤 Usuario ${userId} removido como admin`);
 }
 
+/**
+ * 📉 Baja lógica de inmobiliaria (soft delete)
+ */
 /**
  * 📉 Baja lógica de inmobiliaria (soft delete)
  */
@@ -313,19 +419,25 @@ export async function bajaInmobiliaria(id) {
     throw new Error("Inmobiliaria no encontrada");
   }
 
-  const inmobiliariaData = snap.data();
-  if (
-    !inmobiliariaData.admins?.includes(currentUser.uid) &&
-    currentUser.role !== "root"
-  ) {
+  const data = snap.data();
+
+  const isRoot = currentUser.role === "root";
+  const isAdmin = data.admins?.includes(currentUser.uid);
+
+  if (!isRoot && !isAdmin) {
     throw new Error("No tienes permiso para desactivar esta inmobiliaria");
   }
+
+  // Evitar write innecesario
+  if (data.activa === false) return;
 
   await updateDoc(ref, {
     activa: false,
     updatedAt: serverTimestamp(),
     updatedBy: currentUser.uid,
   });
+
+  console.log(`📉 Inmobiliaria ${id} desactivada`);
 }
 
 /**
@@ -346,19 +458,25 @@ export async function activarInmobiliaria(id) {
     throw new Error("Inmobiliaria no encontrada");
   }
 
-  const inmobiliariaData = snap.data();
-  if (
-    !inmobiliariaData.admins?.includes(currentUser.uid) &&
-    currentUser.role !== "root"
-  ) {
+  const data = snap.data();
+
+  const isRoot = currentUser.role === "root";
+  const isAdmin = data.admins?.includes(currentUser.uid);
+
+  if (!isRoot && !isAdmin) {
     throw new Error("No tienes permiso para activar esta inmobiliaria");
   }
+
+  // Evitar write innecesario
+  if (data.activa === true) return;
 
   await updateDoc(ref, {
     activa: true,
     updatedAt: serverTimestamp(),
     updatedBy: currentUser.uid,
   });
+
+  console.log(`📈 Inmobiliaria ${id} activada`);
 }
 
 /**
@@ -367,15 +485,44 @@ export async function activarInmobiliaria(id) {
 export async function checkSlugExists(slug, excludeId = null) {
   if (!slug) return false;
 
-  const q = query(inmobiliariasRef, where("slug", "==", slug.trim()));
+  const currentUser = auth.currentUser;
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  const normalizedSlug = slug.trim().toLowerCase();
+
+  const q = query(inmobiliariasRef, where("slug", "==", normalizedSlug));
+
   const snapshot = await getDocs(q);
 
   if (snapshot.empty) return false;
 
-  // Si se está editando, excluir el documento actual
   if (excludeId) {
-    const doc = snapshot.docs.find((doc) => doc.id !== excludeId);
-    return !!doc;
+    return snapshot.docs.some((doc) => doc.id !== excludeId);
+  }
+
+  return true;
+}
+
+/**
+ * 🚦 Verifica que la inmobiliaria exista y esté activa
+ * Lanza error si no es válida
+ */
+export async function assertInmobiliariaActiva(id) {
+  if (!id) {
+    throw new Error("Inmobiliaria no seleccionada");
+  }
+
+  const ref = doc(db, COLLECTION_NAME, id);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    throw new Error("La inmobiliaria no existe");
+  }
+
+  if (snap.data().activa === false) {
+    throw new Error("La inmobiliaria está desactivada");
   }
 
   return true;

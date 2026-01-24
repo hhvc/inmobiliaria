@@ -9,8 +9,8 @@ import {
   orderBy,
   query,
 } from "firebase/firestore";
-import { db } from "../../../firebase/config";
-import { useAuth } from "../../../context/auth/useAuth";
+import { db } from "../firebase/config";
+import { useAuth } from "../context/auth/useAuth";
 import CabanaForm from "./CabanaForm";
 
 const AdminCabanas = () => {

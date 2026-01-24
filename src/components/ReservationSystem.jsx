@@ -11,8 +11,8 @@ import {
   doc,
   getDoc,
 } from "firebase/firestore";
-import { db } from "../../firebase/config";
-import { useAuth } from "../../context/auth/useAuth";
+import { db } from "../firebase/config";
+import { useAuth } from "../context/auth/useAuth";
 import { useSearchParams } from "react-router-dom";
 
 // Función auxiliar para manejar fechas de Firestore

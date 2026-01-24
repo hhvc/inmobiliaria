@@ -1,10 +1,10 @@
-import Header from "../components/components/Header";
-// import About from "../components/components/About";
-import CabanasList from "../components/components/cabanas/CabanasList";
-// import Activities from "../components/components/Activities";
-import Contact from "../components/components/Contact";
-import Testimonials from "../components/components/Testimonials";
-import DynamicGallery from "../components/components/DynamicGallery";
+import Header from "../components/Header";
+// import About from "../components/About";
+// import CabanasList from "../components/cabanas/CabanasList";
+// import Activities from "../components/Activities";
+import Contact from "../components/Contact";
+import Testimonials from "../components/Testimonials";
+// import DynamicGallery from "../components/DynamicGallery";
 
 const HomePage = () => {
   return (

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import ReservationSystem from "../ReservationSystem";
+import ReservationSystem from "../components/ReservationSystem";
 
 const Cabana = ({ cabana }) => {
   const [showModal, setShowModal] = useState(false);

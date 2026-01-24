@@ -84,12 +84,14 @@ const InmuebleCreatePage = () => {
       setLoading(true);
       setError(null);
 
-      if (!user?.uid || !user?.inmobiliariaId) {
+      const inmobiliariaId = user?.inmobiliarias?.[0];
+
+      if (!user?.uid || !inmobiliariaId) {
         throw new Error("No se pudo determinar el usuario o la inmobiliaria");
       }
 
-      // 🔐 Permiso frontend (UX)
-      if (!canCreateInmueble(user, user.inmobiliariaId)) {
+      // 🔐 Permiso frontend (UX, las rules mandan)
+      if (!canCreateInmueble(user, inmobiliariaId)) {
         throw new Error("No tenés permisos para crear inmuebles");
       }
 
@@ -97,15 +99,15 @@ const InmuebleCreatePage = () => {
         ...formValues,
 
         ownerId: user.uid,
-        inmobiliariaId: user.inmobiliariaId,
+        inmobiliariaId,
 
         estado: "activo",
 
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        // ⛔ NO pongas Date()
+        // Firestore pone los timestamps
       };
 
-      await createInmueble(inmuebleData);
+      await createInmueble(user.inmobiliariaId, inmuebleData);
 
       navigate("/inmuebles");
     } catch (err) {

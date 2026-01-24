@@ -1,6 +1,6 @@
 // src/components/components/DynamicGallery.jsx
 import { useState, useCallback, useEffect } from "react";
-import { useGalleryImages } from "../../hooks/useGalleryImages";
+import { useGalleryImages } from "../hooks/useGalleryImages";
 
 const DynamicGallery = () => {
   const [selectedImage, setSelectedImage] = useState(null);

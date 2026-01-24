@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
-import { db } from "../../../firebase/config";
+import { db } from "../firebase/config";
 import Cabana from "./Cabana";
 import SmartSearch from "./SmartSearch";
 

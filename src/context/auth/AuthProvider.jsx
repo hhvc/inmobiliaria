@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [confirmationResult, setConfirmationResult] = useState(null);
   const [recaptchaReady, setRecaptchaReady] = useState(false);
+  const [activeInmobiliariaId, setActiveInmobiliariaId] = useState(null);
 
   const recaptchaVerifierRef = useRef(null);
 
@@ -52,35 +53,50 @@ export const AuthProvider = ({ children }) => {
   const createUserInFirestore = useCallback(
     async (userData, additionalData = {}) => {
       try {
+        if (!userData?.uid) {
+          throw new Error("UID de usuario requerido");
+        }
+
         const userRef = doc(db, "users", userData.uid);
         const userSnap = await getDoc(userRef);
 
         const now = new Date();
 
+        // Normalización segura
+        const role = additionalData.role || "usuario";
+        const roles = Array.isArray(additionalData.roles)
+          ? additionalData.roles
+          : [role];
+
+        const inmobiliarias = Array.isArray(additionalData.inmobiliarias)
+          ? additionalData.inmobiliarias
+          : [];
+
         if (!userSnap.exists()) {
           await setDoc(userRef, {
+            /* =========================
+             IDENTIDAD
+             ========================= */
+
             uid: userData.uid,
-            email: userData.email,
+            email: userData.email || null,
             displayName:
               userData.displayName || additionalData.displayName || "",
             photoURL: userData.photoURL || "",
 
             /* =========================
-             ROLES (retrocompatible)
+             ROLES (retro + nuevo)
              ========================= */
 
-            // Rol principal (NO se elimina)
-            role: additionalData.role || "usuario",
-
-            // Roles múltiples (nuevo)
-            roles: additionalData.roles || ["usuario"],
+            role, // legacy / UX
+            roles, // permisos reales
+            primaryRole: role,
 
             /* =========================
              INMOBILIARIAS
              ========================= */
 
-            // Un usuario puede pertenecer a varias inmobiliarias
-            inmobiliarias: additionalData.inmobiliarias || [],
+            inmobiliarias,
 
             /* =========================
              METADATA
@@ -89,15 +105,13 @@ export const AuthProvider = ({ children }) => {
             status: "activo",
             createdAt: now,
             lastLogin: now,
-
-            ...additionalData,
           });
 
           console.log(
-            "✅ Usuario creado en Firestore (role + roles, retrocompatible)"
+            "✅ Usuario creado en Firestore (roles + inmobiliarias normalizadas)",
           );
         } else {
-          // Solo actualizamos datos de sesión
+          // Solo datos de sesión (NO tocar roles ni inmobiliarias)
           await updateDoc(userRef, {
             lastLogin: now,
           });
@@ -107,79 +121,100 @@ export const AuthProvider = ({ children }) => {
         throw error;
       }
     },
-    []
+    [],
   );
 
   // Función para obtener datos completos del usuario - memoizada
   const getUserWithRole = useCallback(
     async (firebaseUser) => {
-      if (!firebaseUser) return null;
+      if (!firebaseUser?.uid) return null;
 
       try {
         const userRef = doc(db, "users", firebaseUser.uid);
         const userSnap = await getDoc(userRef);
 
+        // =========================
+        // Usuario existe en Firestore
+        // =========================
         if (userSnap.exists()) {
           const userData = userSnap.data();
 
+          const role = userData.role || "usuario";
+          const roles = Array.isArray(userData.roles) ? userData.roles : [role];
+
+          const inmobiliarias = Array.isArray(userData.inmobiliarias)
+            ? userData.inmobiliarias
+            : [];
+
           return {
             ...firebaseUser,
 
             /* =========================
-             RETROCOMPATIBILIDAD
+             ESTADO / UX
              ========================= */
 
-            // Rol principal (para UX / vistas)
-            role: userData.role || "usuario",
-
-            // Estado del usuario
+            role,
             status: userData.status || "activo",
 
             /* =========================
-             NUEVO ESQUEMA
+             PERMISOS
              ========================= */
 
-            // Roles múltiples (permisos)
-            roles: Array.isArray(userData.roles)
-              ? userData.roles
-              : [userData.role || "usuario"],
+            roles,
+            primaryRole: userData.primaryRole || role,
 
-            // Inmobiliarias asociadas
-            inmobiliarias: Array.isArray(userData.inmobiliarias)
-              ? userData.inmobiliarias
-              : [],
+            /* =========================
+             CONTEXTO DE DOMINIO
+             ========================= */
 
-            // Datos crudos (por si algún componente los usa)
-            userData: userData,
-          };
-        } else {
-          // Usuario no existe → lo creamos
-          await createUserInFirestore(firebaseUser);
+            inmobiliarias,
 
-          return {
-            ...firebaseUser,
-            role: "usuario",
-            status: "activo",
-            roles: ["usuario"],
-            inmobiliarias: [],
-            userData: {},
+            // 👉 inmobiliaria activa (derivada)
+            inmobiliariaId:
+              inmobiliarias.length === 1 ? inmobiliarias[0] : null,
+
+            /* =========================
+             DATOS CRUDOS
+             ========================= */
+
+            userData,
           };
         }
-      } catch (error) {
-        console.error("❌ Error obteniendo datos del usuario:", error);
 
-        // Fallback seguro
+        // =========================
+        // Usuario NO existe → crear
+        // =========================
+        await createUserInFirestore(firebaseUser);
+
         return {
           ...firebaseUser,
           role: "usuario",
+          primaryRole: "usuario",
           status: "activo",
           roles: ["usuario"],
           inmobiliarias: [],
+          inmobiliariaId: null,
+          userData: {},
+        };
+      } catch (error) {
+        console.error("❌ Error obteniendo datos del usuario:", error);
+
+        // =========================
+        // Fallback ultra seguro
+        // =========================
+        return {
+          ...firebaseUser,
+          role: "usuario",
+          primaryRole: "usuario",
+          status: "activo",
+          roles: ["usuario"],
+          inmobiliarias: [],
+          inmobiliariaId: null,
           userData: {},
         };
       }
     },
-    [createUserInFirestore]
+    [createUserInFirestore],
   );
 
   // Funciones de autenticación - memoizadas correctamente
@@ -192,7 +227,7 @@ export const AuthProvider = ({ children }) => {
       return userWithRole;
     } catch (error) {
       throw new Error(
-        handleError(error, "Error al iniciar sesión con Google.")
+        handleError(error, "Error al iniciar sesión con Google."),
       );
     }
   }, [getUserWithRole, handleError]);
@@ -203,7 +238,7 @@ export const AuthProvider = ({ children }) => {
         const userCredential = await createUserWithEmailAndPassword(
           auth,
           email,
-          password
+          password,
         );
 
         if (displayName) {
@@ -217,7 +252,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(handleError(error, "Error al registrarse."));
       }
     },
-    [getUserWithRole, handleError]
+    [getUserWithRole, handleError],
   );
 
   const signInWithEmail = useCallback(
@@ -226,7 +261,7 @@ export const AuthProvider = ({ children }) => {
         const userCredential = await signInWithEmailAndPassword(
           auth,
           email,
-          password
+          password,
         );
         const userWithRole = await getUserWithRole(userCredential.user);
         setUser(userWithRole);
@@ -235,7 +270,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(handleError(error, "Error al iniciar sesión."));
       }
     },
-    [getUserWithRole, handleError]
+    [getUserWithRole, handleError],
   );
 
   const resetPassword = useCallback(
@@ -245,11 +280,11 @@ export const AuthProvider = ({ children }) => {
         return true;
       } catch (error) {
         throw new Error(
-          handleError(error, "Error al enviar email de recuperación.")
+          handleError(error, "Error al enviar email de recuperación."),
         );
       }
     },
-    [handleError]
+    [handleError],
   );
 
   const setupPhoneAuth = useCallback(
@@ -281,7 +316,7 @@ export const AuthProvider = ({ children }) => {
                 if (attempts >= maxAttempts) {
                   clearInterval(checkInterval);
                   reject(
-                    new Error("Timeout: reCAPTCHA Enterprise no se cargó.")
+                    new Error("Timeout: reCAPTCHA Enterprise no se cargó."),
                   );
                 }
               }
@@ -314,12 +349,12 @@ export const AuthProvider = ({ children }) => {
         throw new Error(
           handleError(
             error,
-            "Error al configurar la verificación de seguridad."
-          )
+            "Error al configurar la verificación de seguridad.",
+          ),
         );
       }
     },
-    [handleError]
+    [handleError],
   );
 
   const sendSMSCode = useCallback(
@@ -333,14 +368,14 @@ export const AuthProvider = ({ children }) => {
         const currentVerifier = recaptchaVerifierRef.current;
         if (!currentVerifier || !recaptchaReady) {
           throw new Error(
-            "Verificación de seguridad no lista. Recarga la página."
+            "Verificación de seguridad no lista. Recarga la página.",
           );
         }
 
         const result = await signInWithPhoneNumber(
           auth,
           cleanedPhone,
-          currentVerifier
+          currentVerifier,
         );
         setConfirmationResult(result);
         return true;
@@ -348,7 +383,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(handleError(error, "Error al enviar el código SMS."));
       }
     },
-    [recaptchaReady, handleError]
+    [recaptchaReady, handleError],
   );
 
   const cancelPhoneAuth = useCallback(() => {
@@ -381,7 +416,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error(handleError(error, "Error al verificar el código."));
       }
     },
-    [confirmationResult, getUserWithRole, cancelPhoneAuth, handleError]
+    [confirmationResult, getUserWithRole, cancelPhoneAuth, handleError],
   );
 
   const logout = useCallback(async () => {
@@ -413,7 +448,7 @@ export const AuthProvider = ({ children }) => {
         throw new Error("Error al actualizar el rol del usuario.");
       }
     },
-    [user, getUserWithRole]
+    [user, getUserWithRole],
   );
 
   const hasRole = useCallback(
@@ -436,7 +471,7 @@ export const AuthProvider = ({ children }) => {
 
       return rolesHierarchy[user.role] >= rolesHierarchy[requiredRole];
     },
-    [user]
+    [user],
   );
 
   const isActive = useCallback(() => {
@@ -473,8 +508,57 @@ export const AuthProvider = ({ children }) => {
     };
   }, [cancelPhoneAuth]);
 
+  useEffect(() => {
+    if (!user) {
+      if (activeInmobiliariaId !== null) {
+        setActiveInmobiliariaId(null);
+      }
+      return;
+    }
+
+    // Auto-select si solo tiene una
+    if (
+      user.inmobiliarias.length === 1 &&
+      activeInmobiliariaId !== user.inmobiliarias[0]
+    ) {
+      setActiveInmobiliariaId(user.inmobiliarias[0]);
+      return;
+    }
+
+    // Si tiene varias y la actual ya no es válida → reset
+    if (
+      user.inmobiliarias.length > 1 &&
+      activeInmobiliariaId &&
+      !user.inmobiliarias.includes(activeInmobiliariaId)
+    ) {
+      setActiveInmobiliariaId(null);
+    }
+  }, [user, activeInmobiliariaId]);
+
+  const setActiveInmobiliaria = useCallback(
+    (inmobiliariaId) => {
+      if (!user) return;
+
+      if (!user.inmobiliarias.includes(inmobiliariaId)) {
+        console.warn(
+          "⛔ Intento de setear inmobiliaria no permitida",
+          inmobiliariaId,
+        );
+        return;
+      }
+
+      setActiveInmobiliariaId(inmobiliariaId);
+    },
+    [user],
+  );
+
   const value = {
     user,
+
+    // 🔑 Inmobiliaria activa
+    activeInmobiliariaId,
+    setActiveInmobiliaria,
+
     signInWithGoogle,
     signUpWithEmail,
     signInWithEmail,
