@@ -38,21 +38,19 @@ const INITIAL_VALUES = {
   cocheras: "",
 
   destacado: false,
-
-  // 🔑 CLAVE para evitar el crash
   images: [],
 };
 
 const InmuebleCreatePage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, activeInmobiliariaId } = useAuth();
 
   const [values, setValues] = useState(INITIAL_VALUES);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
   /* =========================
-     Handlers de formulario
+     Handlers
      ========================= */
 
   const handleChange = (e) => {
@@ -61,11 +59,6 @@ const InmuebleCreatePage = () => {
   };
 
   const handleNestedChange = (group, field, value) => {
-    if (!group) {
-      setValues((prev) => ({ ...prev, [field]: value }));
-      return;
-    }
-
     setValues((prev) => ({
       ...prev,
       [group]: {
@@ -80,44 +73,39 @@ const InmuebleCreatePage = () => {
      ========================= */
 
   const handleCreate = async (formValues) => {
+    console.log("HANDLE CREATE EJECUTADO", formValues);
+
     try {
       setLoading(true);
       setError(null);
 
-      const inmobiliariaId = user?.inmobiliarias?.[0];
-
-      if (!user?.uid || !inmobiliariaId) {
-        throw new Error("No se pudo determinar el usuario o la inmobiliaria");
+      if (!user?.uid || !activeInmobiliariaId) {
+        throw new Error(
+          "No se pudo determinar el usuario o la inmobiliaria activa",
+        );
       }
 
-      // 🔐 Permiso frontend (UX, las rules mandan)
-      if (!canCreateInmueble(user, inmobiliariaId)) {
+      if (!canCreateInmueble(user, activeInmobiliariaId)) {
         throw new Error("No tenés permisos para crear inmuebles");
       }
 
       const inmuebleData = {
         ...formValues,
 
+        // 🔑 Dominio
         ownerId: user.uid,
-        inmobiliariaId,
+        ownerInmobiliariaId: activeInmobiliariaId,
 
+        // Estado inicial
         estado: "activo",
-
-        // ⛔ NO pongas Date()
-        // Firestore pone los timestamps
       };
 
-      await createInmueble(user.inmobiliariaId, inmuebleData);
+      await createInmueble(activeInmobiliariaId, inmuebleData);
 
-      navigate("/inmuebles");
+      navigate("/admin/inmuebles");
     } catch (err) {
       console.error("Error creando inmueble:", err);
-
-      if (err.code === "permission-denied") {
-        setError("No tenés permisos para realizar esta acción");
-      } else {
-        setError(err.message || "Ocurrió un error al crear el inmueble");
-      }
+      setError(err.message || "Ocurrió un error al crear el inmueble");
     } finally {
       setLoading(false);
     }
@@ -140,13 +128,12 @@ const InmuebleCreatePage = () => {
         values={values}
         errors={{}}
         loading={loading}
-        initialLoading={false}
         isEditMode={false}
         handleChange={handleChange}
         handleNestedChange={handleNestedChange}
         handleSubmit={handleCreate}
         inmuebleId={null}
-        inmobiliariaId={user?.inmobiliariaId}
+        inmobiliariaId={activeInmobiliariaId}
       />
     </section>
   );

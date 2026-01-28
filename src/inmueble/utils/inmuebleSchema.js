@@ -56,21 +56,27 @@ export const INMUEBLE_ESTADOS = [
    ========================= */
 
 export const inmuebleInitialValues = {
-  // Identidad
+  /* ===== Relación (Patrón Híbrido) ===== */
+  inmobiliariaId: null, // dueña principal
+  sharedWith: [], // inmobiliarias con acceso
+  visibility: "privado", // privado | compartido
+  createdBy: null, // uid del usuario creador
+
+  /* ===== Identidad ===== */
   titulo: "",
   descripcion: "",
 
-  // Clasificación
+  /* ===== Clasificación ===== */
   tipo: "casa",
   operacion: "venta",
   estado: "borrador",
 
-  // Precio
+  /* ===== Precio ===== */
   precio: "",
   moneda: "USD",
   expensas: "",
 
-  // Ubicación
+  /* ===== Ubicación ===== */
   direccion: {
     calle: "",
     numero: "",
@@ -82,21 +88,21 @@ export const inmuebleInitialValues = {
     lng: null,
   },
 
-  // Superficie (m²)
+  /* ===== Superficie (m²) ===== */
   superficie: {
     total: "",
     cubierta: "",
     descubierta: "",
   },
 
-  // Ambientes
+  /* ===== Ambientes ===== */
   ambientes: "",
   dormitorios: "",
   banos: "",
   toilettes: "",
   cocheras: "",
 
-  // Características
+  /* ===== Características ===== */
   antiguedad: "",
   orientacion: "",
   disposicion: "",
@@ -105,7 +111,7 @@ export const inmuebleInitialValues = {
   aptoProfesional: false,
   aceptaMascotas: false,
 
-  // Servicios
+  /* ===== Servicios ===== */
   servicios: {
     agua: false,
     luz: false,
@@ -115,14 +121,14 @@ export const inmuebleInitialValues = {
     pavimento: false,
   },
 
-  // Imágenes
+  /* ===== Imágenes ===== */
   images: [],
 
-  // Publicación
+  /* ===== Publicación ===== */
   destacado: false,
   orden: 0,
 
-  // Auditoría
+  /* ===== Auditoría ===== */
   createdAt: null,
   updatedAt: null,
 };
@@ -169,6 +175,10 @@ export const normalizeInmuebleData = (data) => {
 
 export const validateInmueble = (data) => {
   const errors = {};
+
+  if (!data.inmobiliariaId) {
+    errors.inmobiliariaId = "La inmobiliaria es obligatoria";
+  }
 
   if (!data.titulo || data.titulo.trim().length < 5) {
     errors.titulo = "El título es obligatorio (mín. 5 caracteres)";

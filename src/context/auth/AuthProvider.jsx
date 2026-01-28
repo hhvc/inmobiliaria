@@ -14,6 +14,10 @@ import {
 import { auth, db } from "../../firebase/config";
 import { AuthContext } from "./AuthContext";
 import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
+import {
+  validateActiveInmobiliariaId,
+  clearActiveInmobiliariaId,
+} from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -508,32 +512,23 @@ export const AuthProvider = ({ children }) => {
     };
   }, [cancelPhoneAuth]);
 
+  const prevUserRef = useRef(null);
+
   useEffect(() => {
+    // Evitar ejecuciones redundantes
+    if (prevUserRef.current === user) return;
+    prevUserRef.current = user;
+
     if (!user) {
-      if (activeInmobiliariaId !== null) {
-        setActiveInmobiliariaId(null);
-      }
-      return;
-    }
-
-    // Auto-select si solo tiene una
-    if (
-      user.inmobiliarias.length === 1 &&
-      activeInmobiliariaId !== user.inmobiliarias[0]
-    ) {
-      setActiveInmobiliariaId(user.inmobiliarias[0]);
-      return;
-    }
-
-    // Si tiene varias y la actual ya no es válida → reset
-    if (
-      user.inmobiliarias.length > 1 &&
-      activeInmobiliariaId &&
-      !user.inmobiliarias.includes(activeInmobiliariaId)
-    ) {
+      clearActiveInmobiliariaId();
       setActiveInmobiliariaId(null);
+      return;
     }
-  }, [user, activeInmobiliariaId]);
+
+    const validInmobiliariaId = validateActiveInmobiliariaId(user);
+
+    setActiveInmobiliariaId(validInmobiliariaId);
+  }, [user, setActiveInmobiliariaId]);
 
   const setActiveInmobiliaria = useCallback(
     (inmobiliariaId) => {

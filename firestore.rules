@@ -46,6 +46,18 @@ service cloud.firestore {
       return resource.data.estado == "activo";
     }
 
+    function isPublicInmueble(resource) {
+  return resource != null
+    && resource.data.estado == "activo"
+    && resource.data.deleted == false;
+}
+
+function isSharedWithUser(resource) {
+  return isSignedIn()
+    && resource.data.sharedWith != null
+    && request.auth.uid in resource.data.sharedWith;
+}
+
     /* ============================
        USERS
        ============================ */
@@ -68,48 +80,59 @@ service cloud.firestore {
 
     match /inmobiliarias/{inmoId} {
 
-      allow read: if
+  allow read: if
+    isRoot()
+    || adminHasInmobiliaria(inmoId);
+
+  allow write: if isRoot();
+
+  match /inmuebles/{inmuebleId} {
+
+    /* =========
+       READ
+       ========= */
+    allow read: if
+      isRoot()
+      || adminHasInmobiliaria(inmoId)
+      || isOwner(resource)
+      || isSharedWithUser(resource)
+      || isPublicInmueble(resource);
+
+    /* =========
+       CREATE
+       ========= */
+    allow create: if
+      isSignedIn()
+      && (
         isRoot()
-        || adminHasInmobiliaria(inmoId);
+        || (
+          isAdmin()
+          && belongsToUserInmobiliaria(inmoId)
+          && request.resource.data.ownerId == request.auth.uid
+          && request.resource.data.ownerInmobiliariaId == inmoId
+        )
+      );
 
-      allow write: if isRoot();
+    /* =========
+       UPDATE
+       ========= */
+    allow update: if
+      isSignedIn()
+      && (
+        isRoot()
+        || adminHasInmobiliaria(inmoId)
+        || isOwner(resource)
+        || isSharedWithUser(resource)
+      );
 
-      /* ============================
-         SUBCOLECCIÓN INMUEBLES
-         ============================ */
-
-      match /inmuebles/{inmuebleId} {
-
-        allow read: if
-          isPublicInmueble(resource)
-          || adminHasInmobiliaria(inmoId)
-          || isOwner(resource)
-          || isRoot();
-
-        allow create: if
-          isSignedIn()
-          && (
-            isRoot()
-            || (
-              isAdmin()
-              && belongsToUserInmobiliaria(inmoId)
-              && request.resource.data.ownerId == request.auth.uid
-            )
-          );
-
-        allow update: if
-          isSignedIn()
-          && (
-            isRoot()
-            || adminHasInmobiliaria(inmoId)
-            || isOwner(resource)
-          );
-
-        allow delete: if
-          isRoot()
-          || adminHasInmobiliaria(inmoId);
-      }
-    }
+    /* =========
+       DELETE (soft delete desde app)
+       ========= */
+    allow delete: if
+      isRoot()
+      || adminHasInmobiliaria(inmoId);
+  }
+}
 
     /* ============================
        TESTIMONIALS

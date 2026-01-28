@@ -121,12 +121,20 @@ export async function updateInmobiliaria(id, data) {
 
   const inmobiliariaData = snap.data();
 
+  // 👑 Detectar root
+  let isRoot = false;
+  const userRef = doc(db, "users", currentUser.uid);
+  const userSnap = await getDoc(userRef);
+  if (userSnap.exists() && userSnap.data().role === "root") {
+    isRoot = true;
+  }
+
   /**
    * 🔐 Validación de permisos (cliente)
    * - Admin de la inmobiliaria
-   * - Root lo valida Firestore Rules
+   * - Root → bypass total
    */
-  if (!inmobiliariaData.admins?.includes(currentUser.uid)) {
+  if (!isRoot && !inmobiliariaData.admins?.includes(currentUser.uid)) {
     throw new Error("No tienes permiso para editar esta inmobiliaria");
   }
 
@@ -519,6 +527,17 @@ export async function assertInmobiliariaActiva(id) {
 
   if (!snap.exists()) {
     throw new Error("La inmobiliaria no existe");
+  }
+
+  // 👑 Root bypass total
+  const currentUser = auth.currentUser;
+  if (currentUser?.uid) {
+    const userRef = doc(db, "users", currentUser.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists() && userSnap.data().role === "root") {
+      return true;
+    }
   }
 
   if (snap.data().activa === false) {

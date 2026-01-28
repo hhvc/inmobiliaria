@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useContext } from "react";
 import {
   OPERACIONES_OPCIONES,
   TIPOS_INMUEBLE_OPCIONES,
 } from "../utils/inmuebleSchema";
 
 import { INMUEBLE_ESTADOS_ARRAY } from "../../domain/inmueble/inmueble.constants";
+import { AuthContext } from "../../context/auth/AuthContext";
 
 import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
@@ -21,6 +22,8 @@ const InmuebleForm = ({
   inmuebleId,
   inmobiliariaId,
 }) => {
+  const { user, activeInmobiliariaId } = useContext(AuthContext);
+
   const {
     images,
     addImages,
@@ -34,13 +37,50 @@ const InmuebleForm = ({
     return <div className="text-center py-5">Cargando inmueble...</div>;
   }
 
+  const puedeCambiarInmobiliaria =
+    user?.role === "root" ||
+    (user?.role === "admin" && user?.inmobiliarias?.length > 1);
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        handleSubmit({ ...values, images });
+        handleSubmit({
+          ...values,
+          images,
+          inmobiliariaId: values.inmobiliariaId || activeInmobiliariaId,
+        });
       }}
     >
+      {/* =========================
+          Inmobiliaria
+         ========================= */}
+      {puedeCambiarInmobiliaria ? (
+        <div className="card mb-4">
+          <div className="card-header fw-semibold">Inmobiliaria</div>
+          <div className="card-body">
+            <select
+              className="form-select"
+              value={values.inmobiliariaId || activeInmobiliariaId || ""}
+              onChange={(e) =>
+                handleNestedChange("inmobiliariaId", null, e.target.value)
+              }
+            >
+              <option value="" disabled>
+                Seleccionar inmobiliaria
+              </option>
+              {user.inmobiliarias.map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : (
+        <input type="hidden" value={activeInmobiliariaId} />
+      )}
+
       {/* =========================
           Información básica
          ========================= */}

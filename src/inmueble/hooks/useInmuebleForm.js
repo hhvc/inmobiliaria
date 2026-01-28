@@ -27,6 +27,19 @@ export const useInmuebleForm = ({
   const [initialLoading, setInitialLoading] = useState(isEditMode);
 
   /* =========================================================
+     🔧 Asegurar inmobiliariaId en values (FIX)
+     ========================================================= */
+
+  useEffect(() => {
+    if (!values.inmobiliariaId && inmobiliariaId) {
+      setValues((prev) => ({
+        ...prev,
+        inmobiliariaId,
+      }));
+    }
+  }, [inmobiliariaId, values.inmobiliariaId]);
+
+  /* =========================================================
      Cargar inmueble en modo edición
      ========================================================= */
 

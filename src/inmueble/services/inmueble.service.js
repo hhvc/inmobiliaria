@@ -13,7 +13,9 @@ import {
   startAfter,
   serverTimestamp,
 } from "firebase/firestore";
+
 import { validateInmuebleEstado } from "../../domain/inmueble/inmueble.validators";
+import { assertInmobiliariaActiva } from "../../inmobiliaria/services/inmobiliaria.service";
 
 /* =========================================================
    Helpers
@@ -30,24 +32,43 @@ const inmueblesCollection = (inmobiliariaId) =>
  * Crear inmueble
  */
 export const createInmueble = async (inmobiliariaId, data) => {
+  console.log("🔥 createInmueble ejecutándose", inmobiliariaId, data);
+
   if (!inmobiliariaId) {
     throw new Error("inmobiliariaId es requerido");
   }
 
-  if (!data) {
-    throw new Error("Datos del inmueble requeridos");
+  if (!data || typeof data !== "object") {
+    throw new Error("Datos del inmueble inválidos");
   }
 
-  const ref = inmueblesCollection(inmobiliariaId);
+  try {
+    // 🚦 Dominio: inmobiliaria válida y activa
+    await assertInmobiliariaActiva(inmobiliariaId);
 
-  const docRef = await addDoc(ref, {
-    ...data,
-    deleted: false,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+    const ref = collection(db, "inmobiliarias", inmobiliariaId, "inmuebles");
 
-  return docRef.id;
+    const docRef = await addDoc(ref, {
+      ...data,
+
+      // 🔑 Dominio híbrido
+      ownerInmobiliariaId: inmobiliariaId,
+      sharedWith: [],
+
+      // 🧹 Estado
+      deleted: false,
+
+      // ⏱️ Timestamps
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log("✅ Inmueble creado:", docRef.id);
+    return docRef.id;
+  } catch (error) {
+    console.error("❌ Error en createInmueble:", error);
+    throw error; // 🔥 nunca tragarse el error
+  }
 };
 
 /* =========================================================
@@ -57,10 +78,10 @@ export const createInmueble = async (inmobiliariaId, data) => {
 /**
  * Obtener inmueble por ID
  */
-export const getInmuebleById = async (inmobiliariaId, inmuebleId) => {
-  if (!inmobiliariaId || !inmuebleId) return null;
+export const getInmuebleById = async (inmuebleId) => {
+  if (!inmuebleId) return null;
 
-  const ref = doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
+  const ref = doc(db, "inmuebles", inmuebleId);
   const snap = await getDoc(ref);
 
   if (!snap.exists()) return null;
@@ -73,8 +94,6 @@ export const getInmuebleById = async (inmobiliariaId, inmuebleId) => {
 
 /**
  * Listar inmuebles (panel admin)
- * ✔ filtros reales Firestore
- * ✔ paginación
  */
 export const getInmueblesByInmobiliaria = async (
   inmobiliariaId,
@@ -82,10 +101,14 @@ export const getInmueblesByInmobiliaria = async (
 ) => {
   if (!inmobiliariaId) return { data: [], lastDoc: null };
 
-  const ref = inmueblesCollection(inmobiliariaId);
+  const ref = inmueblesCollection();
 
-  const constraints = [where("deleted", "==", false)];
+  const constraints = [
+    where("deleted", "==", false),
+    where("ownerInmobiliariaId", "in", [inmobiliariaId]),
+  ];
 
+  // 🔎 Filtros
   if (estado) constraints.push(where("estado", "==", estado));
   if (tipo) constraints.push(where("tipo", "==", tipo));
   if (operacion) constraints.push(where("operacion", "==", operacion));
@@ -93,7 +116,6 @@ export const getInmueblesByInmobiliaria = async (
     constraints.push(where("destacado", "==", destacado));
   }
 
-  // ⚠️ orderBy SIEMPRE después de where
   constraints.push(orderBy("createdAt", "desc"));
   constraints.push(limit(pageSize));
 
@@ -114,10 +136,7 @@ export const getInmueblesByInmobiliaria = async (
 };
 
 /**
- * Listado público
- * ✔ solo activos
- * ✔ destacados primero
- * ✔ paginación
+ * Listado público de inmuebles
  */
 export const getPublicInmuebles = async (
   inmobiliariaId,
@@ -125,11 +144,12 @@ export const getPublicInmuebles = async (
 ) => {
   if (!inmobiliariaId) return { data: [], lastDoc: null };
 
-  const ref = inmueblesCollection(inmobiliariaId);
+  const ref = inmueblesCollection();
 
   const constraints = [
     where("deleted", "==", false),
-    where("estado", "==", "activo"),
+    where("estado", "==", "publicado"),
+    where("ownerInmobiliariaId", "==", inmobiliariaId),
   ];
 
   if (tipo) constraints.push(where("tipo", "==", tipo));
@@ -172,40 +192,54 @@ export const updateInmueble = async (inmobiliariaId, inmuebleId, data) => {
     throw new Error("Datos del inmueble inválidos");
   }
 
-  const ref = doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
+  try {
+    // 🚦 Dominio
+    await assertInmobiliariaActiva(inmobiliariaId);
 
-  await updateDoc(ref, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+    const ref = doc(db, "inmuebles", inmuebleId);
+
+    await updateDoc(ref, {
+      ...data,
+
+      // 🔐 coherencia de dominio
+      ownerInmobiliariaId: inmobiliariaId,
+
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error en updateInmueble:", error);
+    throw error;
+  }
 };
 
 /**
- * Cambiar estado
+ * Cambiar estado de un inmueble
  */
-const ESTADOS_VALIDOS = Object.freeze(["activo", "inactivo", "pausado"]);
-
 export const updateInmuebleEstado = async (
   inmobiliariaId,
   inmuebleId,
   estado,
 ) => {
-  if (!inmobiliariaId) {
-    throw new Error("inmobiliariaId es requerido");
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos");
   }
 
-  if (!inmuebleId) {
-    throw new Error("inmuebleId es requerido");
+  try {
+    // 🚦 Dominio
+    await assertInmobiliariaActiva(inmobiliariaId);
+
+    const estadoValidado = validateInmuebleEstado(estado);
+
+    const ref = doc(db, "inmuebles", inmuebleId);
+
+    await updateDoc(ref, {
+      estado: estadoValidado,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error en updateInmuebleEstado:", error);
+    throw error;
   }
-
-  const estadoValidado = validateInmuebleEstado(estado);
-
-  const ref = doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
-
-  await updateDoc(ref, {
-    estado: estadoValidado,
-    updatedAt: serverTimestamp(),
-  });
 };
 
 /* =========================================================
@@ -213,17 +247,25 @@ export const updateInmuebleEstado = async (
    ========================================================= */
 
 /**
- * Soft delete (recomendado)
+ * Soft delete de inmueble
  */
 export const deleteInmueble = async (inmobiliariaId, inmuebleId) => {
   if (!inmobiliariaId || !inmuebleId) {
     throw new Error("IDs requeridos");
   }
 
-  const ref = doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
+  try {
+    // 🚦 Dominio
+    await assertInmobiliariaActiva(inmobiliariaId);
 
-  await updateDoc(ref, {
-    deleted: true,
-    updatedAt: serverTimestamp(),
-  });
+    const ref = doc(db, "inmuebles", inmuebleId);
+
+    await updateDoc(ref, {
+      deleted: true,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("Error en deleteInmueble:", error);
+    throw error;
+  }
 };
