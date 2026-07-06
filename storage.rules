@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service firebase.storage {
   match /b/{bucket}/o {
 
@@ -8,34 +9,59 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isSignedIn() &&
-        (request.auth.token.role == 'admin' ||
-         request.auth.token.role == 'root');
+    function isImage() {
+      return request.resource != null
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    function isValidImageSize() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024;
     }
 
     /* ================= Inmobiliarias =================
-       Estructura esperada:
-       /inmobiliarias/{inmobiliariaId}/
-         ├── logo.png
-         └── backgrounds/
-             ├── primary.jpg
-             ├── secondary.jpg
-             └── tertiary.jpg
+       Branding público:
+       /inmobiliarias/{inmobiliariaId}/...
     */
 
     match /inmobiliarias/{inmobiliariaId}/{allPaths=**} {
 
-      // 🔓 Lectura pública (logos, fondos, branding público)
+      // Logos y fondos son públicos
       allow read: if true;
 
-      // 🔐 Escritura solo admin / root
-      allow write: if isAdmin();
+      // Por ahora permitimos escritura a usuarios logueados.
+      // Los permisos finos reales los controla Firestore en los docs.
+      allow write: if
+        isSignedIn()
+        && isImage()
+        && isValidImageSize();
+    }
+
+    /* ================= Inmuebles =================
+       Imágenes de inmuebles:
+       /inmuebles/{inmobiliariaId}/{inmuebleId}/{fileName}
+    */
+
+    match /inmuebles/{inmobiliariaId}/{inmuebleId}/{fileName} {
+
+      // Las imágenes de inmuebles son públicas
+      allow read: if true;
+
+      // Subida / reemplazo:
+      // permitimos a usuarios logueados subir imágenes válidas.
+      // La asociación final queda controlada por Firestore al actualizar el array images.
+      allow create, update: if
+        isSignedIn()
+        && isImage()
+        && isValidImageSize();
+
+      // Borrado:
+      // por ahora también logueados, porque tus helpers eliminan imágenes desde admin.
+      allow delete: if isSignedIn();
     }
 
     /* ================= Fallback ================= */
 
-    // ❌ Bloqueo total fuera de paths permitidos
     match /{allPaths=**} {
       allow read, write: if false;
     }

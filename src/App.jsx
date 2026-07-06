@@ -1,9 +1,10 @@
 import { useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+
 import { AuthProvider } from "./context/auth/AuthProvider";
 import ProtectedRoute from "./components/ProtectedRoute";
 
-// Componentes de páginas
+// Páginas públicas generales
 import HomePage from "./pages/HomePage";
 import ReservationPage from "./pages/ReservationPage";
 import UserProfilePage from "./pages/UserProfilePage";
@@ -17,33 +18,38 @@ import DynamicGallery from "./components/DynamicGallery";
 import Contact from "./components/Contact";
 import AccessDenied from "./components/AccessDenied";
 
-// Componentes de administración
+// Administración general / heredada
 import AdminDashboard from "./components/admin/AdminDashboard";
 import GalleryManager from "./components/admin/GalleryManager";
-import CabanasList from "./cabanas/CabanasList";
-import AdminCabanas from "./cabanas/AdminCabanas";
-import CabanaForm from "./cabanas/CabanaForm";
 import ContactMessages from "./components/admin/ContactMessages";
 import Calendar from "./components/admin/calendar/Calendar";
 import ReservationManagement from "./components/admin/ReservationManagement";
 import TestimonialManagement from "./components/admin/TestimonialManagement";
-import InmuebleAdminPage from "./inmueble/pages/InmuebleAdminPage";
 
-// Componentes de Inmobiliarias
+// Cabañas - legado
+import CabanasList from "./cabanas/CabanasList";
+import AdminCabanas from "./cabanas/AdminCabanas";
+import CabanaForm from "./cabanas/CabanaForm";
+
+// Inmobiliarias
 import InmobiliariaListPage from "./inmobiliaria/pages/InmobiliariaListPage";
 import InmobiliariaCreatePage from "./inmobiliaria/pages/InmobiliariaCreatePage";
 import InmobiliariaEditPage from "./inmobiliaria/pages/InmobiliariaEditPage";
 import InmobiliariaPublicPage from "./inmobiliaria/pages/InmobiliariaPublicPage";
 
-// Componentes de Inmuebles
+// Inmuebles
+import InmuebleAdminPage from "./inmueble/pages/InmuebleAdminPage";
 import InmuebleListPage from "./inmueble/pages/InmuebleListPage";
 import InmuebleCreatePage from "./inmueble/pages/InmuebleCreatePage";
 import InmuebleEditPage from "./inmueble/pages/InmuebleEditPage";
 import InmueblePublicPage from "./inmueble/pages/InmueblePublicPage";
+import InmueblePortalPage from "./inmueble/pages/InmueblePortalPage";
+import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
 
 function App() {
   useEffect(() => {
-    // Mover el componente Login al modal cuando esté disponible
+    // Mover el componente Login al modal cuando esté disponible.
+    // Se mantiene por compatibilidad con la estructura actual.
     const loginContainer = document.getElementById("login-container");
     const loginElement = document.getElementById("login-section");
 
@@ -59,23 +65,32 @@ function App() {
           <Navbar />
 
           <Routes>
-            {/* Rutas públicas */}
+            {/* =========================
+                Rutas públicas generales
+               ========================= */}
+
             <Route path="/" element={<HomePage />} />
             <Route path="/access-denied" element={<AccessDenied />} />
             <Route path="/galeria" element={<DynamicGallery />} />
             <Route path="/contacto" element={<Contact />} />
             <Route path="/reservar" element={<ReservationPage />} />
 
-            {/* Ruta pública para ver inmobiliaria por slug */}
+            {/* =========================
+                Portal público inmobiliario
+               ========================= */}
+
+            <Route path="/inmuebles" element={<InmueblePortalPage />} />
+            <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
+
             <Route
               path="/inmobiliaria/:slug"
               element={<InmobiliariaPublicPage />}
             />
 
-            {/* Ruta pública para ver inmueble por slug */}
-            <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
+            {/* =========================
+                Usuario autenticado
+               ========================= */}
 
-            {/* Rutas protegidas para usuarios - Solo para usuarios autenticado */}
             <Route
               path="/perfil"
               element={
@@ -85,7 +100,10 @@ function App() {
               }
             />
 
-            {/* Rutas protegidas para administradores - Inmobiliarias */}
+            {/* =========================
+                Admin - Inmobiliarias
+               ========================= */}
+
             <Route
               path="/admin/inmobiliarias"
               element={
@@ -94,6 +112,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/admin/inmobiliarias/nueva"
               element={
@@ -102,6 +121,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/admin/inmobiliarias/:id/editar"
               element={
@@ -111,7 +131,10 @@ function App() {
               }
             />
 
-            {/* Rutas protegidas para administradores - Inmuebles */}
+            {/* =========================
+                Admin - Inmuebles
+               ========================= */}
+
             <Route
               path="/admin/inmuebles"
               element={
@@ -120,6 +143,16 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
+            <Route
+              path="/admin/inmuebles/listado"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmuebleListPage />
+                </ProtectedRoute>
+              }
+            />
+
             <Route
               path="/admin/inmuebles/nuevo"
               element={
@@ -128,6 +161,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/admin/inmuebles/:id/editar"
               element={
@@ -137,7 +171,19 @@ function App() {
               }
             />
 
-            {/* Rutas protegidas para administradores - Dashboard y otras */}
+            <Route
+              path="/admin/inmuebles/:id/preview"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmueblePreviewPage />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* =========================
+                Admin - General / legado
+               ========================= */}
+
             <Route
               path="/admin/dashboard"
               element={
@@ -146,6 +192,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/admin/gallery"
               element={
@@ -154,30 +201,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
-            <Route
-              path="/admin/listadocabanas"
-              element={
-                <ProtectedRoute role="admin">
-                  <CabanasList />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/cabanas"
-              element={
-                <ProtectedRoute role="admin">
-                  <AdminCabanas />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/cabanasform"
-              element={
-                <ProtectedRoute role="admin">
-                  <CabanaForm />
-                </ProtectedRoute>
-              }
-            />
+
             <Route
               path="/admin/contactos"
               element={
@@ -186,6 +210,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/admin/calendar"
               element={
@@ -194,6 +219,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/admin/reservas"
               element={
@@ -202,6 +228,7 @@ function App() {
                 </ProtectedRoute>
               }
             />
+
             <Route
               path="/admin/testimonios"
               element={
@@ -211,7 +238,41 @@ function App() {
               }
             />
 
-            {/* Ruta 404 */}
+            {/* =========================
+                Admin - Cabañas / legado
+               ========================= */}
+
+            <Route
+              path="/admin/listadocabanas"
+              element={
+                <ProtectedRoute role="admin">
+                  <CabanasList />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/cabanas"
+              element={
+                <ProtectedRoute role="admin">
+                  <AdminCabanas />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/admin/cabanasform"
+              element={
+                <ProtectedRoute role="admin">
+                  <CabanaForm />
+                </ProtectedRoute>
+              }
+            />
+
+            {/* =========================
+                404
+               ========================= */}
+
             <Route
               path="*"
               element={
@@ -221,7 +282,8 @@ function App() {
                     inexistente.
                   </h1>
                   <h3>
-                    Por favor, revisa la dirección o ponte en contacto con el administrador.
+                    Por favor, revisa la dirección o ponte en contacto con el
+                    administrador.
                   </h3>
                 </div>
               }

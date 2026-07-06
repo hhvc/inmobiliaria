@@ -37,8 +37,18 @@ const INITIAL_VALUES = {
   banos: "",
   cocheras: "",
 
+  estado: "activo",
   destacado: false,
+  publicarEnPortal: false,
   images: [],
+
+  // 🔑 Dominio / compatibilidad
+  inmobiliariaId: "",
+  ownerInmobiliariaId: "",
+
+  // 🤝 Compartir / soft delete
+  sharedWith: {},
+  deleted: false,
 };
 
 const InmuebleCreatePage = () => {
@@ -54,15 +64,33 @@ const InmuebleCreatePage = () => {
      ========================= */
 
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setValues((prev) => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+
+    if (!name) return;
+
+    setValues((prev) => ({
+      ...prev,
+      [name]: type === "checkbox" ? checked : value,
+    }));
   };
 
   const handleNestedChange = (group, field, value) => {
+    if (!group) return;
+
+    // Permite usar este handler también para campos planos,
+    // evitando estructuras rotas tipo destacado: { null: true }
+    if (!field) {
+      setValues((prev) => ({
+        ...prev,
+        [group]: value,
+      }));
+      return;
+    }
+
     setValues((prev) => ({
       ...prev,
       [group]: {
-        ...prev[group],
+        ...(prev[group] || {}),
         [field]: value,
       },
     }));
@@ -73,36 +101,60 @@ const InmuebleCreatePage = () => {
      ========================= */
 
   const handleCreate = async (formValues) => {
-    console.log("HANDLE CREATE EJECUTADO", formValues);
-
     try {
       setLoading(true);
       setError(null);
 
-      if (!user?.uid || !activeInmobiliariaId) {
+      const selectedInmobiliariaId =
+        formValues?.inmobiliariaId || activeInmobiliariaId;
+
+      if (!user?.uid || !selectedInmobiliariaId) {
         throw new Error(
           "No se pudo determinar el usuario o la inmobiliaria activa",
         );
       }
 
-      if (!canCreateInmueble(user, activeInmobiliariaId)) {
+      if (!canCreateInmueble(user, selectedInmobiliariaId)) {
         throw new Error("No tenés permisos para crear inmuebles");
       }
 
       const inmuebleData = {
         ...formValues,
 
-        // 🔑 Dominio
+        // 🔑 Dominio principal
         ownerId: user.uid,
-        ownerInmobiliariaId: activeInmobiliariaId,
+        createdBy: user.uid,
 
-        // Estado inicial
-        estado: "activo",
+        // 🔑 Compatibilidad + patrón híbrido futuro
+        inmobiliariaId: selectedInmobiliariaId,
+        ownerInmobiliariaId: selectedInmobiliariaId,
+
+        // 🖼️ En creación todavía no subimos imágenes
+        images: [],
+
+        // 🤝 Compartir
+        sharedWith:
+          formValues?.sharedWith && typeof formValues.sharedWith === "object"
+            ? formValues.sharedWith
+            : {},
+
+        // 🗑️ Soft delete
+        deleted: false,
+
+        // Publicación
+        estado: formValues?.estado || "activo",
+        destacado: Boolean(formValues?.destacado),
+        publicarEnPortal: Boolean(formValues?.publicarEnPortal),
       };
 
-      await createInmueble(activeInmobiliariaId, inmuebleData);
+      const inmuebleId = await createInmueble(
+        selectedInmobiliariaId,
+        inmuebleData,
+      );
 
-      navigate("/admin/inmuebles");
+      console.log("✅ Inmueble creado:", inmuebleId);
+
+      navigate("/admin/inmuebles/listado");
     } catch (err) {
       console.error("Error creando inmueble:", err);
       setError(err.message || "Ocurrió un error al crear el inmueble");

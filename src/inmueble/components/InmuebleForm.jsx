@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import { useContext } from "react";
 import {
   OPERACIONES_OPCIONES,
   TIPOS_INMUEBLE_OPCIONES,
@@ -11,47 +11,77 @@ import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
 
 const InmuebleForm = ({
-  values,
-  errors,
-  loading,
-  initialLoading,
-  isEditMode,
+  values = {},
+  errors = {},
+  loading = false,
+  initialLoading = false,
+  isEditMode = false,
   handleChange,
   handleNestedChange,
   handleSubmit,
-  inmuebleId,
-  inmobiliariaId,
+  inmuebleId = null,
+  inmobiliariaId = null,
 }) => {
   const { user, activeInmobiliariaId } = useContext(AuthContext);
+
+  const imageManager = useInmuebleImages(values?.images ?? []);
 
   const {
     images,
     addImages,
-    removeImage,
     reorderImages,
     loading: imagesLoading,
     error: imagesError,
-  } = useInmuebleImages(values?.images ?? []);
+  } = imageManager;
+
+  const removeImage = imageManager.removeImage;
 
   if (initialLoading) {
     return <div className="text-center py-5">Cargando inmueble...</div>;
   }
 
+  const userInmobiliarias = Array.isArray(user?.inmobiliarias)
+    ? user.inmobiliarias
+    : [];
+
+  const selectedInmobiliariaId =
+    values?.inmobiliariaId || inmobiliariaId || activeInmobiliariaId || "";
+
   const puedeCambiarInmobiliaria =
-    user?.role === "root" ||
-    (user?.role === "admin" && user?.inmobiliarias?.length > 1);
+    userInmobiliarias.length > 1 &&
+    (user?.role === "root" || user?.role === "admin");
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+
+    const finalInmobiliariaId =
+      values?.inmobiliariaId || inmobiliariaId || activeInmobiliariaId;
+
+    handleSubmit({
+      ...values,
+
+      // En creación todavía no subimos imágenes desde este formulario.
+      // En edición, images viene del hook.
+      images: isEditMode ? images : values?.images || [],
+
+      // 🔑 Compatibilidad + dominio
+      inmobiliariaId: finalInmobiliariaId,
+      ownerInmobiliariaId: values?.ownerInmobiliariaId || finalInmobiliariaId,
+
+      // 🤝 Compartir / soft delete
+      sharedWith: values?.sharedWith || {},
+      deleted: values?.deleted ?? false,
+
+      // Estado seguro
+      estado: values?.estado || "activo",
+
+      // Publicación en portal público
+      publicarEnPortal: Boolean(values?.publicarEnPortal),
+    });
+  };
 
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        handleSubmit({
-          ...values,
-          images,
-          inmobiliariaId: values.inmobiliariaId || activeInmobiliariaId,
-        });
-      }}
-    >
+    <form onSubmit={onSubmit}>
       {/* =========================
           Inmobiliaria
          ========================= */}
@@ -61,15 +91,15 @@ const InmuebleForm = ({
           <div className="card-body">
             <select
               className="form-select"
-              value={values.inmobiliariaId || activeInmobiliariaId || ""}
-              onChange={(e) =>
-                handleNestedChange("inmobiliariaId", null, e.target.value)
-              }
+              name="inmobiliariaId"
+              value={selectedInmobiliariaId}
+              onChange={handleChange}
             >
               <option value="" disabled>
                 Seleccionar inmobiliaria
               </option>
-              {user.inmobiliarias.map((id) => (
+
+              {userInmobiliarias.map((id) => (
                 <option key={id} value={id}>
                   {id}
                 </option>
@@ -78,7 +108,12 @@ const InmuebleForm = ({
           </div>
         </div>
       ) : (
-        <input type="hidden" value={activeInmobiliariaId} />
+        <input
+          type="hidden"
+          name="inmobiliariaId"
+          value={selectedInmobiliariaId}
+          readOnly
+        />
       )}
 
       {/* =========================
@@ -93,7 +128,7 @@ const InmuebleForm = ({
               type="text"
               name="titulo"
               className={`form-control ${errors.titulo ? "is-invalid" : ""}`}
-              value={values.titulo}
+              value={values?.titulo || ""}
               onChange={handleChange}
             />
             {errors.titulo && (
@@ -107,7 +142,7 @@ const InmuebleForm = ({
               name="descripcion"
               className="form-control"
               rows={3}
-              value={values.descripcion}
+              value={values?.descripcion || ""}
               onChange={handleChange}
             />
           </div>
@@ -125,7 +160,7 @@ const InmuebleForm = ({
             <select
               name="tipo"
               className={`form-select ${errors.tipo ? "is-invalid" : ""}`}
-              value={values.tipo}
+              value={values?.tipo || ""}
               onChange={handleChange}
             >
               <option value="">Seleccionar</option>
@@ -145,7 +180,7 @@ const InmuebleForm = ({
             <select
               name="operacion"
               className={`form-select ${errors.operacion ? "is-invalid" : ""}`}
-              value={values.operacion}
+              value={values?.operacion || ""}
               onChange={handleChange}
             >
               <option value="">Seleccionar</option>
@@ -165,7 +200,7 @@ const InmuebleForm = ({
       {/* =========================
           Precio
          ========================= */}
-      {values.operacion !== "tasacion" && (
+      {values?.operacion !== "tasacion" && (
         <div className="card mb-4">
           <div className="card-header fw-semibold">Precio</div>
           <div className="card-body row g-3">
@@ -175,7 +210,7 @@ const InmuebleForm = ({
                 type="number"
                 name="precio"
                 className={`form-control ${errors.precio ? "is-invalid" : ""}`}
-                value={values.precio}
+                value={values?.precio || ""}
                 onChange={handleChange}
               />
               {errors.precio && (
@@ -188,7 +223,7 @@ const InmuebleForm = ({
               <select
                 name="moneda"
                 className="form-select"
-                value={values.moneda}
+                value={values?.moneda || "USD"}
                 onChange={handleChange}
               >
                 <option value="USD">USD</option>
@@ -202,7 +237,7 @@ const InmuebleForm = ({
                 type="number"
                 name="expensas"
                 className="form-control"
-                value={values.expensas}
+                value={values?.expensas || ""}
                 onChange={handleChange}
               />
             </div>
@@ -220,7 +255,7 @@ const InmuebleForm = ({
             <label className="form-label">Calle</label>
             <input
               className="form-control"
-              value={values.direccion.calle}
+              value={values?.direccion?.calle || ""}
               onChange={(e) =>
                 handleNestedChange("direccion", "calle", e.target.value)
               }
@@ -231,7 +266,7 @@ const InmuebleForm = ({
             <label className="form-label">Número</label>
             <input
               className="form-control"
-              value={values.direccion.numero}
+              value={values?.direccion?.numero || ""}
               onChange={(e) =>
                 handleNestedChange("direccion", "numero", e.target.value)
               }
@@ -242,7 +277,7 @@ const InmuebleForm = ({
             <label className="form-label">Barrio</label>
             <input
               className="form-control"
-              value={values.direccion.barrio}
+              value={values?.direccion?.barrio || ""}
               onChange={(e) =>
                 handleNestedChange("direccion", "barrio", e.target.value)
               }
@@ -253,7 +288,7 @@ const InmuebleForm = ({
             <label className="form-label">Ciudad *</label>
             <input
               className={`form-control ${errors.ciudad ? "is-invalid" : ""}`}
-              value={values.direccion.ciudad}
+              value={values?.direccion?.ciudad || ""}
               onChange={(e) =>
                 handleNestedChange("direccion", "ciudad", e.target.value)
               }
@@ -271,16 +306,44 @@ const InmuebleForm = ({
       <div className="card mb-4">
         <div className="card-header fw-semibold">Imágenes</div>
         <div className="card-body">
-          <InmuebleGallery
-            images={images}
-            onAddImages={addImages}
-            onRemoveImage={removeImage}
-            onReorderImages={reorderImages}
-            loading={imagesLoading}
-            error={imagesError}
-            inmuebleId={inmuebleId}
-            inmobiliariaId={inmobiliariaId}
-          />
+          {isEditMode && inmuebleId ? (
+            <InmuebleGallery
+              images={images}
+              onAddImages={addImages}
+              onRemoveImage={(image) => {
+                if (typeof removeImage !== "function") {
+                  console.error(
+                    "removeImage no está disponible en useInmuebleImages. API recibida:",
+                    imageManager,
+                  );
+                  return;
+                }
+
+                removeImage({
+                  image,
+                  inmuebleId,
+                  inmobiliariaId: selectedInmobiliariaId,
+                });
+              }}
+              onReorderImages={(fromIndex, toIndex) =>
+                reorderImages({
+                  fromIndex,
+                  toIndex,
+                  inmuebleId,
+                  inmobiliariaId: selectedInmobiliariaId,
+                })
+              }
+              loading={imagesLoading}
+              error={imagesError}
+              inmuebleId={inmuebleId}
+              inmobiliariaId={selectedInmobiliariaId}
+            />
+          ) : (
+            <div className="alert alert-info mb-0">
+              Primero creá el inmueble. Después vas a poder cargar y ordenar las
+              imágenes desde la edición.
+            </div>
+          )}
         </div>
       </div>
 
@@ -295,7 +358,7 @@ const InmuebleForm = ({
             <select
               name="estado"
               className={`form-select ${errors.estado ? "is-invalid" : ""}`}
-              value={values.estado}
+              value={values?.estado || "activo"}
               onChange={handleChange}
             >
               {INMUEBLE_ESTADOS_ARRAY.map((estado) => (
@@ -314,12 +377,23 @@ const InmuebleForm = ({
               <input
                 className="form-check-input"
                 type="checkbox"
-                checked={values.destacado}
-                onChange={(e) =>
-                  handleNestedChange("destacado", null, e.target.checked)
-                }
+                name="destacado"
+                checked={Boolean(values?.destacado)}
+                onChange={handleChange}
               />
               <label className="form-check-label">Destacado</label>
+            </div>
+          </div>
+          <div className="col-md-4">
+            <div className="form-check mt-4">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                name="publicarEnPortal"
+                checked={Boolean(values?.publicarEnPortal)}
+                onChange={handleChange}
+              />
+              <label className="form-check-label">Publicar en portal</label>
             </div>
           </div>
         </div>
@@ -332,7 +406,7 @@ const InmuebleForm = ({
         <button
           type="submit"
           className="btn btn-primary px-4"
-          disabled={loading}
+          disabled={loading || imagesLoading}
         >
           {loading
             ? "Guardando..."

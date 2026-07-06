@@ -12,67 +12,113 @@ import InmuebleFilters from "../components/InmuebleFilters";
 
 const PAGE_SIZE = 10;
 
+const INITIAL_FILTERS = {
+  search: "",
+  estado: "",
+  tipo: "",
+  operacion: "",
+  destacado: false,
+};
+
+const getCoverImage = (inmueble) => {
+  if (!Array.isArray(inmueble?.images)) return null;
+
+  return [...inmueble.images]
+    .filter((img) => img?.url)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
+};
+
+const formatPrice = (inmueble) => {
+  if (!inmueble?.precio) return "Consultar";
+
+  const moneda = inmueble.moneda || "USD";
+  const precio = Number(inmueble.precio);
+
+  if (!Number.isFinite(precio)) {
+    return `${moneda} ${inmueble.precio}`;
+  }
+
+  return `${moneda} ${precio.toLocaleString("es-AR")}`;
+};
+
+const buildPublicUrl = (slug) => {
+  if (!slug) return null;
+  return `/inmueble/${slug}`;
+};
+
 const InmuebleListPage = () => {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, activeInmobiliariaId } = useAuth();
 
   const [inmuebles, setInmuebles] = useState([]);
   const [lastDoc, setLastDoc] = useState(null);
 
-  const [filters, setFilters] = useState({
-    estado: "",
-    tipo: "",
-    operacion: "",
-  });
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
   const [deletingId, setDeletingId] = useState(null);
-  const [togglingId, setTogglingId] = useState(null);
+  const [togglingDestacadoId, setTogglingDestacadoId] = useState(null);
+  const [togglingPortalId, setTogglingPortalId] = useState(null);
 
   /* =========================================================
      Fetch inmuebles
      ========================================================= */
 
   const fetchInmuebles = useCallback(
-    async ({ append = false } = {}) => {
-      if (!user?.inmobiliariaId) return;
+    async ({ append = false, cursor = null } = {}) => {
+      if (!user?.uid) {
+        setInmuebles([]);
+        setLastDoc(null);
+        setLoading(false);
+        return;
+      }
+
+      if (!activeInmobiliariaId) {
+        setInmuebles([]);
+        setLastDoc(null);
+        setLoading(false);
+        setError("No hay inmobiliaria activa seleccionada");
+        return;
+      }
 
       try {
         append ? setLoadingMore(true) : setLoading(true);
         setError(null);
 
-        const { data, lastDoc: newLastDoc } = await getInmueblesByInmobiliaria(
-          user.inmobiliariaId,
-          {
-            ...filters,
-            pageSize: PAGE_SIZE,
-            lastDoc: append ? lastDoc : null,
-          }
-        );
+        const result = await getInmueblesByInmobiliaria(activeInmobiliariaId, {
+          ...filters,
+          pageSize: PAGE_SIZE,
+          lastDoc: append ? cursor : null,
+        });
+
+        const data = Array.isArray(result) ? result : result?.data || [];
+        const newLastDoc = Array.isArray(result)
+          ? null
+          : result?.lastDoc || null;
 
         setInmuebles((prev) => (append ? [...prev, ...data] : data));
         setLastDoc(newLastDoc);
       } catch (err) {
         console.error("Error cargando inmuebles:", err);
-        setError("Error al cargar los inmuebles");
+        setError(err.message || "Error al cargar los inmuebles");
       } finally {
         setLoading(false);
         setLoadingMore(false);
       }
     },
-    [user?.inmobiliariaId, filters, lastDoc]
+    [user?.uid, activeInmobiliariaId, filters],
   );
 
   /* =========================================================
-     Re-fetch al cambiar filtros / usuario
+     Re-fetch al cambiar filtros / inmobiliaria activa
      ========================================================= */
 
   useEffect(() => {
     setLastDoc(null);
-    fetchInmuebles({ append: false });
+    fetchInmuebles({ append: false, cursor: null });
   }, [fetchInmuebles]);
 
   /* =========================================================
@@ -80,46 +126,105 @@ const InmuebleListPage = () => {
      ========================================================= */
 
   const handleEdit = (id) => {
-    navigate(`/inmuebles/editar/${id}`);
+    navigate(`/admin/inmuebles/${id}/editar`);
   };
 
   const handleDelete = async (id) => {
+    if (!activeInmobiliariaId) {
+      alert("No hay inmobiliaria activa seleccionada");
+      return;
+    }
+
     if (!window.confirm("¿Eliminar este inmueble?")) return;
 
     try {
       setDeletingId(id);
-      await deleteInmueble(user.inmobiliariaId, id);
+
+      await deleteInmueble(activeInmobiliariaId, id);
 
       setInmuebles((prev) => prev.filter((i) => i.id !== id));
     } catch (err) {
       console.error("Error eliminando inmueble:", err);
-      alert("No se pudo eliminar el inmueble");
+      alert(err.message || "No se pudo eliminar el inmueble");
     } finally {
       setDeletingId(null);
     }
   };
 
   const toggleDestacado = async (inmueble) => {
+    if (!activeInmobiliariaId) {
+      alert("No hay inmobiliaria activa seleccionada");
+      return;
+    }
+
     try {
-      setTogglingId(inmueble.id);
+      setTogglingDestacadoId(inmueble.id);
 
       const nuevoValor = !inmueble.destacado;
 
-      await updateInmueble(user.inmobiliariaId, inmueble.id, {
+      const updatedPayload = {
+        ...inmueble,
         destacado: nuevoValor,
-      });
+      };
+
+      await updateInmueble(activeInmobiliariaId, inmueble.id, updatedPayload);
 
       setInmuebles((prev) =>
         prev.map((i) =>
-          i.id === inmueble.id ? { ...i, destacado: nuevoValor } : i
-        )
+          i.id === inmueble.id ? { ...i, destacado: nuevoValor } : i,
+        ),
       );
     } catch (err) {
       console.error("Error toggle destacado:", err);
-      alert("No se pudo actualizar el destacado");
+      alert(err.message || "No se pudo actualizar el destacado");
     } finally {
-      setTogglingId(null);
+      setTogglingDestacadoId(null);
     }
+  };
+
+  const togglePublicarEnPortal = async (inmueble) => {
+    if (!activeInmobiliariaId) {
+      alert("No hay inmobiliaria activa seleccionada");
+      return;
+    }
+
+    try {
+      setTogglingPortalId(inmueble.id);
+
+      const nuevoValor = !inmueble.publicarEnPortal;
+
+      const updatedPayload = {
+        ...inmueble,
+        publicarEnPortal: nuevoValor,
+      };
+
+      await updateInmueble(activeInmobiliariaId, inmueble.id, updatedPayload);
+
+      setInmuebles((prev) =>
+        prev.map((i) =>
+          i.id === inmueble.id
+            ? { ...i, publicarEnPortal: nuevoValor }
+            : i,
+        ),
+      );
+    } catch (err) {
+      console.error("Error toggle publicar en portal:", err);
+      alert(err.message || "No se pudo actualizar la publicación en portal");
+    } finally {
+      setTogglingPortalId(null);
+    }
+  };
+
+  const handleResetFilters = () => {
+    setFilters(INITIAL_FILTERS);
+    setLastDoc(null);
+  };
+
+  const handleLoadMore = () => {
+    fetchInmuebles({
+      append: true,
+      cursor: lastDoc,
+    });
   };
 
   /* =========================================================
@@ -127,16 +232,30 @@ const InmuebleListPage = () => {
      ========================================================= */
 
   if (loading) return <p>Cargando inmuebles...</p>;
-  if (error) return <div className="error-box">{error}</div>;
+
+  if (error) {
+    return (
+      <section className="page-container">
+        <div className="error-box">{error}</div>
+      </section>
+    );
+  }
 
   return (
     <section className="page-container">
       <header className="page-header">
-        <h1>Inmuebles</h1>
+        <div>
+          <h1>Inmuebles</h1>
+          <p className="text-muted mb-0">
+            Administración de inmuebles de la inmobiliaria activa
+          </p>
+        </div>
 
         <button
+          type="button"
           className="btn-primary"
-          onClick={() => navigate("/inmuebles/nuevo")}
+          onClick={() => navigate("/admin/inmuebles/nuevo")}
+          disabled={!activeInmobiliariaId}
         >
           + Nuevo Inmueble
         </button>
@@ -144,7 +263,12 @@ const InmuebleListPage = () => {
 
       {/* ================= Filtros ================= */}
 
-      <InmuebleFilters filters={filters} onChange={setFilters} />
+      <InmuebleFilters
+        filters={filters}
+        onChange={setFilters}
+        onReset={handleResetFilters}
+        loading={loading || loadingMore}
+      />
 
       {/* ================= Listado ================= */}
 
@@ -154,16 +278,18 @@ const InmuebleListPage = () => {
         <>
           <div className="inmueble-list">
             {inmuebles.map((inmueble) => {
-              const thumbnail = inmueble.images?.[0]?.url;
+              const coverImage = getCoverImage(inmueble);
+              const publicUrl = buildPublicUrl(inmueble.slug);
+              const isPublicado = inmueble.publicarEnPortal === true;
 
               return (
                 <article key={inmueble.id} className="inmueble-card">
                   {/* 🖼️ Miniatura */}
                   <div className="inmueble-thumb">
-                    {thumbnail ? (
+                    {coverImage ? (
                       <img
-                        src={thumbnail}
-                        alt={inmueble.titulo}
+                        src={coverImage.url}
+                        alt={inmueble.titulo || "Inmueble"}
                         loading="lazy"
                       />
                     ) : (
@@ -173,30 +299,62 @@ const InmuebleListPage = () => {
 
                   <div className="inmueble-info">
                     <h3>
-                      {inmueble.titulo}{" "}
+                      {inmueble.titulo || "Inmueble sin título"}{" "}
                       {inmueble.destacado && (
                         <span className="badge-destacado">★</span>
                       )}
                     </h3>
 
                     <p className="muted">
-                      {inmueble.direccion?.ciudad},{" "}
-                      {inmueble.direccion?.provincia}
+                      {inmueble.direccion?.ciudad || "Sin ciudad"}
+                      {inmueble.direccion?.barrio
+                        ? ` · ${inmueble.direccion.barrio}`
+                        : ""}
                     </p>
 
                     <p>
-                      {inmueble.operacion} · {inmueble.tipo}
+                      {inmueble.operacion || "Sin operación"} ·{" "}
+                      {inmueble.tipo || "Sin tipo"}
                     </p>
 
-                    <strong>
-                      {inmueble.precio
-                        ? `$${Number(inmueble.precio).toLocaleString("es-AR")}`
-                        : "Consultar"}
-                    </strong>
+                    <strong>{formatPrice(inmueble)}</strong>
+
+                    <div className="mt-2 d-flex flex-wrap gap-2">
+                      <span
+                        className={
+                          inmueble.estado === "activo"
+                            ? "badge bg-success"
+                            : "badge bg-secondary"
+                        }
+                      >
+                        Estado: {inmueble.estado || "sin estado"}
+                      </span>
+
+                      <span
+                        className={
+                          isPublicado ? "badge bg-primary" : "badge bg-light text-dark"
+                        }
+                      >
+                        Portal: {isPublicado ? "Publicado" : "No publicado"}
+                      </span>
+
+                      {inmueble.destacado && (
+                        <span className="badge bg-warning text-dark">
+                          Destacado
+                        </span>
+                      )}
+                    </div>
+
+                    {inmueble.slug && (
+                      <p className="small text-muted mt-2 mb-0">
+                        <strong>Slug:</strong> {inmueble.slug}
+                      </p>
+                    )}
                   </div>
 
                   <div className="inmueble-actions">
                     <button
+                      type="button"
                       className="btn-secondary"
                       onClick={() => handleEdit(inmueble.id)}
                     >
@@ -204,14 +362,52 @@ const InmuebleListPage = () => {
                     </button>
 
                     <button
+                      type="button"
                       className="btn-outline"
-                      disabled={togglingId === inmueble.id}
-                      onClick={() => toggleDestacado(inmueble)}
+                      onClick={() => navigate(`/admin/inmuebles/${inmueble.id}/preview`)}
                     >
-                      {inmueble.destacado ? "Quitar destacado" : "Destacar"}
+                      Vista previa
+                    </button>
+
+                    {isPublicado && publicUrl && (
+                      <a
+                        href={publicUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-outline"
+                      >
+                        Ver publicación
+                      </a>
+                    )}
+
+                    <button
+                      type="button"
+                      className="btn-outline"
+                      disabled={togglingPortalId === inmueble.id}
+                      onClick={() => togglePublicarEnPortal(inmueble)}
+                    >
+                      {togglingPortalId === inmueble.id
+                        ? "Actualizando..."
+                        : isPublicado
+                          ? "Despublicar"
+                          : "Publicar"}
                     </button>
 
                     <button
+                      type="button"
+                      className="btn-outline"
+                      disabled={togglingDestacadoId === inmueble.id}
+                      onClick={() => toggleDestacado(inmueble)}
+                    >
+                      {togglingDestacadoId === inmueble.id
+                        ? "Actualizando..."
+                        : inmueble.destacado
+                          ? "Quitar destacado"
+                          : "Destacar"}
+                    </button>
+
+                    <button
+                      type="button"
                       className="btn-danger"
                       disabled={deletingId === inmueble.id}
                       onClick={() => handleDelete(inmueble.id)}
@@ -229,9 +425,10 @@ const InmuebleListPage = () => {
           {lastDoc && (
             <div className="load-more">
               <button
+                type="button"
                 className="btn-secondary"
                 disabled={loadingMore}
-                onClick={() => fetchInmuebles({ append: true })}
+                onClick={handleLoadMore}
               >
                 {loadingMore ? "Cargando..." : "Cargar más"}
               </button>

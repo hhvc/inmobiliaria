@@ -42,21 +42,50 @@ service cloud.firestore {
         && resource.data.ownerId == request.auth.uid;
     }
 
+    /* ============================
+       Inmuebles – helpers
+       ============================ */
+
     function isPublicInmueble(resource) {
-      return resource.data.estado == "activo";
+      return resource != null
+        && resource.data.estado == "activo"
+        && resource.data.deleted == false
+        && resource.data.publicarEnPortal == true;
     }
 
-    function isPublicInmueble(resource) {
-  return resource != null
-    && resource.data.estado == "activo"
-    && resource.data.deleted == false;
-}
+    function isSharedWithUser(resource, inmoId) {
+      return isSignedIn()
+        && resource.data.sharedWith != null
+        && inmoId in resource.data.sharedWith;
+    }
 
-function isSharedWithUser(resource) {
-  return isSignedIn()
-    && resource.data.sharedWith != null
-    && request.auth.uid in resource.data.sharedWith;
-}
+    function canSharedRead(resource, inmoId) {
+      return isSharedWithUser(resource, inmoId)
+        && resource.data.sharedWith[inmoId].canRead == true;
+    }
+
+    function canSharedUpdate(resource, inmoId) {
+      return isSharedWithUser(resource, inmoId)
+        && resource.data.sharedWith[inmoId].canUpdate == true;
+    }
+
+    function sharedCanUpdateOnlyAllowedFields(resource) {
+      return request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          "titulo",
+          "descripcion",
+          "precio",
+          "moneda",
+          "expensas",
+          "estado",
+          "destacado",
+          "orden",
+          "images",
+          "updatedAt"
+        ]);
+    }
 
     /* ============================
        USERS
@@ -64,13 +93,15 @@ function isSharedWithUser(resource) {
 
     match /users/{userId} {
 
-      // El usuario puede leer su propio perfil
-      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow read: if
+        isSignedIn()
+        && request.auth.uid == userId;
 
-      // El usuario puede CREAR su propio doc (solo si no existe)
-      allow create: if isSignedIn() && request.auth.uid == userId && !exists(/databases/$(database)/documents/users/$(userId));
+      allow create: if
+        isSignedIn()
+        && request.auth.uid == userId
+        && !exists(/databases/$(database)/documents/users/$(userId));
 
-      // Solo root puede modificar o borrar usuarios
       allow update, delete: if isRoot();
     }
 
@@ -80,76 +111,92 @@ function isSharedWithUser(resource) {
 
     match /inmobiliarias/{inmoId} {
 
-  allow read: if
-    isRoot()
-    || adminHasInmobiliaria(inmoId);
-
-  allow write: if isRoot();
-
-  match /inmuebles/{inmuebleId} {
-
-    /* =========
-       READ
-       ========= */
-    allow read: if
-      isRoot()
-      || adminHasInmobiliaria(inmoId)
-      || isOwner(resource)
-      || isSharedWithUser(resource)
-      || isPublicInmueble(resource);
-
-    /* =========
-       CREATE
-       ========= */
-    allow create: if
-      isSignedIn()
-      && (
+      allow read: if
         isRoot()
-        || (
-          isAdmin()
-          && belongsToUserInmobiliaria(inmoId)
-          && request.resource.data.ownerId == request.auth.uid
-          && request.resource.data.ownerInmobiliariaId == inmoId
-        )
-      );
+        || adminHasInmobiliaria(inmoId);
 
-    /* =========
-       UPDATE
-       ========= */
-    allow update: if
-      isSignedIn()
-      && (
-        isRoot()
-        || adminHasInmobiliaria(inmoId)
-        || isOwner(resource)
-        || isSharedWithUser(resource)
-      );
+      allow write: if isRoot();
 
-    /* =========
-       DELETE (soft delete desde app)
-       ========= */
-    allow delete: if
-      isRoot()
-      || adminHasInmobiliaria(inmoId);
-  }
-}
+      /* ============================
+         SUBCOLECCIÓN INMUEBLES
+         ============================ */
+
+      match /inmuebles/{inmuebleId} {
+
+        /* =========
+           READ
+           ========= */
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || isOwner(resource)
+          || canSharedRead(resource, inmoId)
+          || isPublicInmueble(resource);
+
+        /* =========
+           CREATE
+           ========= */
+        allow create: if
+          isSignedIn()
+          && (
+            isRoot()
+            || (
+              isAdmin()
+              && belongsToUserInmobiliaria(inmoId)
+              && request.resource.data.ownerId == request.auth.uid
+              && request.resource.data.ownerInmobiliariaId == inmoId
+            )
+          );
+
+        /* =========
+           UPDATE
+           ========= */
+        allow update: if
+          isSignedIn()
+          && (
+            isRoot()
+            || adminHasInmobiliaria(inmoId)
+            || isOwner(resource)
+            || (
+              canSharedUpdate(resource, inmoId)
+              && sharedCanUpdateOnlyAllowedFields(resource)
+            )
+          );
+
+        /* =========
+           DELETE
+           ========= */
+        allow delete: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId);
+      }
+    }
+
+    /* ============================
+       COLLECTION GROUP: INMUEBLES PÚBLICOS
+       ============================
+
+       Necesario para consultas:
+       collectionGroup(db, "inmuebles")
+
+       Permite leer únicamente inmuebles publicados en portal.
+    */
+
+    match /{path=**}/inmuebles/{inmuebleId} {
+      allow read: if isPublicInmueble(resource);
+      allow create, update, delete: if false;
+    }
 
     /* ============================
        TESTIMONIALS
-       (comentarios públicos)
        ============================ */
 
     match /testimonials/{testimonialId} {
 
-      // Lectura pública
       allow read: if true;
 
-      // Crear comentario:
-      // cualquier usuario logueado (sin rol)
       allow create: if isSignedIn();
 
-      // Editar / borrar:
-      // solo admin o root
       allow update, delete: if isAdmin() || isRoot();
     }
 

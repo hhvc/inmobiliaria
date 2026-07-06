@@ -1,6 +1,7 @@
-import { db } from "../../firebase/config";
+import { db, auth } from "../../firebase/config";
 import {
   collection,
+  collectionGroup,
   doc,
   addDoc,
   getDoc,
@@ -16,6 +17,7 @@ import {
 
 import { validateInmuebleEstado } from "../../domain/inmueble/inmueble.validators";
 import { assertInmobiliariaActiva } from "../../inmobiliaria/services/inmobiliaria.service";
+import { getActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
 
 /* =========================================================
    Helpers
@@ -24,12 +26,171 @@ import { assertInmobiliariaActiva } from "../../inmobiliaria/services/inmobiliar
 const inmueblesCollection = (inmobiliariaId) =>
   collection(db, "inmobiliarias", inmobiliariaId, "inmuebles");
 
+const inmuebleDoc = (inmobiliariaId, inmuebleId) =>
+  doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
+
+const resolveInmuebleIds = (
+  inmobiliariaIdOrInmuebleId,
+  maybeInmuebleId = null,
+) => {
+  if (maybeInmuebleId) {
+    return {
+      inmobiliariaId: inmobiliariaIdOrInmuebleId,
+      inmuebleId: maybeInmuebleId,
+    };
+  }
+
+  const activeInmobiliariaId = getActiveInmobiliariaId();
+
+  if (!activeInmobiliariaId) {
+    throw new Error("No hay inmobiliaria activa seleccionada");
+  }
+
+  return {
+    inmobiliariaId: activeInmobiliariaId,
+    inmuebleId: inmobiliariaIdOrInmuebleId,
+  };
+};
+
+const normalizeSearchText = (value = "") =>
+  value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const createSlugBase = (value = "inmueble") => {
+  const normalized = normalizeSearchText(value || "inmueble")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+
+  return normalized || "inmueble";
+};
+
+const buildInmuebleSlug = (titulo, inmuebleId) => {
+  const base = createSlugBase(titulo);
+  return `${base}-${inmuebleId}`;
+};
+
+const getInmobiliariaIdFromDocSnap = (docSnap) => {
+  const data = docSnap.data();
+
+  return (
+    data.inmobiliariaId ||
+    data.ownerInmobiliariaId ||
+    docSnap.ref.parent.parent?.id ||
+    ""
+  );
+};
+
+const matchesSearch = (inmueble, search) => {
+  const normalizedSearch = normalizeSearchText(search);
+
+  if (!normalizedSearch) return true;
+
+  const searchableText = normalizeSearchText(
+    [
+      inmueble.titulo,
+      inmueble.descripcion,
+      inmueble.tipo,
+      inmueble.operacion,
+      inmueble.direccion?.calle,
+      inmueble.direccion?.numero,
+      inmueble.direccion?.barrio,
+      inmueble.direccion?.ciudad,
+    ]
+      .filter(Boolean)
+      .join(" "),
+  );
+
+  return searchableText.includes(normalizedSearch);
+};
+
+const applyClientFilters = (inmuebles, filters = {}) => {
+  const {
+    search = "",
+    estado = "",
+    tipo = "",
+    operacion = "",
+    destacado = false,
+    publicarEnPortal = null,
+  } = filters;
+
+  return inmuebles
+    .filter((inmueble) => inmueble.deleted !== true)
+    .filter((inmueble) => (estado ? inmueble.estado === estado : true))
+    .filter((inmueble) => (tipo ? inmueble.tipo === tipo : true))
+    .filter((inmueble) =>
+      operacion ? inmueble.operacion === operacion : true,
+    )
+    .filter((inmueble) =>
+      destacado === true ? inmueble.destacado === true : true,
+    )
+    .filter((inmueble) =>
+      publicarEnPortal === null
+        ? true
+        : inmueble.publicarEnPortal === publicarEnPortal,
+    )
+    .filter((inmueble) => matchesSearch(inmueble, search));
+};
+
+const sortPublicInmuebles = (items = []) => {
+  return [...items].sort((a, b) => {
+    if (a.destacado !== b.destacado) {
+      return a.destacado ? -1 : 1;
+    }
+
+    const aTime =
+      typeof a.createdAt?.toMillis === "function" ? a.createdAt.toMillis() : 0;
+
+    const bTime =
+      typeof b.createdAt?.toMillis === "function" ? b.createdAt.toMillis() : 0;
+
+    return bTime - aTime;
+  });
+};
+
+const sanitizeUpdatePayload = (data = {}) => {
+  const {
+    id: _id,
+    createdAt: _createdAt,
+    updatedAt: _updatedAt,
+    ...payload
+  } = data;
+
+  return payload;
+};
+
+const resolvePublicListArgs = (
+  inmobiliariaIdOrOptions = {},
+  maybeOptions = {},
+) => {
+  // Compatibilidad con firma vieja:
+  // getPublicInmuebles(inmobiliariaId, options)
+  if (typeof inmobiliariaIdOrOptions === "string") {
+    return {
+      ...maybeOptions,
+      inmobiliariaId: inmobiliariaIdOrOptions,
+    };
+  }
+
+  // Firma nueva:
+  // getPublicInmuebles(options)
+  return {
+    ...(inmobiliariaIdOrOptions || {}),
+  };
+};
+
 /* =========================================================
    CREATE
    ========================================================= */
 
 /**
- * Crear inmueble
+ * Crear inmueble en:
+ * /inmobiliarias/{inmobiliariaId}/inmuebles/{inmuebleId}
  */
 export const createInmueble = async (inmobiliariaId, data) => {
   console.log("🔥 createInmueble ejecutándose", inmobiliariaId, data);
@@ -43,23 +204,49 @@ export const createInmueble = async (inmobiliariaId, data) => {
   }
 
   try {
-    // 🚦 Dominio: inmobiliaria válida y activa
     await assertInmobiliariaActiva(inmobiliariaId);
 
-    const ref = collection(db, "inmobiliarias", inmobiliariaId, "inmuebles");
+    const currentUser = auth.currentUser;
 
-    const docRef = await addDoc(ref, {
+    const estadoValidado = validateInmuebleEstado(data.estado || "activo");
+
+    const docRef = await addDoc(inmueblesCollection(inmobiliariaId), {
       ...data,
 
-      // 🔑 Dominio híbrido
+      // 🔑 Dominio / compatibilidad
+      inmobiliariaId,
       ownerInmobiliariaId: inmobiliariaId,
-      sharedWith: [],
 
-      // 🧹 Estado
+      // 👤 Auditoría
+      ownerId: data.ownerId || currentUser?.uid || null,
+      createdBy: data.createdBy || currentUser?.uid || null,
+
+      // 🖼️ Imágenes
+      images: Array.isArray(data.images) ? data.images : [],
+
+      // 🤝 Compartir
+      sharedWith:
+        data.sharedWith && typeof data.sharedWith === "object"
+          ? data.sharedWith
+          : {},
+
+      // 🧹 Estado interno
+      estado: estadoValidado,
       deleted: false,
+
+      // 🌐 Portal público
+      destacado: Boolean(data.destacado),
+      publicarEnPortal: Boolean(data.publicarEnPortal),
 
       // ⏱️ Timestamps
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    const slug = buildInmuebleSlug(data.titulo, docRef.id);
+
+    await updateDoc(docRef, {
+      slug,
       updatedAt: serverTimestamp(),
     });
 
@@ -67,56 +254,150 @@ export const createInmueble = async (inmobiliariaId, data) => {
     return docRef.id;
   } catch (error) {
     console.error("❌ Error en createInmueble:", error);
-    throw error; // 🔥 nunca tragarse el error
+    throw error;
   }
 };
 
 /* =========================================================
-   READ
+   READ ADMIN / PRIVADO
    ========================================================= */
 
 /**
- * Obtener inmueble por ID
+ * Obtener inmueble por ID.
+ *
+ * Acepta dos firmas:
+ * - getInmuebleById(inmobiliariaId, inmuebleId)
+ * - getInmuebleById(inmuebleId) usando la inmobiliaria activa
  */
-export const getInmuebleById = async (inmuebleId) => {
-  if (!inmuebleId) return null;
+export const getInmuebleById = async (
+  inmobiliariaIdOrInmuebleId,
+  maybeInmuebleId = null,
+) => {
+  if (!inmobiliariaIdOrInmuebleId) return null;
 
-  const ref = doc(db, "inmuebles", inmuebleId);
+  const { inmobiliariaId, inmuebleId } = resolveInmuebleIds(
+    inmobiliariaIdOrInmuebleId,
+    maybeInmuebleId,
+  );
+
+  const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
   const snap = await getDoc(ref);
 
   if (!snap.exists()) return null;
 
   return {
     id: snap.id,
+    inmobiliariaId,
     ...snap.data(),
   };
 };
 
 /**
- * Listar inmuebles (panel admin)
+ * Listar inmuebles del panel admin.
+ *
+ * Lee desde:
+ * /inmobiliarias/{inmobiliariaId}/inmuebles
  */
 export const getInmueblesByInmobiliaria = async (
   inmobiliariaId,
-  { estado, tipo, operacion, destacado, pageSize = 20, lastDoc = null } = {},
+  {
+    search = "",
+    estado = "",
+    tipo = "",
+    operacion = "",
+    destacado = false,
+    pageSize = 20,
+    lastDoc = null,
+  } = {},
 ) => {
-  if (!inmobiliariaId) return { data: [], lastDoc: null };
+  if (!inmobiliariaId) {
+    return { data: [], lastDoc: null };
+  }
 
-  const ref = inmueblesCollection();
+  const ref = inmueblesCollection(inmobiliariaId);
+
+  const constraints = [orderBy("createdAt", "desc"), limit(pageSize)];
+
+  if (lastDoc) {
+    constraints.push(startAfter(lastDoc));
+  }
+
+  const q = query(ref, ...constraints);
+  const snap = await getDocs(q);
+
+  const rawData = snap.docs.map((docSnap) => ({
+    id: docSnap.id,
+    inmobiliariaId,
+    ...docSnap.data(),
+  }));
+
+  const data = applyClientFilters(rawData, {
+    search,
+    estado,
+    tipo,
+    operacion,
+    destacado,
+  });
+
+  return {
+    data,
+    lastDoc: snap.docs[snap.docs.length - 1] || null,
+  };
+};
+
+/* =========================================================
+   READ PÚBLICO / PORTAL
+   ========================================================= */
+
+/**
+ * Listado público de inmuebles publicados en el portal.
+ *
+ * Firma nueva:
+ * getPublicInmuebles({
+ *   search,
+ *   tipo,
+ *   operacion,
+ *   inmobiliariaId,
+ *   pageSize,
+ *   lastDoc
+ * })
+ *
+ * Firma compatible anterior:
+ * getPublicInmuebles(inmobiliariaId, options)
+ *
+ * Si NO se pasa inmobiliariaId, lee inmuebles publicados de todas
+ * las inmobiliarias usando collectionGroup("inmuebles").
+ */
+export const getPublicInmuebles = async (
+  inmobiliariaIdOrOptions = {},
+  maybeOptions = {},
+) => {
+  const {
+    search = "",
+    tipo = "",
+    operacion = "",
+    inmobiliariaId = "",
+    pageSize = 12,
+    lastDoc = null,
+  } = resolvePublicListArgs(inmobiliariaIdOrOptions, maybeOptions);
+
+  const ref = inmobiliariaId
+    ? inmueblesCollection(inmobiliariaId)
+    : collectionGroup(db, "inmuebles");
 
   const constraints = [
     where("deleted", "==", false),
-    where("ownerInmobiliariaId", "in", [inmobiliariaId]),
+    where("estado", "==", "activo"),
+    where("publicarEnPortal", "==", true),
   ];
 
-  // 🔎 Filtros
-  if (estado) constraints.push(where("estado", "==", estado));
-  if (tipo) constraints.push(where("tipo", "==", tipo));
-  if (operacion) constraints.push(where("operacion", "==", operacion));
-  if (destacado !== undefined) {
-    constraints.push(where("destacado", "==", destacado));
+  if (inmobiliariaId) {
+    constraints.push(where("inmobiliariaId", "==", inmobiliariaId));
   }
 
-  constraints.push(orderBy("createdAt", "desc"));
+  if (tipo) constraints.push(where("tipo", "==", tipo));
+  if (operacion) constraints.push(where("operacion", "==", operacion));
+
   constraints.push(limit(pageSize));
 
   if (lastDoc) {
@@ -126,52 +407,73 @@ export const getInmueblesByInmobiliaria = async (
   const q = query(ref, ...constraints);
   const snap = await getDocs(q);
 
+  const rawData = snap.docs.map((docSnap) => {
+    const resolvedInmobiliariaId = getInmobiliariaIdFromDocSnap(docSnap);
+
+    return {
+      id: docSnap.id,
+      inmobiliariaId: resolvedInmobiliariaId,
+      ...docSnap.data(),
+    };
+  });
+
+  const data = sortPublicInmuebles(
+    applyClientFilters(rawData, {
+      search,
+      tipo,
+      operacion,
+      estado: "activo",
+      publicarEnPortal: true,
+    }),
+  );
+
   return {
-    data: snap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })),
+    data,
     lastDoc: snap.docs[snap.docs.length - 1] || null,
   };
 };
 
 /**
- * Listado público de inmuebles
+ * Alias semántico para listar inmuebles públicos de una inmobiliaria.
  */
-export const getPublicInmuebles = async (
+export const getPublicInmueblesByInmobiliaria = async (
   inmobiliariaId,
-  { tipo, operacion, pageSize = 12, lastDoc = null } = {},
+  options = {},
 ) => {
-  if (!inmobiliariaId) return { data: [], lastDoc: null };
+  return getPublicInmuebles(inmobiliariaId, options);
+};
 
-  const ref = inmueblesCollection();
+/**
+ * Obtener inmueble público por slug.
+ *
+ * Usado por:
+ * /inmueble/:slug
+ */
+export const getPublicInmuebleBySlug = async (slug) => {
+  if (!slug) return null;
 
-  const constraints = [
+  const ref = collectionGroup(db, "inmuebles");
+
+  const q = query(
+    ref,
+    where("slug", "==", slug),
     where("deleted", "==", false),
-    where("estado", "==", "publicado"),
-    where("ownerInmobiliariaId", "==", inmobiliariaId),
-  ];
+    where("estado", "==", "activo"),
+    where("publicarEnPortal", "==", true),
+    limit(1),
+  );
 
-  if (tipo) constraints.push(where("tipo", "==", tipo));
-  if (operacion) constraints.push(where("operacion", "==", operacion));
-
-  constraints.push(orderBy("destacado", "desc"));
-  constraints.push(orderBy("createdAt", "desc"));
-  constraints.push(limit(pageSize));
-
-  if (lastDoc) {
-    constraints.push(startAfter(lastDoc));
-  }
-
-  const q = query(ref, ...constraints);
   const snap = await getDocs(q);
 
+  if (snap.empty) return null;
+
+  const docSnap = snap.docs[0];
+  const resolvedInmobiliariaId = getInmobiliariaIdFromDocSnap(docSnap);
+
   return {
-    data: snap.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    })),
-    lastDoc: snap.docs[snap.docs.length - 1] || null,
+    id: docSnap.id,
+    inmobiliariaId: resolvedInmobiliariaId,
+    ...docSnap.data(),
   };
 };
 
@@ -179,7 +481,33 @@ export const getPublicInmuebles = async (
    UPDATE
    ========================================================= */
 
-export const updateInmueble = async (inmobiliariaId, inmuebleId, data) => {
+/**
+ * Actualizar inmueble.
+ *
+ * Acepta dos firmas:
+ * - updateInmueble(inmobiliariaId, inmuebleId, data)
+ * - updateInmueble(inmuebleId, data) usando la inmobiliaria activa
+ */
+export const updateInmueble = async (
+  inmobiliariaIdOrInmuebleId,
+  inmuebleIdOrData,
+  maybeData = null,
+) => {
+  let inmobiliariaId;
+  let inmuebleId;
+  let data;
+
+  if (maybeData) {
+    inmobiliariaId = inmobiliariaIdOrInmuebleId;
+    inmuebleId = inmuebleIdOrData;
+    data = maybeData;
+  } else {
+    const resolved = resolveInmuebleIds(inmobiliariaIdOrInmuebleId);
+    inmobiliariaId = resolved.inmobiliariaId;
+    inmuebleId = resolved.inmuebleId;
+    data = inmuebleIdOrData;
+  }
+
   if (!inmobiliariaId) {
     throw new Error("inmobiliariaId es requerido");
   }
@@ -193,21 +521,37 @@ export const updateInmueble = async (inmobiliariaId, inmuebleId, data) => {
   }
 
   try {
-    // 🚦 Dominio
     await assertInmobiliariaActiva(inmobiliariaId);
 
-    const ref = doc(db, "inmuebles", inmuebleId);
+    const payload = sanitizeUpdatePayload(data);
+
+    if (payload.estado) {
+      payload.estado = validateInmuebleEstado(payload.estado);
+    }
+
+    if (!payload.slug) {
+      payload.slug = buildInmuebleSlug(payload.titulo, inmuebleId);
+    }
+
+    payload.destacado = Boolean(payload.destacado);
+    payload.publicarEnPortal = Boolean(payload.publicarEnPortal);
+    payload.images = Array.isArray(payload.images) ? payload.images : [];
+
+    const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
 
     await updateDoc(ref, {
-      ...data,
+      ...payload,
 
-      // 🔐 coherencia de dominio
+      // 🔑 Mantener coherencia con el path
+      inmobiliariaId,
       ownerInmobiliariaId: inmobiliariaId,
 
       updatedAt: serverTimestamp(),
     });
+
+    console.log("✅ Inmueble actualizado:", inmuebleId);
   } catch (error) {
-    console.error("Error en updateInmueble:", error);
+    console.error("❌ Error en updateInmueble:", error);
     throw error;
   }
 };
@@ -225,19 +569,20 @@ export const updateInmuebleEstado = async (
   }
 
   try {
-    // 🚦 Dominio
     await assertInmobiliariaActiva(inmobiliariaId);
 
     const estadoValidado = validateInmuebleEstado(estado);
 
-    const ref = doc(db, "inmuebles", inmuebleId);
+    const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
 
     await updateDoc(ref, {
       estado: estadoValidado,
       updatedAt: serverTimestamp(),
     });
+
+    console.log("✅ Estado de inmueble actualizado:", inmuebleId);
   } catch (error) {
-    console.error("Error en updateInmuebleEstado:", error);
+    console.error("❌ Error en updateInmuebleEstado:", error);
     throw error;
   }
 };
@@ -247,7 +592,9 @@ export const updateInmuebleEstado = async (
    ========================================================= */
 
 /**
- * Soft delete de inmueble
+ * Soft delete de inmueble.
+ *
+ * No borra físicamente el documento.
  */
 export const deleteInmueble = async (inmobiliariaId, inmuebleId) => {
   if (!inmobiliariaId || !inmuebleId) {
@@ -255,17 +602,19 @@ export const deleteInmueble = async (inmobiliariaId, inmuebleId) => {
   }
 
   try {
-    // 🚦 Dominio
     await assertInmobiliariaActiva(inmobiliariaId);
 
-    const ref = doc(db, "inmuebles", inmuebleId);
+    const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
 
     await updateDoc(ref, {
       deleted: true,
+      deletedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+
+    console.log("🗑️ Inmueble enviado a papelera:", inmuebleId);
   } catch (error) {
-    console.error("Error en deleteInmueble:", error);
+    console.error("❌ Error en deleteInmueble:", error);
     throw error;
   }
 };

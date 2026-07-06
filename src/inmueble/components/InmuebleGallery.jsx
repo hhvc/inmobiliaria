@@ -1,53 +1,36 @@
-import React, { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 
-/**
- * props esperadas:
- * - images
- * - trashedImages
- * - loading
- * - error
- * - inmuebleId
- * - inmobiliariaId
- *
- * - onAddImages
- * - onReorderImages
- * - onTrashImagesBatch
- * - onDeleteImagesBatch
- * - onRestoreImagesBatch
- */
 const InmuebleGallery = ({
   images = [],
-  trashedImages = [],
 
   onAddImages,
+  onRemoveImage,
   onReorderImages,
-  onTrashImagesBatch,
-  onDeleteImagesBatch,
-  onRestoreImagesBatch,
 
   loading = false,
   error = null,
   inmuebleId,
   inmobiliariaId,
 }) => {
+  const sortedImages = useMemo(() => {
+    return [...(images || [])].sort(
+      (a, b) => (a.order ?? 0) - (b.order ?? 0),
+    );
+  }, [images]);
+
+  const canManageImages =
+    Boolean(inmuebleId) &&
+    Boolean(inmobiliariaId) &&
+    typeof onAddImages === "function";
+
   /* =========================================================
-   * State
-   * ========================================================= */
-
-  const [selected, setSelected] = useState([]);
-  const [view, setView] = useState("gallery"); // gallery | trash
-
-  const currentImages = useMemo(() => {
-    return view === "gallery" ? images : trashedImages;
-  }, [view, images, trashedImages]);
-
-  /* =========================================================
-   * Upload
-   * ========================================================= */
+     Upload
+     ========================================================= */
 
   const handleFileChange = (e) => {
     const files = e.target.files;
+
     if (!files || files.length === 0) return;
 
     onAddImages({
@@ -56,257 +39,144 @@ const InmuebleGallery = ({
       inmobiliariaId,
     });
 
-    e.target.value = null;
+    e.target.value = "";
   };
 
   /* =========================================================
-   * Selection
-   * ========================================================= */
-
-  const toggleSelect = (index) => {
-    setSelected((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
-    );
-  };
-
-  const clearSelection = () => setSelected([]);
-
-  const allSelected = useMemo(() => {
-    if (currentImages.length === 0) return false;
-    return selected.length === currentImages.length;
-  }, [selected, currentImages]);
-
-  const toggleSelectAll = () => {
-    if (allSelected) {
-      clearSelection();
-    } else {
-      setSelected(currentImages.map((_, i) => i));
-    }
-  };
-
-  const hasSelection = selected.length > 0;
-
-  /* =========================================================
-   * Drag & Drop (solo galería)
-   * ========================================================= */
+     Drag & Drop
+     ========================================================= */
 
   const handleDragEnd = (result) => {
-    if (view !== "gallery") return;
     if (!result.destination) return;
 
-    const from = result.source.index;
-    const to = result.destination.index;
+    const fromIndex = result.source.index;
+    const toIndex = result.destination.index;
 
-    if (from === to) return;
+    if (fromIndex === toIndex) return;
 
-    onReorderImages(from, to);
+    if (typeof onReorderImages !== "function") return;
+
+    onReorderImages(fromIndex, toIndex);
   };
 
   /* =========================================================
-   * Batch actions
-   * ========================================================= */
+     Delete
+     ========================================================= */
 
-  const handleTrash = () => {
-    onTrashImagesBatch({
-      indexes: selected,
-      inmuebleId,
-      inmobiliariaId,
-    });
-    clearSelection();
-  };
+  const handleRemoveImage = (image) => {
+    if (typeof onRemoveImage !== "function") return;
 
-  const handleDelete = () => {
-    if (
-      !window.confirm("¿Eliminar definitivamente las imágenes seleccionadas?")
-    )
-      return;
+    const ok = window.confirm("¿Eliminar esta imagen del inmueble?");
 
-    onDeleteImagesBatch({
-      indexes: selected,
-      inmuebleId,
-      inmobiliariaId,
-    });
-    clearSelection();
-  };
+    if (!ok) return;
 
-  const handleRestore = () => {
-    onRestoreImagesBatch({
-      indexes: selected,
-      inmuebleId,
-      inmobiliariaId,
-    });
-    clearSelection();
+    onRemoveImage(image);
   };
 
   /* =========================================================
-   * Render
-   * ========================================================= */
+     Render
+     ========================================================= */
 
   return (
     <section className="inmueble-gallery">
-      <header className="gallery-header d-flex justify-content-between align-items-center mb-3">
+      <header className="d-flex justify-content-between align-items-center mb-3">
         <div>
-          <h3 className="mb-1">Galería de imágenes</h3>
+          <h3 className="h5 mb-1">Galería de imágenes</h3>
           <p className="text-muted mb-0">
-            Arrastrá para ordenar · Máx. 15 imágenes
+            Arrastrá para ordenar · La primera imagen será la portada
           </p>
         </div>
 
-        <div className="btn-group">
-          <button
-            className={`btn btn-sm ${
-              view === "gallery" ? "btn-primary" : "btn-outline-primary"
-            }`}
-            onClick={() => {
-              setView("gallery");
-              clearSelection();
-            }}
-          >
-            Galería
-          </button>
-
-          <button
-            className={`btn btn-sm ${
-              view === "trash" ? "btn-danger" : "btn-outline-danger"
-            }`}
-            onClick={() => {
-              setView("trash");
-              clearSelection();
-            }}
-          >
-            Papelera
-          </button>
-        </div>
+        <label
+          className={`btn btn-sm ${canManageImages ? "btn-secondary" : "btn-outline-secondary disabled"
+            } mb-0`}
+        >
+          {loading ? "Procesando..." : "Agregar imágenes"}
+          <input
+            type="file"
+            accept="image/*"
+            multiple
+            hidden
+            disabled={!canManageImages || loading}
+            onChange={handleFileChange}
+          />
+        </label>
       </header>
 
-      {/* ================= Actions ================= */}
-
-      {view === "gallery" && (
-        <div className="d-flex justify-content-between align-items-center mb-2">
-          <label className="btn btn-secondary btn-sm mb-0">
-            {loading ? "Subiendo..." : "Agregar imágenes"}
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              hidden
-              disabled={loading}
-              onChange={handleFileChange}
-            />
-          </label>
-
-          {currentImages.length > 0 && (
-            <div className="form-check">
-              <input
-                className="form-check-input"
-                type="checkbox"
-                id="selectAllImages"
-                checked={allSelected}
-                onChange={toggleSelectAll}
-              />
-              <label className="form-check-label" htmlFor="selectAllImages">
-                Seleccionar todas
-              </label>
-            </div>
-          )}
-        </div>
-      )}
-
-      {hasSelection && (
-        <div className="alert alert-light d-flex gap-2 align-items-center">
-          <strong>{selected.length}</strong> seleccionadas
-          {view === "gallery" && (
-            <button className="btn btn-warning btn-sm" onClick={handleTrash}>
-              Enviar a papelera
-            </button>
-          )}
-          {view === "trash" && (
-            <>
-              <button
-                className="btn btn-success btn-sm"
-                onClick={handleRestore}
-              >
-                Restaurar
-              </button>
-
-              <button className="btn btn-danger btn-sm" onClick={handleDelete}>
-                Eliminar definitivo
-              </button>
-            </>
-          )}
-          <button
-            className="btn btn-outline-secondary btn-sm ms-auto"
-            onClick={clearSelection}
-          >
-            Cancelar
-          </button>
+      {!canManageImages && (
+        <div className="alert alert-info">
+          Guardá primero el inmueble para poder cargar imágenes.
         </div>
       )}
 
       {error && <div className="alert alert-danger">{error}</div>}
 
-      {currentImages.length === 0 && (
-        <p className="text-muted mt-3">
-          {view === "gallery"
-            ? "Todavía no hay imágenes cargadas"
-            : "La papelera está vacía"}
-        </p>
-      )}
-
-      {/* ================= Grid ================= */}
-
-      {currentImages.length > 0 && (
+      {sortedImages.length === 0 ? (
+        <p className="text-muted mt-3">Todavía no hay imágenes cargadas.</p>
+      ) : (
         <DragDropContext onDragEnd={handleDragEnd}>
-          <Droppable droppableId="gallery" direction="horizontal">
+          <Droppable droppableId="inmueble-gallery" direction="horizontal">
             {(provided) => (
               <div
-                className="gallery-grid d-flex flex-wrap gap-2"
+                className="d-flex flex-wrap gap-3"
                 ref={provided.innerRef}
                 {...provided.droppableProps}
               >
-                {currentImages.map((img, index) => {
+                {sortedImages.map((img, index) => {
                   const draggableId =
-                    img.id || img.storagePath || `${img.url}-${index}`;
-
-                  const content = (
-                    <div className="gallery-item position-relative">
-                      <input
-                        type="checkbox"
-                        className="form-check-input position-absolute"
-                        style={{ top: 8, left: 8 }}
-                        checked={selected.includes(index)}
-                        onChange={() => toggleSelect(index)}
-                      />
-
-                      <img
-                        src={img.url}
-                        alt={`Imagen ${index + 1}`}
-                        loading="lazy"
-                      />
-
-                      {view === "gallery" && index === 0 && (
-                        <span className="gallery-badge">Portada</span>
-                      )}
-                    </div>
-                  );
-
-                  if (view === "trash") {
-                    return <div key={draggableId}>{content}</div>;
-                  }
+                    img.storagePath || img.url || `image-${index}`;
 
                   return (
                     <Draggable
                       key={draggableId}
                       draggableId={draggableId}
                       index={index}
+                      isDragDisabled={loading}
                     >
-                      {(provided) => (
+                      {(dragProvided) => (
                         <div
-                          ref={provided.innerRef}
-                          {...provided.draggableProps}
-                          {...provided.dragHandleProps}
+                          ref={dragProvided.innerRef}
+                          {...dragProvided.draggableProps}
+                          {...dragProvided.dragHandleProps}
+                          className="position-relative border rounded overflow-hidden"
+                          style={{
+                            width: 180,
+                            minHeight: 130,
+                            ...dragProvided.draggableProps.style,
+                          }}
                         >
-                          {content}
+                          <img
+                            src={img.url}
+                            alt={`Imagen ${index + 1}`}
+                            className="img-fluid"
+                            style={{
+                              width: "100%",
+                              height: 130,
+                              objectFit: "cover",
+                              display: "block",
+                            }}
+                            loading="lazy"
+                          />
+
+                          {index === 0 && (
+                            <span className="badge bg-primary position-absolute top-0 start-0 m-2">
+                              Portada
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-danger position-absolute top-0 end-0 m-2"
+                            disabled={loading}
+                            onClick={() => handleRemoveImage(img)}
+                            title="Eliminar imagen"
+                          >
+                            ✕
+                          </button>
+
+                          <div className="small text-muted px-2 py-1 bg-light">
+                            Orden: {index + 1}
+                          </div>
                         </div>
                       )}
                     </Draggable>
@@ -318,6 +188,13 @@ const InmuebleGallery = ({
             )}
           </Droppable>
         </DragDropContext>
+      )}
+
+      {loading && (
+        <div className="mt-3 text-muted">
+          <span className="spinner-border spinner-border-sm me-2" />
+          Procesando imágenes...
+        </div>
       )}
     </section>
   );

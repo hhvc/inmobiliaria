@@ -1,257 +1,230 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
+import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { ref, deleteObject } from "firebase/storage";
+
+import { db, storage } from "../../firebase/config";
 import { uploadInmuebleImages } from "../helpers/uploadInmuebleImages";
-import { trashInmuebleImage } from "../helpers/trashInmuebleImage";
-import { deleteInmuebleImagesBatch } from "../helpers/deleteInmuebleImagesBatch";
-import { updateInmuebleImagesOrder } from "../helpers/updateInmuebleImagesOrder";
 
 const MAX_IMAGES = 15;
 
-/**
- * Imagen:
- * {
- *   url: string,
- *   storagePath: string,
- *   order: number,
- *   deleted?: boolean,
- *   deletedAt?: Date
- * }
- */
+const normalizeImages = (images = []) => {
+  if (!Array.isArray(images)) return [];
+
+  return [...images]
+    .filter((img) => img?.url)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    .map((img, index) => ({
+      url: img.url,
+      storagePath: img.storagePath || "",
+      order: index,
+      filename: img.filename || "",
+      size: img.size || 0,
+      type: img.type || "",
+      createdAt: img.createdAt || null,
+    }));
+};
+
+const getInmuebleRef = (inmobiliariaId, inmuebleId) => {
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos para actualizar imágenes");
+  }
+
+  return doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
+};
+
+const persistImages = async ({ inmobiliariaId, inmuebleId, images }) => {
+  const inmuebleRef = getInmuebleRef(inmobiliariaId, inmuebleId);
+
+  await updateDoc(inmuebleRef, {
+    images: normalizeImages(images),
+    updatedAt: serverTimestamp(),
+  });
+};
 
 export const useInmuebleImages = (initialImages = []) => {
-  /* =========================================================
-   * State
-   * ========================================================= */
-
-  const [images, setImages] = useState(() =>
-    [...initialImages].sort((a, b) => a.order - b.order)
-  );
-
-  const [selected, setSelected] = useState([]); // storagePath[]
+  const [images, setImages] = useState(() => normalizeImages(initialImages));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  /* =========================================================
-   * Upload
-   * ========================================================= */
+  useEffect(() => {
+    setImages(normalizeImages(initialImages));
+  }, [initialImages]);
+
+  const activeImages = useMemo(() => normalizeImages(images), [images]);
+
+  const coverImage = useMemo(() => activeImages[0] || null, [activeImages]);
+
+  const hasReachedLimit = activeImages.length >= MAX_IMAGES;
 
   const addImages = useCallback(
     async ({ files, inmuebleId, inmobiliariaId }) => {
-      if (!files?.length) return;
+      const filesArray = Array.from(files || []);
 
-      const activeImages = images.filter((img) => !img.deleted);
+      if (filesArray.length === 0) return;
 
-      if (activeImages.length + files.length > MAX_IMAGES) {
+      if (!inmuebleId || !inmobiliariaId) {
+        setError("Faltan IDs para subir imágenes");
+        return;
+      }
+
+      if (activeImages.length + filesArray.length > MAX_IMAGES) {
         setError(`Máximo ${MAX_IMAGES} imágenes permitidas`);
         return;
       }
+
+      let uploadedImages = [];
 
       try {
         setLoading(true);
         setError(null);
 
-        const startOrder = activeImages.length;
-
-        const uploaded = await uploadInmuebleImages({
-          files,
+        uploadedImages = await uploadInmuebleImages({
+          files: filesArray,
           inmuebleId,
           inmobiliariaId,
-          startOrder,
+          startOrder: activeImages.length,
         });
 
-        setImages((prev) =>
-          [...prev, ...uploaded].map((img, i) => ({ ...img, order: i }))
-        );
+        const nextImages = normalizeImages([...activeImages, ...uploadedImages]);
+
+        setImages(nextImages);
+
+        await persistImages({
+          inmobiliariaId,
+          inmuebleId,
+          images: nextImages,
+        });
       } catch (err) {
-        console.error(err);
-        setError("No se pudieron subir las imágenes");
+        console.error("Error subiendo imágenes:", err);
+
+        await Promise.all(
+          uploadedImages.map((img) => {
+            if (!img?.storagePath) return Promise.resolve();
+
+            return deleteObject(ref(storage, img.storagePath)).catch(
+              (deleteErr) => {
+                console.warn(
+                  "No se pudo limpiar imagen subida parcialmente:",
+                  img.storagePath,
+                  deleteErr,
+                );
+              },
+            );
+          }),
+        );
+
+        setError(err.message || "No se pudieron subir las imágenes");
       } finally {
         setLoading(false);
       }
     },
-    [images]
+    [activeImages],
   );
 
-  /* =========================================================
-   * Selección múltiple
-   * ========================================================= */
+  const removeImage = useCallback(
+    async ({ image, inmuebleId, inmobiliariaId }) => {
+      if (!image) return;
 
-  const toggleSelect = useCallback((storagePath) => {
-    setSelected((prev) =>
-      prev.includes(storagePath)
-        ? prev.filter((p) => p !== storagePath)
-        : [...prev, storagePath]
-    );
-  }, []);
-
-  const clearSelection = useCallback(() => {
-    setSelected([]);
-  }, []);
-
-  /* =========================================================
-   * Papelera (soft delete)
-   * ========================================================= */
-
-  const trashImage = useCallback(
-    async ({ index, inmuebleId, inmobiliariaId }) => {
-      const img = images[index];
-      if (!img) return;
-
-      const snapshot = [...images];
-
-      const updated = images.map((i, idx) =>
-        idx === index ? { ...i, deleted: true, deletedAt: new Date() } : i
-      );
-
-      setImages(updated);
-
-      try {
-        await trashInmuebleImage({
-          inmobiliariaId,
-          inmuebleId,
-          images: updated,
-        });
-      } catch (err) {
-        console.error(err);
-        setImages(snapshot);
+      if (!inmuebleId || !inmobiliariaId) {
+        setError("Faltan IDs para eliminar la imagen");
+        return;
       }
-    },
-    [images]
-  );
 
-  const restoreImage = useCallback(
-    async ({ storagePath, inmuebleId, inmobiliariaId }) => {
-      const snapshot = [...images];
-
-      const restored = images
-        .map((img) =>
-          img.storagePath === storagePath
-            ? { ...img, deleted: false, deletedAt: null }
-            : img
-        )
-        .filter((img) => !img.deleted)
-        .map((img, index) => ({ ...img, order: index }))
-        .concat(images.filter((img) => img.deleted));
-
-      setImages(restored);
-
-      try {
-        await updateInmuebleImagesOrder({
-          inmobiliariaId,
-          inmuebleId,
-          images: restored,
-        });
-      } catch (err) {
-        console.error(err);
-        setImages(snapshot);
-      }
-    },
-    [images]
-  );
-
-  /* =========================================================
-   * Batch delete definitivo
-   * ========================================================= */
-
-  const deleteSelectedImages = useCallback(
-    async ({ inmuebleId, inmobiliariaId }) => {
-      const toDelete = images.filter(
-        (img) => img.deleted && selected.includes(img.storagePath)
-      );
-
-      if (!toDelete.length) return;
-
-      const snapshot = [...images];
-
-      const remaining = images
-        .filter((img) => !selected.includes(img.storagePath))
-        .map((img, index) => ({ ...img, order: index }));
-
-      setImages(remaining);
-      clearSelection();
+      const snapshot = activeImages;
 
       try {
         setLoading(true);
-        await deleteInmuebleImagesBatch({
+        setError(null);
+
+        const nextImages = normalizeImages(
+          activeImages.filter((img) => {
+            if (image.storagePath) {
+              return img.storagePath !== image.storagePath;
+            }
+
+            return img.url !== image.url;
+          }),
+        );
+
+        setImages(nextImages);
+
+        if (image.storagePath) {
+          await deleteObject(ref(storage, image.storagePath)).catch((err) => {
+            console.warn(
+              "No se pudo eliminar la imagen de Storage:",
+              image.storagePath,
+              err,
+            );
+          });
+        }
+
+        await persistImages({
           inmobiliariaId,
           inmuebleId,
-          imagesToDelete: toDelete,
+          images: nextImages,
         });
       } catch (err) {
-        console.error(err);
+        console.error("Error eliminando imagen:", err);
         setImages(snapshot);
+        setError(err.message || "No se pudo eliminar la imagen");
       } finally {
         setLoading(false);
       }
     },
-    [images, selected, clearSelection]
+    [activeImages],
   );
-
-  /* =========================================================
-   * Drag & Drop + persistencia
-   * ========================================================= */
 
   const reorderImages = useCallback(
     async ({ fromIndex, toIndex, inmuebleId, inmobiliariaId }) => {
-      const snapshot = [...images];
+      if (fromIndex === toIndex) return;
 
-      const active = images.filter((i) => !i.deleted);
-      const trashed = images.filter((i) => i.deleted);
+      if (!inmuebleId || !inmobiliariaId) {
+        setError("Faltan IDs para reordenar imágenes");
+        return;
+      }
 
-      const reordered = [...active];
-      const [moved] = reordered.splice(fromIndex, 1);
-      reordered.splice(toIndex, 0, moved);
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= activeImages.length ||
+        toIndex >= activeImages.length
+      ) {
+        return;
+      }
 
-      const updated = [
-        ...reordered.map((img, i) => ({ ...img, order: i })),
-        ...trashed,
-      ];
-
-      setImages(updated);
+      const snapshot = activeImages;
 
       try {
-        await updateInmuebleImagesOrder({
+        setLoading(true);
+        setError(null);
+
+        const reordered = [...activeImages];
+        const [moved] = reordered.splice(fromIndex, 1);
+        reordered.splice(toIndex, 0, moved);
+
+        const nextImages = normalizeImages(reordered);
+
+        setImages(nextImages);
+
+        await persistImages({
           inmobiliariaId,
           inmuebleId,
-          images: updated,
+          images: nextImages,
         });
       } catch (err) {
-        console.error(err);
+        console.error("Error reordenando imágenes:", err);
         setImages(snapshot);
+        setError(err.message || "No se pudo reordenar la galería");
+      } finally {
+        setLoading(false);
       }
     },
-    [images]
+    [activeImages],
   );
-
-  /* =========================================================
-   * Helpers derivados
-   * ========================================================= */
-
-  const activeImages = useMemo(
-    () => images.filter((img) => !img.deleted),
-    [images]
-  );
-
-  const trashedImages = useMemo(
-    () => images.filter((img) => img.deleted),
-    [images]
-  );
-
-  const coverImage = useMemo(() => activeImages[0] || null, [activeImages]);
-  const hasReachedLimit = activeImages.length >= MAX_IMAGES;
-
-  /* =========================================================
-   * API
-   * ========================================================= */
 
   return {
-    images,
+    images: activeImages,
     activeImages,
-    trashedImages,
-
-    selected,
-    toggleSelect,
-    clearSelection,
-
     coverImage,
     hasReachedLimit,
 
@@ -259,12 +232,7 @@ export const useInmuebleImages = (initialImages = []) => {
     error,
 
     addImages,
-
-    trashImage,
-    restoreImage,
-
-    deleteSelectedImages,
-
+    removeImage,
     reorderImages,
   };
 };
