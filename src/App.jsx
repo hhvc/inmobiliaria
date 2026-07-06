@@ -45,6 +45,7 @@ import InmuebleEditPage from "./inmueble/pages/InmuebleEditPage";
 import InmueblePublicPage from "./inmueble/pages/InmueblePublicPage";
 import InmueblePortalPage from "./inmueble/pages/InmueblePortalPage";
 import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
+import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
 
 function App() {
   useEffect(() => {
@@ -152,7 +153,14 @@ function App() {
                 </ProtectedRoute>
               }
             />
-
+            <Route
+              path="/admin/inmuebles/consultas"
+              element={
+                <ProtectedRoute role="admin">
+                  <InmuebleConsultasPage />
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/admin/inmuebles/nuevo"
               element={

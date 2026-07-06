@@ -2,6 +2,14 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { getPublicInmuebleBySlug } from "../services/inmueble.service";
+import { createInmuebleConsulta } from "../services/inmuebleConsulta.service";
+
+const INITIAL_CONSULTA = {
+  nombre: "",
+  email: "",
+  telefono: "",
+  mensaje: "",
+};
 
 const formatPrice = (inmueble) => {
   if (!inmueble?.precio) return "Consultar";
@@ -41,6 +49,11 @@ const InmueblePublicPage = () => {
   const [inmueble, setInmueble] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [consultaValues, setConsultaValues] = useState(INITIAL_CONSULTA);
+  const [consultaLoading, setConsultaLoading] = useState(false);
+  const [consultaError, setConsultaError] = useState(null);
+  const [consultaSuccess, setConsultaSuccess] = useState(false);
 
   const sortedImages = useMemo(() => {
     if (!Array.isArray(inmueble?.images)) return [];
@@ -87,6 +100,48 @@ const InmueblePublicPage = () => {
 
     fetchInmueble();
   }, [slug]);
+
+  const handleConsultaChange = (e) => {
+    const { name, value } = e.target;
+
+    setConsultaValues((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    setConsultaError(null);
+    setConsultaSuccess(false);
+  };
+
+  const handleConsultaSubmit = async (e) => {
+    e.preventDefault();
+
+    try {
+      setConsultaLoading(true);
+      setConsultaError(null);
+      setConsultaSuccess(false);
+
+      await createInmuebleConsulta({
+        inmueble,
+        ...consultaValues,
+      });
+
+      setConsultaValues(INITIAL_CONSULTA);
+      setConsultaSuccess(true);
+    } catch (err) {
+      console.error("Error enviando consulta:", err);
+
+      if (err.code === "permission-denied") {
+        setConsultaError(
+          "No se pudo enviar la consulta por permisos de la base de datos.",
+        );
+      } else {
+        setConsultaError(err.message || "No se pudo enviar la consulta");
+      }
+    } finally {
+      setConsultaLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -252,7 +307,7 @@ const InmueblePublicPage = () => {
         </section>
 
         {/* =========================
-            Contacto
+            Contacto / consulta
            ========================= */}
         <aside className="col-lg-4">
           <div className="card sticky-top" style={{ top: 90 }}>
@@ -260,13 +315,82 @@ const InmueblePublicPage = () => {
 
             <div className="card-body">
               <p className="text-muted">
-                ¿Te interesa este inmueble? Comunicate con la inmobiliaria para
-                recibir más información.
+                Dejá tus datos y la inmobiliaria se pondrá en contacto para
+                brindarte más información.
               </p>
 
-              <button type="button" className="btn btn-primary w-100">
-                Consultar
-              </button>
+              {consultaSuccess && (
+                <div className="alert alert-success">
+                  Consulta enviada correctamente. Gracias por contactarte.
+                </div>
+              )}
+
+              {consultaError && (
+                <div className="alert alert-danger">{consultaError}</div>
+              )}
+
+              <form onSubmit={handleConsultaSubmit}>
+                <div className="mb-3">
+                  <label className="form-label">Nombre *</label>
+                  <input
+                    type="text"
+                    name="nombre"
+                    className="form-control"
+                    value={consultaValues.nombre}
+                    onChange={handleConsultaChange}
+                    disabled={consultaLoading}
+                    required
+                  />
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Email</label>
+                  <input
+                    type="email"
+                    name="email"
+                    className="form-control"
+                    value={consultaValues.email}
+                    onChange={handleConsultaChange}
+                    disabled={consultaLoading}
+                  />
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Teléfono / WhatsApp</label>
+                  <input
+                    type="tel"
+                    name="telefono"
+                    className="form-control"
+                    value={consultaValues.telefono}
+                    onChange={handleConsultaChange}
+                    disabled={consultaLoading}
+                  />
+                  <div className="form-text">
+                    Ingresá al menos un email o teléfono.
+                  </div>
+                </div>
+
+                <div className="mb-3">
+                  <label className="form-label">Mensaje</label>
+                  <textarea
+                    name="mensaje"
+                    className="form-control"
+                    rows={4}
+                    value={consultaValues.mensaje}
+                    onChange={handleConsultaChange}
+                    disabled={consultaLoading}
+                    placeholder="Hola, me interesa este inmueble..."
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary w-100"
+                  disabled={consultaLoading}
+                >
+                  {consultaLoading ? "Enviando..." : "Enviar consulta"}
+                </button>
+              </form>
 
               <hr />
 

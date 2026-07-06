@@ -1,16 +1,16 @@
-// src/components/components/Navbar.jsx
+// src/components/Navbar.jsx
 import { useState, useCallback } from "react";
-import { useAuth } from "../context/auth/useAuth";
 import { Link, useNavigate } from "react-router-dom";
+
+import { useAuth } from "../context/auth/useAuth";
 import Login from "./auth/Login";
 import InmobiliariaSelector from "./context/InmobiliariaSelector";
 
 const MENU_ITEMS = [
-  { id: "about", label: "Inicio" },
-  { id: "cabañas", label: "Inmuebles" },
-  { id: "fotos", label: "Fotos" },
-  // { id: "actividades", label: "Actividades" },
-  { id: "contact", label: "Contacto" },
+  { type: "scroll", id: "page-top", label: "Inicio" },
+  { type: "route", path: "/inmuebles", label: "Inmuebles" },
+  { type: "scroll", id: "fotos", label: "Fotos" },
+  { type: "scroll", id: "contact", label: "Contacto" },
 ];
 
 const Navbar = () => {
@@ -20,6 +20,12 @@ const Navbar = () => {
 
   const { user, logout, hasRole } = useAuth();
   const navigate = useNavigate();
+
+  const isAdminUser =
+    hasRole?.("admin") ||
+    hasRole?.("root") ||
+    user?.role === "admin" ||
+    user?.role === "root";
 
   const closeMenus = useCallback(() => {
     setIsMenuOpen(false);
@@ -36,6 +42,7 @@ const Navbar = () => {
 
     const scrollToTarget = () => {
       const target = document.getElementById(targetId);
+
       if (target) {
         target.scrollIntoView({ behavior: "smooth", block: "start" });
       }
@@ -47,6 +54,10 @@ const Navbar = () => {
     } else {
       scrollToTarget();
     }
+  };
+
+  const handleRouteClick = () => {
+    closeMenus();
   };
 
   const handleLogout = async () => {
@@ -80,7 +91,7 @@ const Navbar = () => {
               src="/assets/img/Logo.png"
               alt="LaDocTaProp"
               className="img-fluid"
-              style={{ maxHeight: "50px" }}
+              style={{ maxHeight: 50 }}
             />
           </a>
 
@@ -102,15 +113,25 @@ const Navbar = () => {
             id="navbarNav"
           >
             <ul className="navbar-nav ms-auto">
-              {MENU_ITEMS.map(({ id, label }) => (
-                <li className="nav-item" key={id}>
-                  <a
-                    href={`#${id}`}
-                    className="nav-link"
-                    onClick={(e) => handleScroll(e, id)}
-                  >
-                    {label}
-                  </a>
+              {MENU_ITEMS.map((item) => (
+                <li className="nav-item" key={item.label}>
+                  {item.type === "route" ? (
+                    <Link
+                      to={item.path}
+                      className="nav-link"
+                      onClick={handleRouteClick}
+                    >
+                      {item.label}
+                    </Link>
+                  ) : (
+                    <a
+                      href={`#${item.id}`}
+                      className="nav-link"
+                      onClick={(e) => handleScroll(e, item.id)}
+                    >
+                      {item.label}
+                    </a>
+                  )}
                 </li>
               ))}
 
@@ -142,24 +163,26 @@ const Navbar = () => {
                           src={user.photoURL}
                           alt="Perfil"
                           className="rounded-circle me-2"
-                          style={{ width: "32px", height: "32px" }}
+                          style={{ width: 32, height: 32 }}
                         />
                       ) : (
                         <i className="fa fa-user me-2"></i>
                       )}
+
                       {user.displayName || "Usuario"}
                     </button>
 
                     <ul
-                      className={`dropdown-menu dropdown-menu-end ${
-                        isUserMenuOpen ? "show" : ""
-                      }`}
+                      className={`dropdown-menu dropdown-menu-end ${isUserMenuOpen ? "show" : ""
+                        }`}
                     >
                       <li className="px-3 py-2">
                         <small className="text-muted">Conectado como</small>
                         <br />
+
                         <strong>{user.displayName || user.email}</strong>
                         <br />
+
                         <small className="text-muted">
                           Rol: <strong>{user.role}</strong>
                         </small>
@@ -169,17 +192,78 @@ const Navbar = () => {
                         <hr className="dropdown-divider" />
                       </li>
 
-                      {hasRole("admin") && (
-                        <li>
-                          <Link
-                            className="dropdown-item"
-                            to="/admin/dashboard"
-                            onClick={closeMenus}
-                          >
-                            <i className="fa fa-dashboard me-2"></i>
-                            Dashboard Admin
-                          </Link>
-                        </li>
+                      {isAdminUser && (
+                        <>
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/dashboard"
+                              onClick={closeMenus}
+                            >
+                              <i className="fa fa-dashboard me-2"></i>
+                              Dashboard Admin
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmuebles"
+                              onClick={closeMenus}
+                            >
+                              <i className="fa fa-building me-2"></i>
+                              Panel de Inmuebles
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmuebles/listado"
+                              onClick={closeMenus}
+                            >
+                              <i className="fa fa-list me-2"></i>
+                              Listado de Inmuebles
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmuebles/consultas"
+                              onClick={closeMenus}
+                            >
+                              <i className="fa fa-envelope me-2"></i>
+                              Consultas de Inmuebles
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmuebles/nuevo"
+                              onClick={closeMenus}
+                            >
+                              <i className="fa fa-plus me-2"></i>
+                              Nueva Publicación
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmobiliarias"
+                              onClick={closeMenus}
+                            >
+                              <i className="fa fa-briefcase me-2"></i>
+                              Inmobiliarias
+                            </Link>
+                          </li>
+
+                          <li>
+                            <hr className="dropdown-divider" />
+                          </li>
+                        </>
                       )}
 
                       <li>
@@ -190,6 +274,17 @@ const Navbar = () => {
                         >
                           <i className="fa fa-user-circle me-2"></i>
                           Mi Perfil
+                        </Link>
+                      </li>
+
+                      <li>
+                        <Link
+                          className="dropdown-item"
+                          to="/inmuebles"
+                          onClick={closeMenus}
+                        >
+                          <i className="fa fa-search me-2"></i>
+                          Ver Portal Público
                         </Link>
                       </li>
 
@@ -242,6 +337,7 @@ const Navbar = () => {
             <div className="modal-content">
               <div className="modal-header">
                 <h5 className="modal-title">Iniciar Sesión</h5>
+
                 <button
                   type="button"
                   className="btn-close"
@@ -249,6 +345,7 @@ const Navbar = () => {
                   aria-label="Close"
                 />
               </div>
+
               <div className="modal-body">
                 <Login />
               </div>

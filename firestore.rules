@@ -186,7 +186,58 @@ service cloud.firestore {
       allow read: if isPublicInmueble(resource);
       allow create, update, delete: if false;
     }
+/* ============================
+   CONSULTAS DE INMUEBLES
+   ============================ */
 
+match /inmueble_consultas/{consultaId} {
+
+  // Cualquier visitante puede crear una consulta desde la ficha pública.
+  allow create: if
+    request.resource.data.inmuebleId is string
+    && request.resource.data.inmobiliariaId is string
+    && request.resource.data.nombre is string
+    && request.resource.data.nombre.size() >= 2
+    && (
+      (
+        request.resource.data.email is string
+        && request.resource.data.email.size() >= 5
+      )
+      ||
+      (
+        request.resource.data.telefono is string
+        && request.resource.data.telefono.size() >= 6
+      )
+    )
+    && request.resource.data.estado == "nueva"
+    && request.resource.data.leida == false
+    && request.resource.data.archivada == false;
+
+  // Puede leer consultas el root o el admin de la inmobiliaria correspondiente.
+  allow read: if
+    isRoot()
+    || adminHasInmobiliaria(resource.data.inmobiliariaId);
+
+  // El admin puede gestionar solo estado interno de la consulta.
+  allow update: if
+    isSignedIn()
+    && (
+      isRoot()
+      || adminHasInmobiliaria(resource.data.inmobiliariaId)
+    )
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "estado",
+        "leida",
+        "archivada",
+        "updatedAt"
+      ]);
+
+  // Borrado físico solo root. Para admins usamos archivado.
+  allow delete: if isRoot();
+}
     /* ============================
        TESTIMONIALS
        ============================ */
