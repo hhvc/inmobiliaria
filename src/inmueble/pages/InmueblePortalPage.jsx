@@ -284,6 +284,7 @@ const InmueblePortalPage = () => {
     const [filters, setFilters] = useState(() =>
         getFiltersFromSearchParams(searchParams),
     );
+    const [copySuccess, setCopySuccess] = useState(false);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -363,6 +364,7 @@ const InmueblePortalPage = () => {
         setSearchParams(getSearchParamsFromFilters(nextFilters), {
             replace: options.replace ?? true,
         });
+        setCopySuccess(false);
     };
 
     const handleFilterChange = (e) => {
@@ -382,6 +384,29 @@ const InmueblePortalPage = () => {
 
     const handleClearFilters = () => {
         updateFilters(INITIAL_FILTERS);
+    };
+
+    const handleCopySearch = async () => {
+        try {
+            const currentUrl =
+                typeof window !== "undefined" ? window.location.href : "";
+
+            if (!currentUrl) {
+                throw new Error("No se pudo obtener la URL actual");
+            }
+
+            await navigator.clipboard.writeText(currentUrl);
+
+            setCopySuccess(true);
+
+            window.setTimeout(() => {
+                setCopySuccess(false);
+            }, 2500);
+        } catch (err) {
+            console.error("Error copiando búsqueda:", err);
+            setCopySuccess(false);
+            alert("No se pudo copiar el link de búsqueda.");
+        }
     };
 
     return (
@@ -407,15 +432,25 @@ const InmueblePortalPage = () => {
                             {filteredInmuebles.length === 1 ? "" : "s"}
                         </div>
 
-                        {activeFiltersCount > 0 && (
+                        <div className="d-flex flex-wrap gap-2 justify-content-md-end mt-2">
                             <button
                                 type="button"
-                                className="btn btn-link btn-sm p-0"
-                                onClick={handleClearFilters}
+                                className="btn btn-outline-primary btn-sm"
+                                onClick={handleCopySearch}
                             >
-                                Limpiar filtros
+                                {copySuccess ? "Búsqueda copiada" : "Copiar búsqueda"}
                             </button>
-                        )}
+
+                            {activeFiltersCount > 0 && (
+                                <button
+                                    type="button"
+                                    className="btn btn-link btn-sm p-0"
+                                    onClick={handleClearFilters}
+                                >
+                                    Limpiar filtros
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
             </header>
