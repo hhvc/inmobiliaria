@@ -151,6 +151,79 @@ const getFiltersFromSearchParams = (searchParams) => {
     };
 };
 
+const getOptionLabel = (options, value) => {
+    return options.find((option) => option.value === value)?.label || value;
+};
+
+const getActiveFilterBadges = (filters) => {
+    const badges = [];
+
+    if (filters.search) {
+        badges.push({
+            key: "search",
+            label: `Búsqueda: ${filters.search}`,
+        });
+    }
+
+    if (filters.operacion) {
+        badges.push({
+            key: "operacion",
+            label: `Operación: ${getOptionLabel(OPERACIONES, filters.operacion)}`,
+        });
+    }
+
+    if (filters.tipo) {
+        badges.push({
+            key: "tipo",
+            label: `Tipo: ${getOptionLabel(TIPOS, filters.tipo)}`,
+        });
+    }
+
+    if (filters.ciudad) {
+        badges.push({
+            key: "ciudad",
+            label: `Ciudad: ${filters.ciudad}`,
+        });
+    }
+
+    if (filters.barrio) {
+        badges.push({
+            key: "barrio",
+            label: `Barrio: ${filters.barrio}`,
+        });
+    }
+
+    if (filters.dormitoriosMin) {
+        badges.push({
+            key: "dormitoriosMin",
+            label: `Dormitorios: ${filters.dormitoriosMin}+`,
+        });
+    }
+
+    if (filters.precioMin) {
+        badges.push({
+            key: "precioMin",
+            label: `Precio mín.: ${filters.precioMin}`,
+        });
+    }
+
+    if (filters.precioMax) {
+        badges.push({
+            key: "precioMax",
+            label: `Precio máx.: ${filters.precioMax}`,
+        });
+    }
+
+    if (filters.sortBy && filters.sortBy !== INITIAL_FILTERS.sortBy) {
+        badges.push({
+            key: "sortBy",
+            label: `Orden: ${getOptionLabel(SORT_OPTIONS, filters.sortBy)}`,
+        });
+    }
+
+    return badges;
+};
+
 const getSearchParamsFromFilters = (filters) => {
     const params = new URLSearchParams();
 
@@ -328,6 +401,10 @@ const InmueblePortalPage = () => {
         }).length;
     }, [filters]);
 
+    const activeFilterBadges = useMemo(() => {
+        return getActiveFilterBadges(filters);
+    }, [filters]);
+
     useEffect(() => {
         setFilters(getFiltersFromSearchParams(searchParams));
     }, [searchParams]);
@@ -384,6 +461,19 @@ const InmueblePortalPage = () => {
 
     const handleClearFilters = () => {
         updateFilters(INITIAL_FILTERS);
+    };
+
+    const handleRemoveFilter = (key) => {
+        const nextFilters = {
+            ...filters,
+            [key]: INITIAL_FILTERS[key] ?? "",
+        };
+
+        if (key === "ciudad") {
+            nextFilters.barrio = "";
+        }
+
+        updateFilters(nextFilters);
     };
 
     const handleCopySearch = async () => {
@@ -485,6 +575,26 @@ const InmueblePortalPage = () => {
                     </div>
                 </div>
             </header>
+
+            {activeFilterBadges.length > 0 && (
+                <section className="mb-3">
+                    <div className="d-flex flex-wrap gap-2 align-items-center">
+                        <span className="text-muted small">Filtros activos:</span>
+
+                        {activeFilterBadges.map((badge) => (
+                            <button
+                                key={badge.key}
+                                type="button"
+                                className="btn btn-sm btn-outline-secondary rounded-pill"
+                                onClick={() => handleRemoveFilter(badge.key)}
+                                title="Quitar filtro"
+                            >
+                                {badge.label} ×
+                            </button>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             <section className="card mb-4">
                 <div className="card-body">
