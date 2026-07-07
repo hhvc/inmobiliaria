@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-
+import { Link, useSearchParams } from "react-router-dom";
 import { getPublicInmuebles } from "../services/inmueble.service";
 
 const INITIAL_FILTERS = {
@@ -137,6 +136,37 @@ const matchesTextSearch = (inmueble, search) => {
     return normalizeText(searchableText).includes(normalizedSearch);
 };
 
+const getFiltersFromSearchParams = (searchParams) => {
+    return {
+        ...INITIAL_FILTERS,
+        search: searchParams.get("search") || "",
+        operacion: searchParams.get("operacion") || "",
+        tipo: searchParams.get("tipo") || "",
+        ciudad: searchParams.get("ciudad") || "",
+        barrio: searchParams.get("barrio") || "",
+        dormitoriosMin: searchParams.get("dormitoriosMin") || "",
+        precioMin: searchParams.get("precioMin") || "",
+        precioMax: searchParams.get("precioMax") || "",
+        sortBy: searchParams.get("sortBy") || INITIAL_FILTERS.sortBy,
+    };
+};
+
+const getSearchParamsFromFilters = (filters) => {
+    const params = new URLSearchParams();
+
+    Object.entries(filters).forEach(([key, value]) => {
+        if (!value) return;
+
+        if (key === "sortBy" && value === INITIAL_FILTERS.sortBy) {
+            return;
+        }
+
+        params.set(key, value);
+    });
+
+    return params;
+};
+
 const matchesFilters = (inmueble, filters) => {
     if (!matchesTextSearch(inmueble, filters.search)) return false;
 
@@ -249,9 +279,11 @@ const sortInmuebles = (items, sortBy) => {
 };
 
 const InmueblePortalPage = () => {
+    const [searchParams, setSearchParams] = useSearchParams();
     const [inmuebles, setInmuebles] = useState([]);
-    const [filters, setFilters] = useState(INITIAL_FILTERS);
-
+    const [filters, setFilters] = useState(() =>
+        getFiltersFromSearchParams(searchParams),
+    );
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
@@ -284,8 +316,20 @@ const InmueblePortalPage = () => {
     }, [filters, inmuebles]);
 
     const activeFiltersCount = useMemo(() => {
-        return Object.values(filters).filter(Boolean).length;
+        return Object.entries(filters).filter(([key, value]) => {
+            if (!value) return false;
+
+            if (key === "sortBy" && value === INITIAL_FILTERS.sortBy) {
+                return false;
+            }
+
+            return true;
+        }).length;
     }, [filters]);
+
+    useEffect(() => {
+        setFilters(getFiltersFromSearchParams(searchParams));
+    }, [searchParams]);
 
     useEffect(() => {
         const fetchInmuebles = async () => {
@@ -314,25 +358,30 @@ const InmueblePortalPage = () => {
         fetchInmuebles();
     }, []);
 
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-
-        setFilters((prev) => {
-            const nextFilters = {
-                ...prev,
-                [name]: value,
-            };
-
-            if (name === "ciudad") {
-                nextFilters.barrio = "";
-            }
-
-            return nextFilters;
+    const updateFilters = (nextFilters, options = {}) => {
+        setFilters(nextFilters);
+        setSearchParams(getSearchParamsFromFilters(nextFilters), {
+            replace: options.replace ?? true,
         });
     };
 
+    const handleFilterChange = (e) => {
+        const { name, value } = e.target;
+
+        const nextFilters = {
+            ...filters,
+            [name]: value,
+        };
+
+        if (name === "ciudad") {
+            nextFilters.barrio = "";
+        }
+
+        updateFilters(nextFilters);
+    };
+
     const handleClearFilters = () => {
-        setFilters(INITIAL_FILTERS);
+        updateFilters(INITIAL_FILTERS);
     };
 
     return (
