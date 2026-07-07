@@ -409,6 +409,29 @@ const InmueblePortalPage = () => {
         }
     };
 
+    const handleShareSearchByWhatsapp = () => {
+        try {
+            const currentUrl =
+                typeof window !== "undefined" ? window.location.href : "";
+
+            if (!currentUrl) {
+                throw new Error("No se pudo obtener la URL actual");
+            }
+
+            const message = [
+                "Te comparto esta búsqueda de inmuebles en LaDocTaProp:",
+                currentUrl,
+            ].join("\n");
+
+            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+            window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+        } catch (err) {
+            console.error("Error compartiendo búsqueda por WhatsApp:", err);
+            alert("No se pudo abrir WhatsApp para compartir la búsqueda.");
+        }
+    };
+
     return (
         <main className="container py-4">
             <header className="mb-4">
@@ -439,6 +462,14 @@ const InmueblePortalPage = () => {
                                 onClick={handleCopySearch}
                             >
                                 {copySuccess ? "Búsqueda copiada" : "Copiar búsqueda"}
+                            </button>
+
+                            <button
+                                type="button"
+                                className="btn btn-success btn-sm"
+                                onClick={handleShareSearchByWhatsapp}
+                            >
+                                Compartir por WhatsApp
                             </button>
 
                             {activeFiltersCount > 0 && (
