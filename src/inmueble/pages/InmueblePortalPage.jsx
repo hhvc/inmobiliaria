@@ -12,6 +12,7 @@ const INITIAL_FILTERS = {
     dormitoriosMin: "",
     precioMin: "",
     precioMax: "",
+    sortBy: "destacados",
 };
 
 const OPERACIONES = [
@@ -32,6 +33,15 @@ const TIPOS = [
     { value: "deposito", label: "Depósito" },
     { value: "quinta", label: "Quinta" },
     { value: "campo", label: "Campo" },
+];
+
+const SORT_OPTIONS = [
+    { value: "destacados", label: "Destacados primero" },
+    { value: "recientes", label: "Más recientes" },
+    { value: "precio_asc", label: "Precio menor a mayor" },
+    { value: "precio_desc", label: "Precio mayor a menor" },
+    { value: "dormitorios_desc", label: "Más dormitorios" },
+    { value: "superficie_desc", label: "Mayor superficie" },
 ];
 
 const normalizeText = (value = "") => {
@@ -179,6 +189,65 @@ const matchesFilters = (inmueble, filters) => {
     return true;
 };
 
+const getDateValue = (value) => {
+    if (!value) return 0;
+
+    if (typeof value.toDate === "function") {
+        return value.toDate().getTime();
+    }
+
+    const date = new Date(value);
+
+    return Number.isFinite(date.getTime()) ? date.getTime() : 0;
+};
+
+const sortInmuebles = (items, sortBy) => {
+    const sortedItems = [...items];
+
+    sortedItems.sort((a, b) => {
+        if (sortBy === "recientes") {
+            return getDateValue(b.createdAt) - getDateValue(a.createdAt);
+        }
+
+        if (sortBy === "precio_asc") {
+            const priceA = toNumber(a.precio);
+            const priceB = toNumber(b.precio);
+
+            if (priceA === null && priceB === null) return 0;
+            if (priceA === null) return 1;
+            if (priceB === null) return -1;
+
+            return priceA - priceB;
+        }
+
+        if (sortBy === "precio_desc") {
+            const priceA = toNumber(a.precio);
+            const priceB = toNumber(b.precio);
+
+            if (priceA === null && priceB === null) return 0;
+            if (priceA === null) return 1;
+            if (priceB === null) return -1;
+
+            return priceB - priceA;
+        }
+
+        if (sortBy === "dormitorios_desc") {
+            return (toNumber(b.dormitorios) || 0) - (toNumber(a.dormitorios) || 0);
+        }
+
+        if (sortBy === "superficie_desc") {
+            return (
+                (toNumber(b.superficie?.total) || 0) -
+                (toNumber(a.superficie?.total) || 0)
+            );
+        }
+
+        return Number(Boolean(b.destacado)) - Number(Boolean(a.destacado));
+    });
+
+    return sortedItems;
+};
+
 const InmueblePortalPage = () => {
     const [inmuebles, setInmuebles] = useState([]);
     const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -207,7 +276,11 @@ const InmueblePortalPage = () => {
     }, [filters.ciudad, inmuebles]);
 
     const filteredInmuebles = useMemo(() => {
-        return inmuebles.filter((inmueble) => matchesFilters(inmueble, filters));
+        const filteredItems = inmuebles.filter((inmueble) =>
+            matchesFilters(inmueble, filters),
+        );
+
+        return sortInmuebles(filteredItems, filters.sortBy);
     }, [filters, inmuebles]);
 
     const activeFiltersCount = useMemo(() => {
@@ -425,10 +498,26 @@ const InmueblePortalPage = () => {
                             />
                         </div>
 
-                        <div className="col-12 col-lg-6 d-flex align-items-end justify-content-lg-end">
+                        <div className="col-12 col-lg-3">
+                            <label className="form-label">Ordenar por</label>
+                            <select
+                                name="sortBy"
+                                className="form-select"
+                                value={filters.sortBy}
+                                onChange={handleFilterChange}
+                            >
+                                {SORT_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                        {option.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="col-12 col-lg-3 d-flex align-items-end justify-content-lg-end">
                             <button
                                 type="button"
-                                className="btn btn-outline-secondary"
+                                className="btn btn-outline-secondary w-100"
                                 onClick={handleClearFilters}
                                 disabled={activeFiltersCount === 0}
                             >
