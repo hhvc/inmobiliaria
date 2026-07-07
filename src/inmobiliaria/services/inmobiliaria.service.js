@@ -190,6 +190,41 @@ export async function getInmobiliariaById(id) {
 }
 
 /**
+ * 🔍 Obtener datos públicos mínimos de una inmobiliaria por ID
+ *
+ * Usado por fichas públicas de inmuebles para contacto/WhatsApp.
+ */
+export async function getPublicInmobiliariaById(id) {
+  if (!id) return null;
+
+  const ref = doc(db, COLLECTION_NAME, id);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) return null;
+
+  const data = snap.data();
+
+  if (data.activa === false) {
+    return null;
+  }
+
+  return {
+    id: snap.id,
+    nombre: data.nombre || "",
+    slug: data.slug || "",
+    razonSocial: data.razonSocial || "",
+    branding: data.branding || {},
+    configuracion: {
+      contacto: {
+        email: data.configuracion?.contacto?.email || "",
+        telefono: data.configuracion?.contacto?.telefono || "",
+        whatsapp: data.configuracion?.contacto?.whatsapp || "",
+      },
+    },
+  };
+}
+
+/**
  * 🔍 Obtener inmobiliaria por Slug
  */
 export async function getInmobiliariaBySlug(slug) {

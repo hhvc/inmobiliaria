@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import { getPublicInmuebleBySlug } from "../services/inmueble.service";
 import { createInmuebleConsulta } from "../services/inmuebleConsulta.service";
+import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
 
 const INITIAL_CONSULTA = {
   nombre: "",
@@ -43,11 +44,52 @@ const buildAddress = (direccion = {}) => {
     .join(", ");
 };
 
+const getCurrentPageUrl = (slug) => {
+  if (!slug) return "";
+
+  if (typeof window === "undefined") {
+    return `/inmueble/${slug}`;
+  }
+
+  return `${window.location.origin}/inmueble/${slug}`;
+};
+
+const normalizeWhatsappNumber = (value = "") => {
+  return value.toString().replace(/\D/g, "");
+};
+
+const buildWhatsappMessage = (inmueble) => {
+  const pageUrl = getCurrentPageUrl(inmueble?.slug);
+
+  const parts = [
+    "Hola, me interesa este inmueble publicado en LaDocTaProp.",
+    inmueble?.titulo ? `Inmueble: ${inmueble.titulo}` : "",
+    inmueble?.operacion ? `Operación: ${inmueble.operacion}` : "",
+    inmueble?.tipo ? `Tipo: ${inmueble.tipo}` : "",
+    pageUrl ? `Link: ${pageUrl}` : "",
+  ].filter(Boolean);
+
+  return parts.join("\n");
+};
+
+const buildWhatsappUrl = ({ whatsapp, inmueble }) => {
+  const cleanNumber = normalizeWhatsappNumber(whatsapp);
+
+  if (!cleanNumber) return null;
+
+  const message = encodeURIComponent(buildWhatsappMessage(inmueble));
+
+  return `https://wa.me/${cleanNumber}?text=${message}`;
+};
+
 const InmueblePublicPage = () => {
   const { slug } = useParams();
 
   const [inmueble, setInmueble] = useState(null);
+  const [inmobiliaria, setInmobiliaria] = useState(null);
+
   const [loading, setLoading] = useState(true);
+  const [contactLoading, setContactLoading] = useState(false);
   const [error, setError] = useState(null);
 
   const [consultaValues, setConsultaValues] = useState(INITIAL_CONSULTA);
@@ -67,11 +109,21 @@ const InmueblePublicPage = () => {
 
   const address = buildAddress(inmueble?.direccion);
 
+  const contactoInmobiliaria = inmobiliaria?.configuracion?.contacto || {};
+
+  const whatsappUrl = useMemo(() => {
+    return buildWhatsappUrl({
+      whatsapp: contactoInmobiliaria.whatsapp,
+      inmueble,
+    });
+  }, [contactoInmobiliaria.whatsapp, inmueble]);
+
   useEffect(() => {
     const fetchInmueble = async () => {
       try {
         setLoading(true);
         setError(null);
+        setInmobiliaria(null);
 
         if (!slug) {
           throw new Error("No se recibió el identificador del inmueble");
@@ -85,6 +137,25 @@ const InmueblePublicPage = () => {
         }
 
         setInmueble(data);
+
+        if (data.inmobiliariaId) {
+          try {
+            setContactLoading(true);
+
+            const inmobiliariaData = await getPublicInmobiliariaById(
+              data.inmobiliariaId,
+            );
+
+            setInmobiliaria(inmobiliariaData);
+          } catch (contactErr) {
+            console.warn(
+              "No se pudieron cargar los datos públicos de la inmobiliaria:",
+              contactErr,
+            );
+          } finally {
+            setContactLoading(false);
+          }
+        }
       } catch (err) {
         console.error("Error cargando inmueble público:", err);
 
@@ -179,6 +250,12 @@ const InmueblePublicPage = () => {
             <h1 className="h2 mb-2">{inmueble.titulo}</h1>
 
             {address && <p className="text-muted mb-0">{address}</p>}
+
+            {inmobiliaria?.nombre && (
+              <p className="text-muted mt-2 mb-0">
+                Publicado por <strong>{inmobiliaria.nombre}</strong>
+              </p>
+            )}
           </div>
 
           <div className="text-md-end">
@@ -318,6 +395,45 @@ const InmueblePublicPage = () => {
                 Dejá tus datos y la inmobiliaria se pondrá en contacto para
                 brindarte más información.
               </p>
+
+              {contactLoading && (
+                <p className="small text-muted">Cargando contacto...</p>
+              )}
+
+              {whatsappUrl && (
+                <>
+                  <a
+                    href={whatsappUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-success w-100 mb-3"
+                  >
+                    Consultar por WhatsApp
+                  </a>
+
+                  <div className="small text-muted mb-3">
+                    Se abrirá WhatsApp con un mensaje prearmado.
+                  </div>
+                </>
+              )}
+
+              {contactoInmobiliaria.email && (
+                <div className="small text-muted mb-2">
+                  Email:{" "}
+                  <a href={`mailto:${contactoInmobiliaria.email}`}>
+                    {contactoInmobiliaria.email}
+                  </a>
+                </div>
+              )}
+
+              {contactoInmobiliaria.telefono && (
+                <div className="small text-muted mb-3">
+                  Teléfono:{" "}
+                  <a href={`tel:${contactoInmobiliaria.telefono}`}>
+                    {contactoInmobiliaria.telefono}
+                  </a>
+                </div>
+              )}
 
               {consultaSuccess && (
                 <div className="alert alert-success">

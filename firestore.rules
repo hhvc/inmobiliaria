@@ -53,6 +53,11 @@ service cloud.firestore {
         && resource.data.publicarEnPortal == true;
     }
 
+function isPublicInmobiliaria(resource) {
+  return resource != null
+    && resource.data.activa == true;
+}
+
     function isSharedWithUser(resource, inmoId) {
       return isSignedIn()
         && resource.data.sharedWith != null
@@ -111,11 +116,12 @@ service cloud.firestore {
 
     match /inmobiliarias/{inmoId} {
 
-      allow read: if
-        isRoot()
-        || adminHasInmobiliaria(inmoId);
+  allow read: if
+    isRoot()
+    || adminHasInmobiliaria(inmoId)
+    || isPublicInmobiliaria(resource);
 
-      allow write: if isRoot();
+  allow write: if isRoot();
 
       /* ============================
          SUBCOLECCIÓN INMUEBLES
