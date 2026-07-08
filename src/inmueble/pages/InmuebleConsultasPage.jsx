@@ -54,6 +54,29 @@ const buildWhatsappReplyUrl = (consulta) => {
     return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
 };
 
+const buildLeadClipboardText = (consulta) => {
+    const publicUrl = consulta.inmuebleSlug
+        ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
+        : "";
+
+    return [
+        "Consulta de inmueble - LaDocTaProp",
+        "",
+        `Nombre: ${consulta.nombre || "Sin nombre"}`,
+        `Email: ${consulta.email || "Sin email"}`,
+        `Teléfono / WhatsApp: ${consulta.telefono || "Sin teléfono"}`,
+        "",
+        `Inmueble: ${consulta.inmuebleTitulo || "Sin título"}`,
+        `Operación: ${consulta.inmuebleOperacion || "Sin operación"}`,
+        `Tipo: ${consulta.inmuebleTipo || "Sin tipo"}`,
+        publicUrl ? `Link: ${publicUrl}` : "",
+        "",
+        consulta.mensaje ? `Mensaje:\n${consulta.mensaje}` : "Mensaje: Sin mensaje",
+    ]
+        .filter(Boolean)
+        .join("\n");
+};
+
 const CONSULTA_FILTERS = [
     { value: "activas", label: "Todas" },
     { value: "nuevas", label: "Nuevas" },
@@ -255,6 +278,16 @@ const InmuebleConsultasPage = () => {
         }
     };
 
+    const handleCopyLeadData = async (consulta) => {
+        try {
+            await navigator.clipboard.writeText(buildLeadClipboardText(consulta));
+            alert("Datos del lead copiados.");
+        } catch (err) {
+            console.error("Error copiando datos del lead:", err);
+            alert("No se pudieron copiar los datos del lead.");
+        }
+    };
+
     if (loading) {
         return (
             <section className="container py-4">
@@ -444,6 +477,15 @@ const InmuebleConsultasPage = () => {
                                         )}
 
                                         <div className="d-flex flex-wrap gap-2 mt-4">
+                                            <button
+                                                type="button"
+                                                className="btn btn-sm btn-outline-dark"
+                                                disabled={isLoading}
+                                                onClick={() => handleCopyLeadData(consulta)}
+                                            >
+                                                Copiar datos del lead
+                                            </button>
+
                                             {isArchived ? (
                                                 <button
                                                     type="button"
