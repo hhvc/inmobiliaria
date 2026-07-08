@@ -522,6 +522,12 @@ const InmueblePortalPage = () => {
         }
     };
 
+    const saveCurrentSearchUrl = () => {
+        if (typeof window === "undefined") return;
+
+        window.sessionStorage.setItem("lastInmuebleSearchUrl", window.location.href);
+    };
+
     return (
         <main className="container py-4">
             <header className="mb-4">
@@ -860,7 +866,11 @@ const InmueblePortalPage = () => {
                                         )}
 
                                         <div className="mt-auto">
-                                            <Link to={detalleUrl} className="btn btn-primary w-100">
+                                            <Link
+                                                to={detalleUrl}
+                                                className="btn btn-primary w-100"
+                                                onClick={saveCurrentSearchUrl}
+                                            >
                                                 Ver inmueble
                                             </Link>
                                         </div>

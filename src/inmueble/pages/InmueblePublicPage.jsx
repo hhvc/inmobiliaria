@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import { getPublicInmuebleBySlug } from "../services/inmueble.service";
 import { createInmuebleConsulta } from "../services/inmuebleConsulta.service";
@@ -98,6 +98,26 @@ const InmueblePublicPage = () => {
   const [consultaSuccess, setConsultaSuccess] = useState(false);
 
   const [copySuccess, setCopySuccess] = useState(false);
+
+  const lastSearchUrl = useMemo(() => {
+    if (typeof window === "undefined") return "/inmuebles";
+
+    const storedUrl = window.sessionStorage.getItem("lastInmuebleSearchUrl");
+
+    if (!storedUrl) return "/inmuebles";
+
+    try {
+      const url = new URL(storedUrl);
+
+      if (url.origin !== window.location.origin) {
+        return "/inmuebles";
+      }
+
+      return `${url.pathname}${url.search}`;
+    } catch {
+      return storedUrl.startsWith("/") ? storedUrl : "/inmuebles";
+    }
+  }, []);
 
   const sortedImages = useMemo(() => {
     if (!Array.isArray(inmueble?.images)) return [];
@@ -291,6 +311,12 @@ const InmueblePublicPage = () => {
           Header
          ========================= */}
       <header className="mb-4">
+        <div className="mb-3">
+          <Link to={lastSearchUrl} className="btn btn-outline-secondary btn-sm">
+            ← Volver a la búsqueda
+          </Link>
+        </div>
+
         <div className="d-flex flex-wrap justify-content-between gap-3 align-items-start">
           <div>
             <p className="text-uppercase text-muted small mb-1">
