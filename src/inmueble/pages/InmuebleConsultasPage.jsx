@@ -111,6 +111,53 @@ const buildEmailReplyUrl = (consulta) => {
     )}&body=${encodeURIComponent(body)}`;
 };
 
+const escapeCsvValue = (value = "") => {
+    const normalizedValue = value
+        .toString()
+        .replace(/\r?\n|\r/g, " ")
+        .trim();
+
+    return `"${normalizedValue.replace(/"/g, '""')}"`;
+};
+
+const buildConsultasCsv = (consultas) => {
+    const headers = [
+        "Fecha",
+        "Estado",
+        "Nombre",
+        "Email",
+        "Telefono",
+        "Inmueble",
+        "Operacion",
+        "Tipo",
+        "Mensaje",
+        "Link",
+    ];
+
+    const rows = consultas.map((consulta) => {
+        const publicUrl = consulta.inmuebleSlug
+            ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
+            : "";
+
+        return [
+            formatDate(consulta.createdAt),
+            consulta.estado || "",
+            consulta.nombre || "",
+            consulta.email || "",
+            consulta.telefono || "",
+            consulta.inmuebleTitulo || "",
+            consulta.inmuebleOperacion || "",
+            consulta.inmuebleTipo || "",
+            consulta.mensaje || "",
+            publicUrl,
+        ].map(escapeCsvValue);
+    });
+
+    return [headers.map(escapeCsvValue), ...rows]
+        .map((row) => row.join(";"))
+        .join("\n");
+};
+
 const CONSULTA_FILTERS = [
     { value: "activas", label: "Todas" },
     { value: "nuevas", label: "Nuevas" },
@@ -357,6 +404,35 @@ const InmuebleConsultasPage = () => {
         }
     };
 
+    const handleExportCsv = () => {
+        try {
+            if (filteredConsultas.length === 0) {
+                alert("No hay consultas para exportar.");
+                return;
+            }
+
+            const csv = buildConsultasCsv(filteredConsultas);
+            const blob = new Blob([`\uFEFF${csv}`], {
+                type: "text/csv;charset=utf-8;",
+            });
+
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+
+            const date = new Date().toISOString().slice(0, 10);
+            const fileName = `consultas-inmuebles-${consultaFilter}-${date}.csv`;
+
+            link.href = url;
+            link.download = fileName;
+            link.click();
+
+            URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error("Error exportando consultas:", err);
+            alert("No se pudieron exportar las consultas.");
+        }
+    };
+
     if (loading) {
         return (
             <section className="container py-4">
@@ -383,13 +459,24 @@ const InmuebleConsultasPage = () => {
                     </p>
                 </div>
 
-                <button
-                    type="button"
-                    className="btn btn-outline-secondary"
-                    onClick={fetchConsultas}
-                >
-                    Actualizar
-                </button>
+                <div className="d-flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        className="btn btn-outline-success"
+                        onClick={handleExportCsv}
+                        disabled={filteredConsultas.length === 0}
+                    >
+                        Exportar CSV
+                    </button>
+
+                    <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={fetchConsultas}
+                    >
+                        Actualizar
+                    </button>
+                </div>
             </header>
 
             <section className="mb-4">
