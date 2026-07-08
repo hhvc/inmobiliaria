@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 
 import { useAuth } from "../../context/auth/useAuth";
@@ -7,6 +7,7 @@ import {
     markConsultaAsRead,
     markConsultaAsUnread,
     archiveConsulta,
+    restoreConsulta,
 } from "../services/inmuebleConsulta.service";
 
 const formatDate = (timestamp) => {
@@ -24,12 +25,53 @@ const buildPublicUrl = (slug) => {
     return `/inmueble/${slug}`;
 };
 
+const CONSULTA_FILTERS = [
+    { value: "activas", label: "Todas" },
+    { value: "nuevas", label: "Nuevas" },
+    { value: "leidas", label: "Leídas" },
+    { value: "archivadas", label: "Archivadas" },
+];
+
+const isArchivedConsulta = (consulta) => {
+    return consulta.archivada === true || consulta.estado === "archivada";
+};
+
+const getConsultaStats = (consultas) => {
+    return consultas.reduce(
+        (acc, consulta) => {
+            const isArchived = isArchivedConsulta(consulta);
+
+            if (isArchived) {
+                acc.archivadas += 1;
+                return acc;
+            }
+
+            acc.activas += 1;
+
+            if (consulta.leida) {
+                acc.leidas += 1;
+            } else {
+                acc.nuevas += 1;
+            }
+
+            return acc;
+        },
+        {
+            activas: 0,
+            nuevas: 0,
+            leidas: 0,
+            archivadas: 0,
+        },
+    );
+};
+
 const InmuebleConsultasPage = () => {
     const { user, activeInmobiliariaId } = useAuth();
 
     const [consultas, setConsultas] = useState([]);
     const [loading, setLoading] = useState(true);
     const [actionLoadingId, setActionLoadingId] = useState(null);
+    const [consultaFilter, setConsultaFilter] = useState("activas");
     const [error, setError] = useState(null);
 
     const fetchConsultas = useCallback(async () => {
@@ -49,8 +91,8 @@ const InmuebleConsultasPage = () => {
             }
 
             const data = await getConsultasByInmobiliaria(activeInmobiliariaId, {
-                includeArchived: false,
-                pageSize: 50,
+                includeArchived: true,
+                pageSize: 100,
             });
 
             setConsultas(data);
@@ -70,6 +112,34 @@ const InmuebleConsultasPage = () => {
     useEffect(() => {
         fetchConsultas();
     }, [fetchConsultas]);
+
+    const stats = useMemo(() => {
+        return getConsultaStats(consultas);
+    }, [consultas]);
+
+    const filteredConsultas = useMemo(() => {
+        return consultas.filter((consulta) => {
+            const isArchived = isArchivedConsulta(consulta);
+
+            if (consultaFilter === "archivadas") {
+                return isArchived;
+            }
+
+            if (isArchived) {
+                return false;
+            }
+
+            if (consultaFilter === "nuevas") {
+                return !consulta.leida;
+            }
+
+            if (consultaFilter === "leidas") {
+                return consulta.leida;
+            }
+
+            return true;
+        });
+    }, [consultas, consultaFilter]);
 
     const handleMarkAsRead = async (consulta) => {
         try {
@@ -130,6 +200,32 @@ const InmuebleConsultasPage = () => {
         }
     };
 
+    const handleRestore = async (consulta) => {
+        try {
+            setActionLoadingId(consulta.id);
+
+            await restoreConsulta(consulta.id);
+
+            setConsultas((prev) =>
+                prev.map((item) =>
+                    item.id === consulta.id
+                        ? {
+                            ...item,
+                            archivada: false,
+                            estado: "leida",
+                            leida: true,
+                        }
+                        : item,
+                ),
+            );
+        } catch (err) {
+            console.error("Error restaurando consulta:", err);
+            alert(err.message || "No se pudo restaurar la consulta");
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
     if (loading) {
         return (
             <section className="container py-4">
@@ -165,20 +261,51 @@ const InmuebleConsultasPage = () => {
                 </button>
             </header>
 
+            <section className="mb-4">
+                <div className="d-flex flex-wrap gap-2">
+                    {CONSULTA_FILTERS.map((filter) => (
+                        <button
+                            key={filter.value}
+                            type="button"
+                            className={
+                                consultaFilter === filter.value
+                                    ? "btn btn-primary btn-sm"
+                                    : "btn btn-outline-primary btn-sm"
+                            }
+                            onClick={() => setConsultaFilter(filter.value)}
+                        >
+                            {filter.label}{" "}
+                            <span className="badge text-bg-light ms-1">
+                                {stats[filter.value] ?? 0}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+            </section>
+
             {consultas.length === 0 ? (
                 <div className="alert alert-info">
-                    Todavía no hay consultas activas para esta inmobiliaria.
+                    Todavía no hay consultas para esta inmobiliaria.
+                </div>
+            ) : filteredConsultas.length === 0 ? (
+                <div className="alert alert-info">
+                    No hay consultas para el filtro seleccionado.
                 </div>
             ) : (
                 <div className="row g-3">
-                    {consultas.map((consulta) => {
+                    {filteredConsultas.map((consulta) => {
                         const publicUrl = buildPublicUrl(consulta.inmuebleSlug);
                         const isLoading = actionLoadingId === consulta.id;
+                        const isArchived = isArchivedConsulta(consulta);
 
                         return (
                             <article className="col-12" key={consulta.id}>
                                 <div
-                                    className={`card ${consulta.leida ? "border-light" : "border-primary"
+                                    className={`card ${isArchived
+                                        ? "border-secondary"
+                                        : consulta.leida
+                                            ? "border-light"
+                                            : "border-primary"
                                         }`}
                                 >
                                     <div className="card-body">
@@ -191,12 +318,14 @@ const InmuebleConsultasPage = () => {
 
                                                     <span
                                                         className={
-                                                            consulta.leida
-                                                                ? "badge bg-secondary"
-                                                                : "badge bg-primary"
+                                                            isArchived
+                                                                ? "badge bg-dark"
+                                                                : consulta.leida
+                                                                    ? "badge bg-secondary"
+                                                                    : "badge bg-primary"
                                                         }
                                                     >
-                                                        {consulta.leida ? "Leída" : "Nueva"}
+                                                        {isArchived ? "Archivada" : consulta.leida ? "Leída" : "Nueva"}
                                                     </span>
                                                 </div>
 
@@ -272,34 +401,47 @@ const InmuebleConsultasPage = () => {
                                         )}
 
                                         <div className="d-flex flex-wrap gap-2 mt-4">
-                                            {consulta.leida ? (
+                                            {isArchived ? (
                                                 <button
                                                     type="button"
-                                                    className="btn btn-sm btn-outline-secondary"
+                                                    className="btn btn-sm btn-outline-primary"
                                                     disabled={isLoading}
-                                                    onClick={() => handleMarkAsUnread(consulta)}
+                                                    onClick={() => handleRestore(consulta)}
                                                 >
-                                                    Marcar como nueva
+                                                    Restaurar
                                                 </button>
                                             ) : (
-                                                <button
-                                                    type="button"
-                                                    className="btn btn-sm btn-outline-success"
-                                                    disabled={isLoading}
-                                                    onClick={() => handleMarkAsRead(consulta)}
-                                                >
-                                                    Marcar como leída
-                                                </button>
-                                            )}
+                                                <>
+                                                    {consulta.leida ? (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-outline-secondary"
+                                                            disabled={isLoading}
+                                                            onClick={() => handleMarkAsUnread(consulta)}
+                                                        >
+                                                            Marcar como nueva
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            className="btn btn-sm btn-outline-success"
+                                                            disabled={isLoading}
+                                                            onClick={() => handleMarkAsRead(consulta)}
+                                                        >
+                                                            Marcar como leída
+                                                        </button>
+                                                    )}
 
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm btn-outline-danger"
-                                                disabled={isLoading}
-                                                onClick={() => handleArchive(consulta)}
-                                            >
-                                                Archivar
-                                            </button>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm btn-outline-danger"
+                                                        disabled={isLoading}
+                                                        onClick={() => handleArchive(consulta)}
+                                                    >
+                                                        Archivar
+                                                    </button>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
