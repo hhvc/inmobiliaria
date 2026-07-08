@@ -309,6 +309,12 @@ const InmuebleConsultasPage = () => {
         });
     }, [consultas, consultaFilter, searchTerm]);
 
+    const unreadVisibleConsultas = useMemo(() => {
+        return filteredConsultas.filter(
+            (consulta) => !consulta.leida && !isArchivedConsulta(consulta),
+        );
+    }, [filteredConsultas]);
+
     const handleMarkAsRead = async (consulta) => {
         try {
             setActionLoadingId(consulta.id);
@@ -325,6 +331,49 @@ const InmuebleConsultasPage = () => {
         } catch (err) {
             console.error("Error marcando consulta como leída:", err);
             alert(err.message || "No se pudo marcar la consulta como leída");
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    const handleMarkVisibleAsRead = async () => {
+        if (unreadVisibleConsultas.length === 0) {
+            alert("No hay consultas nuevas visibles para marcar como leídas.");
+            return;
+        }
+
+        const total = unreadVisibleConsultas.length;
+
+        if (
+            !window.confirm(
+                `¿Marcar ${total} consulta${total === 1 ? "" : "s"} visible${total === 1 ? "" : "s"
+                } como leída${total === 1 ? "" : "s"}?`,
+            )
+        ) {
+            return;
+        }
+
+        try {
+            setActionLoadingId("bulk-read");
+
+            const ids = unreadVisibleConsultas.map((consulta) => consulta.id);
+
+            await Promise.all(ids.map((id) => markConsultaAsRead(id)));
+
+            setConsultas((prev) =>
+                prev.map((item) =>
+                    ids.includes(item.id)
+                        ? {
+                            ...item,
+                            leida: true,
+                            estado: "leida",
+                        }
+                        : item,
+                ),
+            );
+        } catch (err) {
+            console.error("Error marcando consultas visibles como leídas:", err);
+            alert(err.message || "No se pudieron marcar las consultas como leídas");
         } finally {
             setActionLoadingId(null);
         }
@@ -460,6 +509,23 @@ const InmuebleConsultasPage = () => {
                 </div>
 
                 <div className="d-flex flex-wrap gap-2">
+                    <button
+                        type="button"
+                        className="btn btn-outline-primary"
+                        onClick={handleMarkVisibleAsRead}
+                        disabled={
+                            unreadVisibleConsultas.length === 0 ||
+                            actionLoadingId === "bulk-read"
+                        }
+                    >
+                        {actionLoadingId === "bulk-read"
+                            ? "Marcando..."
+                            : `Marcar visibles como leídas${unreadVisibleConsultas.length > 0
+                                ? ` (${unreadVisibleConsultas.length})`
+                                : ""
+                            }`}
+                    </button>
+
                     <button
                         type="button"
                         className="btn btn-outline-success"
