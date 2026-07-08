@@ -315,6 +315,10 @@ const InmuebleConsultasPage = () => {
         );
     }, [filteredConsultas]);
 
+    const archivableVisibleConsultas = useMemo(() => {
+        return filteredConsultas.filter((consulta) => !isArchivedConsulta(consulta));
+    }, [filteredConsultas]);
+
     const handleMarkAsRead = async (consulta) => {
         try {
             setActionLoadingId(consulta.id);
@@ -412,6 +416,49 @@ const InmuebleConsultasPage = () => {
         } catch (err) {
             console.error("Error archivando consulta:", err);
             alert(err.message || "No se pudo archivar la consulta");
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    const handleArchiveVisible = async () => {
+        if (archivableVisibleConsultas.length === 0) {
+            alert("No hay consultas visibles para archivar.");
+            return;
+        }
+
+        const total = archivableVisibleConsultas.length;
+
+        if (
+            !window.confirm(
+                `¿Archivar ${total} consulta${total === 1 ? "" : "s"} visible${total === 1 ? "" : "s"
+                }?`,
+            )
+        ) {
+            return;
+        }
+
+        try {
+            setActionLoadingId("bulk-archive");
+
+            const ids = archivableVisibleConsultas.map((consulta) => consulta.id);
+
+            await Promise.all(ids.map((id) => archiveConsulta(id)));
+
+            setConsultas((prev) =>
+                prev.map((item) =>
+                    ids.includes(item.id)
+                        ? {
+                            ...item,
+                            archivada: true,
+                            estado: "archivada",
+                        }
+                        : item,
+                ),
+            );
+        } catch (err) {
+            console.error("Error archivando consultas visibles:", err);
+            alert(err.message || "No se pudieron archivar las consultas visibles");
         } finally {
             setActionLoadingId(null);
         }
@@ -522,6 +569,23 @@ const InmuebleConsultasPage = () => {
                             ? "Marcando..."
                             : `Marcar visibles como leídas${unreadVisibleConsultas.length > 0
                                 ? ` (${unreadVisibleConsultas.length})`
+                                : ""
+                            }`}
+                    </button>
+
+                    <button
+                        type="button"
+                        className="btn btn-outline-danger"
+                        onClick={handleArchiveVisible}
+                        disabled={
+                            archivableVisibleConsultas.length === 0 ||
+                            actionLoadingId === "bulk-archive"
+                        }
+                    >
+                        {actionLoadingId === "bulk-archive"
+                            ? "Archivando..."
+                            : `Archivar visibles${archivableVisibleConsultas.length > 0
+                                ? ` (${archivableVisibleConsultas.length})`
                                 : ""
                             }`}
                     </button>
