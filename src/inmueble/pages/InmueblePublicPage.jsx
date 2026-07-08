@@ -97,6 +97,8 @@ const InmueblePublicPage = () => {
   const [consultaError, setConsultaError] = useState(null);
   const [consultaSuccess, setConsultaSuccess] = useState(false);
 
+  const [copySuccess, setCopySuccess] = useState(false);
+
   const sortedImages = useMemo(() => {
     if (!Array.isArray(inmueble?.images)) return [];
 
@@ -214,6 +216,55 @@ const InmueblePublicPage = () => {
     }
   };
 
+  const handleCopyInmuebleLink = async () => {
+    try {
+      const currentUrl = getCurrentPageUrl(inmueble?.slug);
+
+      if (!currentUrl) {
+        throw new Error("No se pudo obtener el link del inmueble");
+      }
+
+      await navigator.clipboard.writeText(currentUrl);
+
+      setCopySuccess(true);
+
+      window.setTimeout(() => {
+        setCopySuccess(false);
+      }, 2500);
+    } catch (err) {
+      console.error("Error copiando link del inmueble:", err);
+      setCopySuccess(false);
+      alert("No se pudo copiar el link del inmueble.");
+    }
+  };
+
+  const handleShareInmuebleByWhatsapp = () => {
+    try {
+      const currentUrl = getCurrentPageUrl(inmueble?.slug);
+
+      if (!currentUrl) {
+        throw new Error("No se pudo obtener el link del inmueble");
+      }
+
+      const message = [
+        "Te comparto este inmueble publicado en LaDocTaProp:",
+        inmueble?.titulo ? `Inmueble: ${inmueble.titulo}` : "",
+        inmueble?.operacion ? `Operación: ${inmueble.operacion}` : "",
+        inmueble?.tipo ? `Tipo: ${inmueble.tipo}` : "",
+        currentUrl,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+
+      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("Error compartiendo inmueble por WhatsApp:", err);
+      alert("No se pudo abrir WhatsApp para compartir el inmueble.");
+    }
+  };
+
   if (loading) {
     return (
       <main className="container py-5">
@@ -266,6 +317,24 @@ const InmueblePublicPage = () => {
                 Expensas: ${formatNumber(inmueble.expensas)}
               </div>
             )}
+
+            <div className="d-flex flex-wrap gap-2 justify-content-md-end mt-3">
+              <button
+                type="button"
+                className="btn btn-outline-primary btn-sm"
+                onClick={handleCopyInmuebleLink}
+              >
+                {copySuccess ? "Link copiado" : "Copiar link"}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-success btn-sm"
+                onClick={handleShareInmuebleByWhatsapp}
+              >
+                Compartir por WhatsApp
+              </button>
+            </div>
           </div>
         </div>
       </header>
