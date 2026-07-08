@@ -77,6 +77,40 @@ const buildLeadClipboardText = (consulta) => {
         .join("\n");
 };
 
+const buildEmailReplyUrl = (consulta) => {
+    if (!consulta.email) return null;
+
+    const publicUrl = consulta.inmuebleSlug
+        ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
+        : "";
+
+    const subject = consulta.inmuebleTitulo
+        ? `Consulta por ${consulta.inmuebleTitulo}`
+        : "Consulta de inmueble";
+
+    const body = [
+        `Hola ${consulta.nombre || ""},`,
+        "",
+        "Te contacto por tu consulta en LaDocTaProp.",
+        "",
+        consulta.inmuebleTitulo
+            ? `Inmueble: ${consulta.inmuebleTitulo}`
+            : "",
+        consulta.inmuebleOperacion || consulta.inmuebleTipo
+            ? `Referencia: ${consulta.inmuebleOperacion || ""} ${consulta.inmuebleTipo || ""}`.trim()
+            : "",
+        publicUrl ? `Link: ${publicUrl}` : "",
+        "",
+        "Quedo atento a tu respuesta.",
+    ]
+        .filter(Boolean)
+        .join("\n");
+
+    return `mailto:${consulta.email}?subject=${encodeURIComponent(
+        subject,
+    )}&body=${encodeURIComponent(body)}`;
+};
+
 const CONSULTA_FILTERS = [
     { value: "activas", label: "Todas" },
     { value: "nuevas", label: "Nuevas" },
@@ -358,6 +392,7 @@ const InmuebleConsultasPage = () => {
                     {filteredConsultas.map((consulta) => {
                         const publicUrl = buildPublicUrl(consulta.inmuebleSlug);
                         const whatsappReplyUrl = buildWhatsappReplyUrl(consulta);
+                        const emailReplyUrl = buildEmailReplyUrl(consulta);
                         const isLoading = actionLoadingId === consulta.id;
                         const isArchived = isArchivedConsulta(consulta);
 
@@ -427,9 +462,20 @@ const InmuebleConsultasPage = () => {
                                             <div className="col-md-4">
                                                 <div className="small text-muted">Email</div>
                                                 {consulta.email ? (
-                                                    <a href={`mailto:${consulta.email}`}>
-                                                        {consulta.email}
-                                                    </a>
+                                                    <div className="d-flex flex-column align-items-start gap-2">
+                                                        <a href={`mailto:${consulta.email}`}>
+                                                            {consulta.email}
+                                                        </a>
+
+                                                        {emailReplyUrl && (
+                                                            <a
+                                                                href={emailReplyUrl}
+                                                                className="btn btn-sm btn-outline-primary"
+                                                            >
+                                                                Responder por email
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <span className="text-muted">Sin email</span>
                                                 )}
