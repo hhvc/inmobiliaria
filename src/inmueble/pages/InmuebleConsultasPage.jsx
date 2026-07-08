@@ -122,6 +122,36 @@ const isArchivedConsulta = (consulta) => {
     return consulta.archivada === true || consulta.estado === "archivada";
 };
 
+const normalizeText = (value = "") => {
+    return value
+        .toString()
+        .trim()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "");
+};
+
+const consultaMatchesSearch = (consulta, searchTerm) => {
+    const normalizedSearch = normalizeText(searchTerm);
+
+    if (!normalizedSearch) return true;
+
+    const searchableText = [
+        consulta.nombre,
+        consulta.email,
+        consulta.telefono,
+        consulta.inmuebleTitulo,
+        consulta.inmuebleOperacion,
+        consulta.inmuebleTipo,
+        consulta.mensaje,
+        consulta.estado,
+    ]
+        .filter(Boolean)
+        .join(" ");
+
+    return normalizeText(searchableText).includes(normalizedSearch);
+};
+
 const getConsultaStats = (consultas) => {
     return consultas.reduce(
         (acc, consulta) => {
@@ -158,6 +188,7 @@ const InmuebleConsultasPage = () => {
     const [loading, setLoading] = useState(true);
     const [actionLoadingId, setActionLoadingId] = useState(null);
     const [consultaFilter, setConsultaFilter] = useState("activas");
+    const [searchTerm, setSearchTerm] = useState("");
     const [error, setError] = useState(null);
 
     const fetchConsultas = useCallback(async () => {
@@ -205,6 +236,10 @@ const InmuebleConsultasPage = () => {
 
     const filteredConsultas = useMemo(() => {
         return consultas.filter((consulta) => {
+            if (!consultaMatchesSearch(consulta, searchTerm)) {
+                return false;
+            }
+
             const isArchived = isArchivedConsulta(consulta);
 
             if (consultaFilter === "archivadas") {
@@ -225,7 +260,7 @@ const InmuebleConsultasPage = () => {
 
             return true;
         });
-    }, [consultas, consultaFilter]);
+    }, [consultas, consultaFilter, searchTerm]);
 
     const handleMarkAsRead = async (consulta) => {
         try {
@@ -358,25 +393,52 @@ const InmuebleConsultasPage = () => {
             </header>
 
             <section className="mb-4">
-                <div className="d-flex flex-wrap gap-2">
-                    {CONSULTA_FILTERS.map((filter) => (
-                        <button
-                            key={filter.value}
-                            type="button"
-                            className={
-                                consultaFilter === filter.value
-                                    ? "btn btn-primary btn-sm"
-                                    : "btn btn-outline-primary btn-sm"
-                            }
-                            onClick={() => setConsultaFilter(filter.value)}
-                        >
-                            {filter.label}{" "}
-                            <span className="badge text-bg-light ms-1">
-                                {stats[filter.value] ?? 0}
-                            </span>
-                        </button>
-                    ))}
+                <div className="row g-3 align-items-end">
+                    <div className="col-12 col-lg-6">
+                        <label className="form-label">Buscar consulta</label>
+                        <input
+                            type="search"
+                            className="form-control"
+                            placeholder="Nombre, email, teléfono, inmueble, mensaje..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="col-12 col-lg-6">
+                        <div className="d-flex flex-wrap gap-2 justify-content-lg-end">
+                            {CONSULTA_FILTERS.map((filter) => (
+                                <button
+                                    key={filter.value}
+                                    type="button"
+                                    className={
+                                        consultaFilter === filter.value
+                                            ? "btn btn-primary btn-sm"
+                                            : "btn btn-outline-primary btn-sm"
+                                    }
+                                    onClick={() => setConsultaFilter(filter.value)}
+                                >
+                                    {filter.label}{" "}
+                                    <span className="badge text-bg-light ms-1">
+                                        {stats[filter.value] ?? 0}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
                 </div>
+
+                {searchTerm && (
+                    <div className="mt-2">
+                        <button
+                            type="button"
+                            className="btn btn-link btn-sm p-0"
+                            onClick={() => setSearchTerm("")}
+                        >
+                            Limpiar búsqueda
+                        </button>
+                    </div>
+                )}
             </section>
 
             {consultas.length === 0 ? (
