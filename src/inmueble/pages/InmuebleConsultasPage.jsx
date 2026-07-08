@@ -25,6 +25,35 @@ const buildPublicUrl = (slug) => {
     return `/inmueble/${slug}`;
 };
 
+const normalizeWhatsappNumber = (value = "") => {
+    return value.toString().replace(/\D/g, "");
+};
+
+const buildWhatsappReplyUrl = (consulta) => {
+    const phone = normalizeWhatsappNumber(consulta.telefono);
+
+    if (!phone) return null;
+
+    const publicUrl = consulta.inmuebleSlug
+        ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
+        : "";
+
+    const message = [
+        `Hola ${consulta.nombre || ""}, te contacto por tu consulta en LaDocTaProp.`,
+        consulta.inmuebleTitulo
+            ? `Inmueble: ${consulta.inmuebleTitulo}`
+            : "",
+        consulta.inmuebleOperacion || consulta.inmuebleTipo
+            ? `Referencia: ${consulta.inmuebleOperacion || ""} ${consulta.inmuebleTipo || ""}`.trim()
+            : "",
+        publicUrl ? `Link: ${publicUrl}` : "",
+    ]
+        .filter(Boolean)
+        .join("\n");
+
+    return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+};
+
 const CONSULTA_FILTERS = [
     { value: "activas", label: "Todas" },
     { value: "nuevas", label: "Nuevas" },
@@ -295,6 +324,7 @@ const InmuebleConsultasPage = () => {
                 <div className="row g-3">
                     {filteredConsultas.map((consulta) => {
                         const publicUrl = buildPublicUrl(consulta.inmuebleSlug);
+                        const whatsappReplyUrl = buildWhatsappReplyUrl(consulta);
                         const isLoading = actionLoadingId === consulta.id;
                         const isArchived = isArchivedConsulta(consulta);
 
@@ -377,9 +407,22 @@ const InmuebleConsultasPage = () => {
                                                     Teléfono / WhatsApp
                                                 </div>
                                                 {consulta.telefono ? (
-                                                    <a href={`tel:${consulta.telefono}`}>
-                                                        {consulta.telefono}
-                                                    </a>
+                                                    <div className="d-flex flex-column align-items-start gap-2">
+                                                        <a href={`tel:${consulta.telefono}`}>
+                                                            {consulta.telefono}
+                                                        </a>
+
+                                                        {whatsappReplyUrl && (
+                                                            <a
+                                                                href={whatsappReplyUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="btn btn-sm btn-success"
+                                                            >
+                                                                Responder por WhatsApp
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                 ) : (
                                                     <span className="text-muted">Sin teléfono</span>
                                                 )}
