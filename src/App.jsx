@@ -39,6 +39,8 @@ import InmobiliariaCreatePage from "./inmobiliaria/pages/InmobiliariaCreatePage"
 import InmobiliariaEditPage from "./inmobiliaria/pages/InmobiliariaEditPage";
 import InmobiliariaPublicPage from "./inmobiliaria/pages/InmobiliariaPublicPage";
 import InmobiliariaDomainsPage from "./inmobiliaria/pages/InmobiliariaDomainsPage";
+import InmobiliariaModuleGuard from "./inmobiliaria/components/InmobiliariaModuleGuard";
+import { DomainAgencyProvider } from "./inmobiliaria/context/DomainAgencyContext";
 
 // Inmuebles
 import InmuebleAdminPage from "./inmueble/pages/InmuebleAdminPage";
@@ -49,7 +51,6 @@ import InmueblePublicPage from "./inmueble/pages/InmueblePublicPage";
 import InmueblePortalPage from "./inmueble/pages/InmueblePortalPage";
 import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
 import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
-import { DomainAgencyProvider } from "./inmobiliaria/context/DomainAgencyContext";
 
 function App() {
   useEffect(() => {
@@ -72,8 +73,8 @@ function App() {
 
             <Routes>
               {/* =========================
-                Rutas públicas generales
-               ========================= */}
+                  Rutas públicas generales
+                 ========================= */}
 
               <Route path="/" element={<PublicHomeRoute />} />
               <Route path="/access-denied" element={<AccessDenied />} />
@@ -82,8 +83,8 @@ function App() {
               <Route path="/reservar" element={<ReservationPage />} />
 
               {/* =========================
-                Portal público inmobiliario
-               ========================= */}
+                  Portal público inmobiliario
+                 ========================= */}
 
               <Route path="/inmuebles" element={<InmueblePortalPage />} />
               <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
@@ -94,8 +95,8 @@ function App() {
               />
 
               {/* =========================
-                Usuario autenticado
-               ========================= */}
+                  Usuario autenticado
+                 ========================= */}
 
               <Route
                 path="/perfil"
@@ -107,44 +108,8 @@ function App() {
               />
 
               {/* =========================
-                Admin - Inmobiliarias
-               ========================= */}
-
-              <Route
-                path="/admin/inmobiliaria"
-                element={
-                  <ProtectedRoute role="admin">
-                    <InmobiliariaListPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/admin/inmobiliaria/dominios"
-                element={
-                  <ProtectedRoute role="admin">
-                    <InmobiliariaDomainsPage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/admin/inmobiliarias/nueva"
-                element={
-                  <ProtectedRoute role="admin">
-                    <InmobiliariaCreatePage />
-                  </ProtectedRoute>
-                }
-              />
-
-              <Route
-                path="/admin/inmobiliarias/:id/editar"
-                element={
-                  <ProtectedRoute role="admin">
-                    <InmobiliariaEditPage />
-                  </ProtectedRoute>
-                }
-              />
+                  Panel de inmobiliaria
+                 ========================= */}
 
               <Route
                 path="/admin/inmobiliaria"
@@ -155,15 +120,61 @@ function App() {
                 }
               />
 
+              <Route
+                path="/admin/inmobiliaria/dominios"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaModuleGuard moduleId="dominios">
+                      <InmobiliariaDomainsPage />
+                    </InmobiliariaModuleGuard>
+                  </ProtectedRoute>
+                }
+              />
+
               {/* =========================
-                Admin - Inmuebles
-               ========================= */}
+                  Admin ROOT - Inmobiliarias
+                 ========================= */}
+
+              <Route
+                path="/admin/inmobiliarias"
+                element={
+                  <ProtectedRoute role="root">
+                    <InmobiliariaListPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/inmobiliarias/nueva"
+                element={
+                  <ProtectedRoute role="root">
+                    <InmobiliariaCreatePage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/inmobiliarias/:id/editar"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaModuleGuard moduleId="branding">
+                      <InmobiliariaEditPage />
+                    </InmobiliariaModuleGuard>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* =========================
+                  Admin - Inmuebles
+                 ========================= */}
 
               <Route
                 path="/admin/inmuebles"
                 element={
                   <ProtectedRoute role="admin">
-                    <InmuebleAdminPage />
+                    <InmobiliariaModuleGuard moduleId="inmuebles">
+                      <InmuebleAdminPage />
+                    </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
               />
@@ -172,23 +183,31 @@ function App() {
                 path="/admin/inmuebles/listado"
                 element={
                   <ProtectedRoute role="admin">
-                    <InmuebleListPage />
+                    <InmobiliariaModuleGuard moduleId="inmuebles">
+                      <InmuebleListPage />
+                    </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/admin/inmuebles/consultas"
                 element={
                   <ProtectedRoute role="admin">
-                    <InmuebleConsultasPage />
+                    <InmobiliariaModuleGuard moduleId="consultas">
+                      <InmuebleConsultasPage />
+                    </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
               />
+
               <Route
                 path="/admin/inmuebles/nuevo"
                 element={
                   <ProtectedRoute role="admin">
-                    <InmuebleCreatePage />
+                    <InmobiliariaModuleGuard moduleId="inmuebles">
+                      <InmuebleCreatePage />
+                    </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
               />
@@ -197,7 +216,9 @@ function App() {
                 path="/admin/inmuebles/:id/editar"
                 element={
                   <ProtectedRoute role="admin">
-                    <InmuebleEditPage />
+                    <InmobiliariaModuleGuard moduleId="inmuebles">
+                      <InmuebleEditPage />
+                    </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
               />
@@ -206,14 +227,16 @@ function App() {
                 path="/admin/inmuebles/:id/preview"
                 element={
                   <ProtectedRoute role="admin">
-                    <InmueblePreviewPage />
+                    <InmobiliariaModuleGuard moduleId="inmuebles">
+                      <InmueblePreviewPage />
+                    </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
               />
 
               {/* =========================
-                Admin - General / legado
-               ========================= */}
+                  Admin ROOT - Usuarios / Suscripciones
+                 ========================= */}
 
               <Route
                 path="/admin/usuarios"
@@ -223,6 +246,10 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+
+              {/* =========================
+                  Admin - General / legado
+                 ========================= */}
 
               <Route
                 path="/admin/dashboard"
@@ -279,8 +306,8 @@ function App() {
               />
 
               {/* =========================
-                Admin - Cabañas / legado
-               ========================= */}
+                  Admin - Cabañas / legado
+                 ========================= */}
 
               <Route
                 path="/admin/listadocabanas"
@@ -310,8 +337,8 @@ function App() {
               />
 
               {/* =========================
-                404
-               ========================= */}
+                  404
+                 ========================= */}
 
               <Route
                 path="*"
