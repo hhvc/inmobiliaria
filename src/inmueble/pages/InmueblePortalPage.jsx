@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+
 import { getPublicInmuebles } from "../services/inmueble.service";
 
 const INITIAL_FILTERS = {
@@ -88,8 +89,6 @@ const getDireccionValue = (inmueble, key) => {
 
 const buildAddress = (inmueble) => {
     return [
-        getDireccionValue(inmueble, "calle"),
-        getDireccionValue(inmueble, "numero"),
         getDireccionValue(inmueble, "barrio"),
         getDireccionValue(inmueble, "ciudad"),
     ]
@@ -113,42 +112,6 @@ const getUniqueOptions = (items, getter) => {
         .filter(Boolean);
 
     return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
-};
-
-const matchesTextSearch = (inmueble, search) => {
-    const normalizedSearch = normalizeText(search);
-
-    if (!normalizedSearch) return true;
-
-    const searchableText = [
-        inmueble.titulo,
-        inmueble.descripcion,
-        inmueble.tipo,
-        inmueble.operacion,
-        getDireccionValue(inmueble, "calle"),
-        getDireccionValue(inmueble, "barrio"),
-        getDireccionValue(inmueble, "ciudad"),
-        getDireccionValue(inmueble, "provincia"),
-    ]
-        .filter(Boolean)
-        .join(" ");
-
-    return normalizeText(searchableText).includes(normalizedSearch);
-};
-
-const getFiltersFromSearchParams = (searchParams) => {
-    return {
-        ...INITIAL_FILTERS,
-        search: searchParams.get("search") || "",
-        operacion: searchParams.get("operacion") || "",
-        tipo: searchParams.get("tipo") || "",
-        ciudad: searchParams.get("ciudad") || "",
-        barrio: searchParams.get("barrio") || "",
-        dormitoriosMin: searchParams.get("dormitoriosMin") || "",
-        precioMin: searchParams.get("precioMin") || "",
-        precioMax: searchParams.get("precioMax") || "",
-        sortBy: searchParams.get("sortBy") || INITIAL_FILTERS.sortBy,
-    };
 };
 
 const getOptionLabel = (options, value) => {
@@ -224,6 +187,21 @@ const getActiveFilterBadges = (filters) => {
     return badges;
 };
 
+const getFiltersFromSearchParams = (searchParams) => {
+    return {
+        ...INITIAL_FILTERS,
+        search: searchParams.get("search") || "",
+        operacion: searchParams.get("operacion") || "",
+        tipo: searchParams.get("tipo") || "",
+        ciudad: searchParams.get("ciudad") || "",
+        barrio: searchParams.get("barrio") || "",
+        dormitoriosMin: searchParams.get("dormitoriosMin") || "",
+        precioMin: searchParams.get("precioMin") || "",
+        precioMax: searchParams.get("precioMax") || "",
+        sortBy: searchParams.get("sortBy") || INITIAL_FILTERS.sortBy,
+    };
+};
+
 const getSearchParamsFromFilters = (filters) => {
     const params = new URLSearchParams();
 
@@ -238,6 +216,27 @@ const getSearchParamsFromFilters = (filters) => {
     });
 
     return params;
+};
+
+const matchesTextSearch = (inmueble, search) => {
+    const normalizedSearch = normalizeText(search);
+
+    if (!normalizedSearch) return true;
+
+    const searchableText = [
+        inmueble.titulo,
+        inmueble.descripcion,
+        inmueble.tipo,
+        inmueble.operacion,
+        getDireccionValue(inmueble, "calle"),
+        getDireccionValue(inmueble, "barrio"),
+        getDireccionValue(inmueble, "ciudad"),
+        getDireccionValue(inmueble, "provincia"),
+    ]
+        .filter(Boolean)
+        .join(" ");
+
+    return normalizeText(searchableText).includes(normalizedSearch);
 };
 
 const matchesFilters = (inmueble, filters) => {
@@ -353,13 +352,19 @@ const sortInmuebles = (items, sortBy) => {
 
 const InmueblePortalPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
+
     const [inmuebles, setInmuebles] = useState([]);
     const [filters, setFilters] = useState(() =>
         getFiltersFromSearchParams(searchParams),
     );
     const [copySuccess, setCopySuccess] = useState(false);
+
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    useEffect(() => {
+        setFilters(getFiltersFromSearchParams(searchParams));
+    }, [searchParams]);
 
     const ciudades = useMemo(() => {
         return getUniqueOptions(inmuebles, (inmueble) =>
@@ -405,9 +410,9 @@ const InmueblePortalPage = () => {
         return getActiveFilterBadges(filters);
     }, [filters]);
 
-    useEffect(() => {
-        setFilters(getFiltersFromSearchParams(searchParams));
-    }, [searchParams]);
+    const destacadosCount = useMemo(() => {
+        return inmuebles.filter((inmueble) => inmueble.destacado).length;
+    }, [inmuebles]);
 
     useEffect(() => {
         const fetchInmuebles = async () => {
@@ -529,29 +534,228 @@ const InmueblePortalPage = () => {
     };
 
     return (
-        <main className="container py-4">
-            <header className="mb-4">
-                <p className="text-uppercase text-muted small mb-1">
-                    Portal inmobiliario
-                </p>
+        <main className="portal-home">
+            <section className="py-5">
+                <div className="container">
+                    <div className="row align-items-end g-4 mb-4">
+                        <div className="col-lg-8">
+                            <div className="portal-eyebrow">Buscador inmobiliario</div>
 
-                <div className="d-flex flex-wrap justify-content-between gap-3 align-items-start">
-                    <div>
-                        <h1 className="h2 mb-2">Inmuebles publicados</h1>
+                            <h1 className="portal-section-title mb-3">
+                                Inmuebles publicados
+                            </h1>
 
-                        <p className="text-muted mb-0">
-                            Buscá propiedades por operación, tipo, ubicación, dormitorios y
-                            precio.
-                        </p>
-                    </div>
-
-                    <div className="text-md-end">
-                        <div className="fw-semibold">
-                            {filteredInmuebles.length} resultado
-                            {filteredInmuebles.length === 1 ? "" : "s"}
+                            <p className="lead text-muted mb-0">
+                                Filtrá propiedades por operación, tipo, ciudad, barrio,
+                                dormitorios y precio. Compartí búsquedas o entrá a la ficha para
+                                consultar directo.
+                            </p>
                         </div>
 
-                        <div className="d-flex flex-wrap gap-2 justify-content-md-end mt-2">
+                        <div className="col-lg-4">
+                            <div className="row g-2">
+                                <div className="col-6">
+                                    <div className="portal-stat">
+                                        <div className="portal-stat-number">{inmuebles.length}</div>
+                                        <div className="small text-muted">Publicadas</div>
+                                    </div>
+                                </div>
+
+                                <div className="col-6">
+                                    <div className="portal-stat">
+                                        <div className="portal-stat-number">
+                                            {destacadosCount}
+                                        </div>
+                                        <div className="small text-muted">Destacadas</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <section className="portal-search-card card mb-4">
+                        <div className="card-body p-3 p-lg-4">
+                            <div className="row g-3">
+                                <div className="col-12 col-xl-4">
+                                    <label className="form-label">Buscar</label>
+                                    <input
+                                        type="search"
+                                        name="search"
+                                        className="form-control form-control-lg"
+                                        placeholder="Ej: Nueva Córdoba, casa, pileta..."
+                                        value={filters.search}
+                                        onChange={handleFilterChange}
+                                    />
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Operación</label>
+                                    <select
+                                        name="operacion"
+                                        className="form-select"
+                                        value={filters.operacion}
+                                        onChange={handleFilterChange}
+                                    >
+                                        <option value="">Todas</option>
+                                        {OPERACIONES.map((operacion) => (
+                                            <option key={operacion.value} value={operacion.value}>
+                                                {operacion.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Tipo</label>
+                                    <select
+                                        name="tipo"
+                                        className="form-select"
+                                        value={filters.tipo}
+                                        onChange={handleFilterChange}
+                                    >
+                                        <option value="">Todos</option>
+                                        {TIPOS.map((tipo) => (
+                                            <option key={tipo.value} value={tipo.value}>
+                                                {tipo.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Ciudad</label>
+                                    <select
+                                        name="ciudad"
+                                        className="form-select"
+                                        value={filters.ciudad}
+                                        onChange={handleFilterChange}
+                                    >
+                                        <option value="">Todas</option>
+                                        {ciudades.map((ciudad) => (
+                                            <option key={ciudad} value={ciudad}>
+                                                {ciudad}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Barrio</label>
+                                    <select
+                                        name="barrio"
+                                        className="form-select"
+                                        value={filters.barrio}
+                                        onChange={handleFilterChange}
+                                        disabled={barrios.length === 0}
+                                    >
+                                        <option value="">Todos</option>
+                                        {barrios.map((barrio) => (
+                                            <option key={barrio} value={barrio}>
+                                                {barrio}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Dormitorios</label>
+                                    <select
+                                        name="dormitoriosMin"
+                                        className="form-select"
+                                        value={filters.dormitoriosMin}
+                                        onChange={handleFilterChange}
+                                    >
+                                        <option value="">Cualquiera</option>
+                                        <option value="1">1+</option>
+                                        <option value="2">2+</option>
+                                        <option value="3">3+</option>
+                                        <option value="4">4+</option>
+                                        <option value="5">5+</option>
+                                    </select>
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Precio mín.</label>
+                                    <input
+                                        type="number"
+                                        name="precioMin"
+                                        className="form-control"
+                                        min="0"
+                                        placeholder="50000"
+                                        value={filters.precioMin}
+                                        onChange={handleFilterChange}
+                                    />
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Precio máx.</label>
+                                    <input
+                                        type="number"
+                                        name="precioMax"
+                                        className="form-control"
+                                        min="0"
+                                        placeholder="150000"
+                                        value={filters.precioMax}
+                                        onChange={handleFilterChange}
+                                    />
+                                </div>
+
+                                <div className="col-12 col-lg-3 col-xl-3">
+                                    <label className="form-label">Ordenar por</label>
+                                    <select
+                                        name="sortBy"
+                                        className="form-select"
+                                        value={filters.sortBy}
+                                        onChange={handleFilterChange}
+                                    >
+                                        {SORT_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.value}>
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="col-12 col-lg-3 col-xl-3 d-grid">
+                                    <label className="form-label d-none d-lg-block">&nbsp;</label>
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline-secondary"
+                                        onClick={handleClearFilters}
+                                        disabled={activeFiltersCount === 0}
+                                    >
+                                        Limpiar filtros
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+                        <div>
+                            <div className="fw-semibold">
+                                {filteredInmuebles.length} resultado
+                                {filteredInmuebles.length === 1 ? "" : "s"}
+                            </div>
+
+                            {activeFilterBadges.length > 0 && (
+                                <div className="d-flex flex-wrap gap-2 mt-2">
+                                    {activeFilterBadges.map((badge) => (
+                                        <button
+                                            key={badge.key}
+                                            type="button"
+                                            className="btn btn-sm btn-light border rounded-pill"
+                                            onClick={() => handleRemoveFilter(badge.key)}
+                                            title="Quitar filtro"
+                                        >
+                                            {badge.label} ×
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="d-flex flex-wrap gap-2">
                             <button
                                 type="button"
                                 className="btn btn-outline-primary btn-sm"
@@ -567,320 +771,140 @@ const InmueblePortalPage = () => {
                             >
                                 Compartir por WhatsApp
                             </button>
-
-                            {activeFiltersCount > 0 && (
-                                <button
-                                    type="button"
-                                    className="btn btn-link btn-sm p-0"
-                                    onClick={handleClearFilters}
-                                >
-                                    Limpiar filtros
-                                </button>
-                            )}
                         </div>
                     </div>
-                </div>
-            </header>
 
-            {activeFilterBadges.length > 0 && (
-                <section className="mb-3">
-                    <div className="d-flex flex-wrap gap-2 align-items-center">
-                        <span className="text-muted small">Filtros activos:</span>
-
-                        {activeFilterBadges.map((badge) => (
-                            <button
-                                key={badge.key}
-                                type="button"
-                                className="btn btn-sm btn-outline-secondary rounded-pill"
-                                onClick={() => handleRemoveFilter(badge.key)}
-                                title="Quitar filtro"
-                            >
-                                {badge.label} ×
-                            </button>
-                        ))}
-                    </div>
-                </section>
-            )}
-
-            <section className="card mb-4">
-                <div className="card-body">
-                    <div className="row g-3">
-                        <div className="col-12 col-lg-4">
-                            <label className="form-label">Buscar</label>
-                            <input
-                                type="search"
-                                name="search"
-                                className="form-control"
-                                placeholder="Ej: Nueva Córdoba, casa, pileta..."
-                                value={filters.search}
-                                onChange={handleFilterChange}
-                            />
+                    {loading && (
+                        <div className="alert alert-light border">
+                            Cargando inmuebles publicados...
                         </div>
+                    )}
 
-                        <div className="col-6 col-lg-2">
-                            <label className="form-label">Operación</label>
-                            <select
-                                name="operacion"
-                                className="form-select"
-                                value={filters.operacion}
-                                onChange={handleFilterChange}
-                            >
-                                <option value="">Todas</option>
-                                {OPERACIONES.map((operacion) => (
-                                    <option key={operacion.value} value={operacion.value}>
-                                        {operacion.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                    {error && <div className="alert alert-warning">{error}</div>}
 
-                        <div className="col-6 col-lg-2">
-                            <label className="form-label">Tipo</label>
-                            <select
-                                name="tipo"
-                                className="form-select"
-                                value={filters.tipo}
-                                onChange={handleFilterChange}
-                            >
-                                <option value="">Todos</option>
-                                {TIPOS.map((tipo) => (
-                                    <option key={tipo.value} value={tipo.value}>
-                                        {tipo.label}
-                                    </option>
-                                ))}
-                            </select>
+                    {!loading && !error && filteredInmuebles.length === 0 && (
+                        <div className="alert alert-info">
+                            No encontramos inmuebles con esos filtros. Probá ampliando la
+                            búsqueda.
                         </div>
+                    )}
 
-                        <div className="col-6 col-lg-2">
-                            <label className="form-label">Ciudad</label>
-                            <select
-                                name="ciudad"
-                                className="form-select"
-                                value={filters.ciudad}
-                                onChange={handleFilterChange}
-                            >
-                                <option value="">Todas</option>
-                                {ciudades.map((ciudad) => (
-                                    <option key={ciudad} value={ciudad}>
-                                        {ciudad}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                    {!loading && !error && filteredInmuebles.length > 0 && (
+                        <section className="row g-4">
+                            {filteredInmuebles.map((inmueble) => {
+                                const coverImage = getCoverImage(inmueble);
+                                const address = buildAddress(inmueble);
+                                const detalleUrl = `/inmueble/${inmueble.slug || inmueble.id}`;
 
-                        <div className="col-6 col-lg-2">
-                            <label className="form-label">Barrio</label>
-                            <select
-                                name="barrio"
-                                className="form-select"
-                                value={filters.barrio}
-                                onChange={handleFilterChange}
-                                disabled={barrios.length === 0}
-                            >
-                                <option value="">Todos</option>
-                                {barrios.map((barrio) => (
-                                    <option key={barrio} value={barrio}>
-                                        {barrio}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                                return (
+                                    <article
+                                        className="col-12 col-md-6 col-xl-4"
+                                        key={inmueble.id}
+                                    >
+                                        <div className="card h-100 shadow-sm border-0 overflow-hidden">
+                                            <div className="position-relative">
+                                                {coverImage ? (
+                                                    <img
+                                                        src={coverImage.url}
+                                                        alt={inmueble.titulo}
+                                                        className="card-img-top"
+                                                        style={{
+                                                            height: 250,
+                                                            objectFit: "cover",
+                                                        }}
+                                                        loading="lazy"
+                                                    />
+                                                ) : (
+                                                    <div
+                                                        className="bg-light d-flex align-items-center justify-content-center text-muted"
+                                                        style={{ height: 250 }}
+                                                    >
+                                                        Sin imagen
+                                                    </div>
+                                                )}
 
-                        <div className="col-6 col-lg-2">
-                            <label className="form-label">Dormitorios mín.</label>
-                            <select
-                                name="dormitoriosMin"
-                                className="form-select"
-                                value={filters.dormitoriosMin}
-                                onChange={handleFilterChange}
-                            >
-                                <option value="">Cualquiera</option>
-                                <option value="1">1+</option>
-                                <option value="2">2+</option>
-                                <option value="3">3+</option>
-                                <option value="4">4+</option>
-                                <option value="5">5+</option>
-                            </select>
-                        </div>
+                                                <div className="position-absolute top-0 start-0 p-3 d-flex flex-wrap gap-2">
+                                                    {inmueble.operacion && (
+                                                        <span className="badge text-bg-primary">
+                                                            {inmueble.operacion}
+                                                        </span>
+                                                    )}
 
-                        <div className="col-6 col-lg-2">
-                            <label className="form-label">Precio mínimo</label>
-                            <input
-                                type="number"
-                                name="precioMin"
-                                className="form-control"
-                                min="0"
-                                placeholder="Ej: 50000"
-                                value={filters.precioMin}
-                                onChange={handleFilterChange}
-                            />
-                        </div>
+                                                    {inmueble.tipo && (
+                                                        <span className="badge text-bg-dark">
+                                                            {inmueble.tipo}
+                                                        </span>
+                                                    )}
+                                                </div>
 
-                        <div className="col-6 col-lg-2">
-                            <label className="form-label">Precio máximo</label>
-                            <input
-                                type="number"
-                                name="precioMax"
-                                className="form-control"
-                                min="0"
-                                placeholder="Ej: 150000"
-                                value={filters.precioMax}
-                                onChange={handleFilterChange}
-                            />
-                        </div>
+                                                {inmueble.destacado && (
+                                                    <div className="position-absolute top-0 end-0 p-3">
+                                                        <span className="badge text-bg-warning">
+                                                            Destacado
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
 
-                        <div className="col-12 col-lg-3">
-                            <label className="form-label">Ordenar por</label>
-                            <select
-                                name="sortBy"
-                                className="form-select"
-                                value={filters.sortBy}
-                                onChange={handleFilterChange}
-                            >
-                                {SORT_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
-                        </div>
+                                            <div className="card-body d-flex flex-column p-4">
+                                                <h2 className="h5 mb-2">{inmueble.titulo}</h2>
 
-                        <div className="col-12 col-lg-3 d-flex align-items-end justify-content-lg-end">
-                            <button
-                                type="button"
-                                className="btn btn-outline-secondary w-100"
-                                onClick={handleClearFilters}
-                                disabled={activeFiltersCount === 0}
-                            >
-                                Limpiar búsqueda
-                            </button>
-                        </div>
-                    </div>
+                                                {address && (
+                                                    <p className="text-muted small mb-2">{address}</p>
+                                                )}
+
+                                                <div className="h4 mb-3">{formatPrice(inmueble)}</div>
+
+                                                <div className="row g-2 small text-muted mb-3">
+                                                    {inmueble.dormitorios && (
+                                                        <div className="col-6">
+                                                            {inmueble.dormitorios} dorm.
+                                                        </div>
+                                                    )}
+
+                                                    {inmueble.banos && (
+                                                        <div className="col-6">{inmueble.banos} baños</div>
+                                                    )}
+
+                                                    {inmueble.superficie?.total && (
+                                                        <div className="col-6">
+                                                            {formatNumber(inmueble.superficie.total)} m²
+                                                        </div>
+                                                    )}
+
+                                                    {inmueble.cocheras && (
+                                                        <div className="col-6">
+                                                            {inmueble.cocheras} coch.
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {inmueble.descripcion && (
+                                                    <p className="text-muted small">
+                                                        {inmueble.descripcion.length > 120
+                                                            ? `${inmueble.descripcion.slice(0, 120)}...`
+                                                            : inmueble.descripcion}
+                                                    </p>
+                                                )}
+
+                                                <div className="mt-auto d-grid">
+                                                    <Link
+                                                        to={detalleUrl}
+                                                        className="btn btn-primary"
+                                                        onClick={saveCurrentSearchUrl}
+                                                    >
+                                                        Ver inmueble
+                                                    </Link>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </article>
+                                );
+                            })}
+                        </section>
+                    )}
                 </div>
             </section>
-
-            {loading && (
-                <div className="alert alert-light border">
-                    Cargando inmuebles publicados...
-                </div>
-            )}
-
-            {error && <div className="alert alert-warning">{error}</div>}
-
-            {!loading && !error && filteredInmuebles.length === 0 && (
-                <div className="alert alert-info">
-                    No encontramos inmuebles con esos filtros. Probá ampliando la
-                    búsqueda.
-                </div>
-            )}
-
-            {!loading && !error && filteredInmuebles.length > 0 && (
-                <section className="row g-4">
-                    {filteredInmuebles.map((inmueble) => {
-                        const coverImage = getCoverImage(inmueble);
-                        const address = buildAddress(inmueble);
-                        const detalleUrl = `/inmueble/${inmueble.slug || inmueble.id}`;
-
-                        return (
-                            <article className="col-12 col-md-6 col-xl-4" key={inmueble.id}>
-                                <div className="card h-100 shadow-sm">
-                                    {coverImage ? (
-                                        <img
-                                            src={coverImage.url}
-                                            alt={inmueble.titulo}
-                                            className="card-img-top"
-                                            style={{
-                                                height: 230,
-                                                objectFit: "cover",
-                                            }}
-                                            loading="lazy"
-                                        />
-                                    ) : (
-                                        <div
-                                            className="bg-light d-flex align-items-center justify-content-center text-muted"
-                                            style={{ height: 230 }}
-                                        >
-                                            Sin imagen
-                                        </div>
-                                    )}
-
-                                    <div className="card-body d-flex flex-column">
-                                        <div className="d-flex flex-wrap gap-2 mb-2">
-                                            {inmueble.operacion && (
-                                                <span className="badge text-bg-primary">
-                                                    {inmueble.operacion}
-                                                </span>
-                                            )}
-
-                                            {inmueble.tipo && (
-                                                <span className="badge text-bg-secondary">
-                                                    {inmueble.tipo}
-                                                </span>
-                                            )}
-
-                                            {inmueble.destacado && (
-                                                <span className="badge text-bg-warning">
-                                                    Destacado
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        <h2 className="h5">{inmueble.titulo}</h2>
-
-                                        {address && (
-                                            <p className="text-muted small mb-2">{address}</p>
-                                        )}
-
-                                        <div className="h5 mb-3">{formatPrice(inmueble)}</div>
-
-                                        <div className="row g-2 small text-muted mb-3">
-                                            {inmueble.dormitorios && (
-                                                <div className="col-6">
-                                                    Dormitorios: {inmueble.dormitorios}
-                                                </div>
-                                            )}
-
-                                            {inmueble.banos && (
-                                                <div className="col-6">Baños: {inmueble.banos}</div>
-                                            )}
-
-                                            {inmueble.superficie?.total && (
-                                                <div className="col-6">
-                                                    Sup.: {formatNumber(inmueble.superficie.total)} m²
-                                                </div>
-                                            )}
-
-                                            {inmueble.cocheras && (
-                                                <div className="col-6">
-                                                    Cocheras: {inmueble.cocheras}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {inmueble.descripcion && (
-                                            <p className="text-muted small">
-                                                {inmueble.descripcion.length > 110
-                                                    ? `${inmueble.descripcion.slice(0, 110)}...`
-                                                    : inmueble.descripcion}
-                                            </p>
-                                        )}
-
-                                        <div className="mt-auto">
-                                            <Link
-                                                to={detalleUrl}
-                                                className="btn btn-primary w-100"
-                                                onClick={saveCurrentSearchUrl}
-                                            >
-                                                Ver inmueble
-                                            </Link>
-                                        </div>
-                                    </div>
-                                </div>
-                            </article>
-                        );
-                    })}
-                </section>
-            )}
         </main>
     );
 };
