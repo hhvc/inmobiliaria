@@ -11,16 +11,7 @@ import {
 } from "../inmobiliaria/utils/domainRouting";
 import { useDomainAgency } from "../inmobiliaria/context/useDomainAgency";
 import { getInmobiliariaBySlug } from "../inmobiliaria/services/inmobiliaria.service";
-
-/**
- * Futuro: dominios propios por inmobiliaria.
- *
- * Ejemplo:
- * const CUSTOM_DOMAIN_SLUGS = {
- *   "ladocta.com.ar": "la-docta",
- *   "www.ladocta.com.ar": "la-docta",
- * };
- */
+import { useActiveInmobiliariaModules } from "../inmobiliaria/hooks/useActiveInmobiliariaModules";
 
 const scrollToHash = (hash) => {
   if (!hash) return;
@@ -43,19 +34,22 @@ const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
-
   const [navbarInmobiliaria, setNavbarInmobiliaria] = useState(null);
 
   const { user, logout, hasRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
   const {
     slug: contextDomainSlug,
     inmobiliaria: domainInmobiliaria,
   } = useDomainAgency();
 
+  const { isRoot, isAdmin, hasModule } = useActiveInmobiliariaModules();
+
   const activeAgencySlug =
     getActiveAgencySlug(location.pathname) || contextDomainSlug;
+
   const isAgencyContext = Boolean(activeAgencySlug);
   const agencyBasePath = buildAgencyPath(activeAgencySlug);
 
@@ -97,6 +91,8 @@ const Navbar = () => {
   }, [activeAgencySlug, domainInmobiliaria]);
 
   const isAdminUser =
+    isRoot ||
+    isAdmin ||
     hasRole?.("admin") ||
     hasRole?.("root") ||
     user?.role === "admin" ||
@@ -309,7 +305,10 @@ const Navbar = () => {
                         <br />
 
                         <small className="text-muted">
-                          Rol: <strong>{user.role || "usuario"}</strong>
+                          Rol:{" "}
+                          <strong>
+                            {user.primaryRole || user.role || "usuario"}
+                          </strong>
                         </small>
                       </li>
 
@@ -322,26 +321,6 @@ const Navbar = () => {
                           <li>
                             <Link
                               className="dropdown-item"
-                              to="/admin/dashboard"
-                              onClick={closeMenus}
-                            >
-                              Dashboard Admin
-                            </Link>
-                          </li>
-
-                          <li>
-                            <Link
-                              className="dropdown-item"
-                              to="/admin/inmuebles"
-                              onClick={closeMenus}
-                            >
-                              Panel de Inmuebles
-                            </Link>
-                          </li>
-
-                          <li>
-                            <Link
-                              className="dropdown-item"
                               to="/admin/inmobiliaria"
                               onClick={closeMenus}
                             >
@@ -349,65 +328,123 @@ const Navbar = () => {
                             </Link>
                           </li>
 
-                          <li>
-                            <Link
-                              className="dropdown-item"
-                              to="/admin/inmobiliaria/branding"
-                              onClick={closeMenus}
-                            >
-                              Branding de Inmobiliaria
-                            </Link>
-                          </li>
+                          {hasModule("branding") && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/inmobiliaria/branding"
+                                onClick={closeMenus}
+                              >
+                                Branding de Inmobiliaria
+                              </Link>
+                            </li>
+                          )}
 
-                          <li>
-                            <Link
-                              className="dropdown-item"
-                              to="/admin/inmobiliaria/dominios"
-                              onClick={closeMenus}
-                            >
-                              Dominios de Inmobiliaria
-                            </Link>
-                          </li>
+                          {hasModule("dominios") && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/inmobiliaria/dominios"
+                                onClick={closeMenus}
+                              >
+                                Dominios de Inmobiliaria
+                              </Link>
+                            </li>
+                          )}
 
-                          <li>
-                            <Link
-                              className="dropdown-item"
-                              to="/admin/inmuebles/listado"
-                              onClick={closeMenus}
-                            >
-                              Listado de Inmuebles
-                            </Link>
-                          </li>
+                          {hasModule("inmuebles") && (
+                            <>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/inmuebles"
+                                  onClick={closeMenus}
+                                >
+                                  Panel de Inmuebles
+                                </Link>
+                              </li>
 
-                          <li>
-                            <Link
-                              className="dropdown-item"
-                              to="/admin/inmuebles/consultas"
-                              onClick={closeMenus}
-                            >
-                              Consultas de Inmuebles
-                            </Link>
-                          </li>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/inmuebles/listado"
+                                  onClick={closeMenus}
+                                >
+                                  Listado de Inmuebles
+                                </Link>
+                              </li>
 
-                          <li>
-                            <Link
-                              className="dropdown-item"
-                              to="/admin/inmuebles/nuevo"
-                              onClick={closeMenus}
-                            >
-                              Nueva Publicación
-                            </Link>
-                          </li>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/inmuebles/nuevo"
+                                  onClick={closeMenus}
+                                >
+                                  Nueva Publicación
+                                </Link>
+                              </li>
+                            </>
+                          )}
 
-                          <li>
-                            <Link
-                              className="dropdown-item"
-                              to="/admin/inmobiliarias"
-                              onClick={closeMenus}
-                            >
-                              Inmobiliarias
-                            </Link>
-                          </li>
+                          {hasModule("consultas") && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/inmuebles/consultas"
+                                onClick={closeMenus}
+                              >
+                                Consultas de Inmuebles
+                              </Link>
+                            </li>
+                          )}
+
+                          {isRoot && (
+                            <>
+                              <li>
+                                <hr className="dropdown-divider" />
+                              </li>
+
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/usuarios"
+                                  onClick={closeMenus}
+                                >
+                                  Usuarios y Suscripciones
+                                </Link>
+                              </li>
+
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/inmobiliarias"
+                                  onClick={closeMenus}
+                                >
+                                  Inmobiliarias
+                                </Link>
+                              </li>
+
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/inmobiliarias/nueva"
+                                  onClick={closeMenus}
+                                >
+                                  Nueva Inmobiliaria
+                                </Link>
+                              </li>
+
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/dashboard"
+                                  onClick={closeMenus}
+                                >
+                                  Dashboard Admin
+                                </Link>
+                              </li>
+                            </>
+                          )}
 
                           <li>
                             <hr className="dropdown-divider" />
