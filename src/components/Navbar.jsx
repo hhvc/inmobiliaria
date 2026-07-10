@@ -5,6 +5,10 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/auth/useAuth";
 import Login from "./auth/Login";
 import InmobiliariaSelector from "./context/InmobiliariaSelector";
+import {
+  buildAgencyPath,
+  getActiveAgencySlug,
+} from "../inmobiliaria/utils/domainRouting";
 
 /**
  * Futuro: dominios propios por inmobiliaria.
@@ -15,22 +19,6 @@ import InmobiliariaSelector from "./context/InmobiliariaSelector";
  *   "www.ladocta.com.ar": "la-docta",
  * };
  */
-const CUSTOM_DOMAIN_SLUGS = {};
-
-const getHostname = () => {
-  if (typeof window === "undefined") return "";
-  return window.location.hostname;
-};
-
-const getAgencySlugFromPath = (pathname = "") => {
-  const match = pathname.match(/^\/inmobiliaria\/([^/]+)/);
-  return match?.[1] || null;
-};
-
-const getAgencySlugFromDomain = () => {
-  const hostname = getHostname();
-  return CUSTOM_DOMAIN_SLUGS[hostname] || null;
-};
 
 const scrollToHash = (hash) => {
   if (!hash) return;
@@ -58,15 +46,9 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const agencySlugFromPath = getAgencySlugFromPath(location.pathname);
-  const agencySlugFromDomain = getAgencySlugFromDomain();
-
-  const activeAgencySlug = agencySlugFromPath || agencySlugFromDomain;
+  const activeAgencySlug = getActiveAgencySlug(location.pathname);
   const isAgencyContext = Boolean(activeAgencySlug);
-
-  const agencyBasePath = activeAgencySlug
-    ? `/inmobiliaria/${activeAgencySlug}`
-    : null;
+  const agencyBasePath = buildAgencyPath(activeAgencySlug);
 
   const isAdminUser =
     hasRole?.("admin") ||

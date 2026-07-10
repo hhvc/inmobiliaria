@@ -5,7 +5,7 @@ import { AuthProvider } from "./context/auth/AuthProvider";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 // Páginas públicas generales
-import HomePage from "./pages/HomePage";
+import PublicHomeRoute from "./pages/PublicHomeRoute";
 import ReservationPage from "./pages/ReservationPage";
 import UserProfilePage from "./pages/UserProfilePage";
 
@@ -70,7 +70,7 @@ function App() {
                 Rutas públicas generales
                ========================= */}
 
-            <Route path="/" element={<HomePage />} />
+            <Route path="/" element={<PublicHomeRoute />} />
             <Route path="/access-denied" element={<AccessDenied />} />
             <Route path="/galeria" element={<DynamicGallery />} />
             <Route path="/contacto" element={<Contact />} />
