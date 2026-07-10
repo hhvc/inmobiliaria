@@ -15,17 +15,41 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-    function userRole() {
-      return isSignedIn() ? userDoc().data.role : null;
-    }
+function userHasRole(roleName) {
+  return isSignedIn()
+    && (
+      (
+        userDoc().data.keys().hasAny(["role"])
+        && userDoc().data.role == roleName
+      )
+      ||
+      (
+        userDoc().data.keys().hasAny(["primaryRole"])
+        && userDoc().data.primaryRole == roleName
+      )
+      ||
+      (
+        userDoc().data.keys().hasAny(["roles"])
+        && userDoc().data.roles is list
+        && roleName in userDoc().data.roles
+      )
+    );
+}
 
-    function isRoot() {
-      return userRole() == "root";
-    }
+function userRole() {
+  return isSignedIn()
+    && userDoc().data.keys().hasAny(["role"])
+    ? userDoc().data.role
+    : null;
+}
 
-    function isAdmin() {
-      return userRole() == "admin";
-    }
+function isRoot() {
+  return userHasRole("root");
+}
+
+function isAdmin() {
+  return userHasRole("admin");
+}
 
     function adminHasInmobiliaria(inmoId) {
       return isAdmin()
@@ -96,19 +120,70 @@ function isPublicInmobiliaria(resource) {
        USERS
        ============================ */
 
-    match /users/{userId} {
+match /users/{userId} {
 
-      allow read: if
-        isSignedIn()
-        && request.auth.uid == userId;
+  function existingUserInmobiliarias() {
+    return resource.data.keys().hasAny(["inmobiliarias"])
+      && resource.data.inmobiliarias is list
+      ? resource.data.inmobiliarias
+      : [];
+  }
 
-      allow create: if
-        isSignedIn()
-        && request.auth.uid == userId
-        && !exists(/databases/$(database)/documents/users/$(userId));
+  function requestedUserInmobiliarias() {
+    return request.resource.data.keys().hasAny(["inmobiliarias"])
+      && request.resource.data.inmobiliarias is list
+      ? request.resource.data.inmobiliarias
+      : [];
+  }
 
-      allow update, delete: if isRoot();
-    }
+  function adminCanOnlyChangeOwnInmobiliariaLinks() {
+    return isAdmin()
+      && userDoc().data.keys().hasAny(["inmobiliarias"])
+      && userDoc().data.inmobiliarias is list
+      && request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          "inmobiliarias",
+          "updatedAt"
+        ])
+      && requestedUserInmobiliarias()
+        .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
+      && existingUserInmobiliarias()
+        .hasOnly(requestedUserInmobiliarias() + userDoc().data.inmobiliarias);
+  }
+
+  // Lectura de documento individual.
+  allow get: if
+    isSignedIn()
+    && (
+      request.auth.uid == userId
+      || isRoot()
+      || isAdmin()
+    );
+
+  // Consultas sobre colección users.
+  // Necesario para:
+  // - where("inmobiliarias", "array-contains", inmobiliariaId)
+  // - where("email", "==", email)
+  allow list: if
+    isSignedIn()
+    && (
+      isRoot()
+      || isAdmin()
+    );
+
+  allow create: if
+    isSignedIn()
+    && request.auth.uid == userId
+    && !exists(/databases/$(database)/documents/users/$(userId));
+
+  allow update: if
+    isRoot()
+    || adminCanOnlyChangeOwnInmobiliariaLinks();
+
+  allow delete: if isRoot();
+}
 
     /* ============================
        INMOBILIARIAS
