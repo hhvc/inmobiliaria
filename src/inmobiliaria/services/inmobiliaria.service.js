@@ -6,6 +6,7 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
+  limit,
   query,
   where,
   serverTimestamp,
@@ -13,6 +14,12 @@ import {
 
 import { db, auth } from "../../firebase/config";
 import { setActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
+
+/**
+ * 🔹 Colección principal
+ */
+const COLLECTION_NAME = "inmobiliarias";
+const inmobiliariasRef = collection(db, COLLECTION_NAME);
 
 /**
  * 🔹 helper interno
@@ -35,11 +42,71 @@ const normalizeTimestamp = (value) => {
   return isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const normalizeSlug = (value = "") => {
+  return value.toString().trim().toLowerCase();
+};
+
+const normalizeDomain = (value = "") => {
+  return value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "");
+};
+
+const normalizeDomainList = (domains = []) => {
+  if (!Array.isArray(domains)) return [];
+
+  return Array.from(
+    new Set(
+      domains
+        .map(normalizeDomain)
+        .filter(Boolean),
+    ),
+  );
+};
+
+const mapInmobiliariaData = (docSnap) => {
+  if (!docSnap?.exists?.()) return null;
+
+  const data = docSnap.data();
+
+  return {
+    id: docSnap.id,
+    ...data,
+    nombre: data.nombre || "",
+    slug: data.slug || "",
+    razonSocial: data.razonSocial || "",
+    branding: data.branding || {},
+    configuracion: data.configuracion || {},
+    dominiosPublicos: data.dominiosPublicos || [],
+    createdAt: normalizeTimestamp(data.createdAt),
+    updatedAt: normalizeTimestamp(data.updatedAt),
+  };
+};
+
 /**
- * 🔹 Colección principal
+ * 🌐 Obtener inmobiliaria pública por dominio propio
  */
-const COLLECTION_NAME = "inmobiliarias";
-const inmobiliariasRef = collection(db, COLLECTION_NAME);
+export async function getPublicInmobiliariaByDomain(hostname) {
+  const cleanHostname = normalizeDomain(hostname);
+
+  if (!cleanHostname) return null;
+
+  const q = query(
+    collection(db, COLLECTION_NAME),
+    where("activa", "==", true),
+    where("dominiosPublicos", "array-contains", cleanHostname),
+    limit(1),
+  );
+
+  const snap = await getDocs(q);
+
+  if (snap.empty) return null;
+
+  return mapInmobiliariaData(snap.docs[0]);
+}
 
 /**
  * 🏢 Crear inmobiliaria con nueva estructura
@@ -62,8 +129,9 @@ export async function createInmobiliaria(data) {
     nombre: data.nombre.trim(),
     razonSocial: data.razonSocial?.trim() || "",
     cuit: data.cuit.trim(),
-    slug: data.slug.trim(),
+    slug: normalizeSlug(data.slug),
     activa: data.activa !== undefined ? data.activa : true,
+    dominiosPublicos: normalizeDomainList(data.dominiosPublicos),
 
     // Configuración
     configuracion: {
@@ -145,6 +213,14 @@ export async function updateInmobiliaria(id, data) {
     updatedBy: currentUser.uid,
   };
 
+  if (data.slug !== undefined) {
+    updateData.slug = normalizeSlug(data.slug);
+  }
+
+  if (data.dominiosPublicos !== undefined) {
+    updateData.dominiosPublicos = normalizeDomainList(data.dominiosPublicos);
+  }
+
   /**
    * 🧠 Merge profundo de configuración
    */
@@ -179,14 +255,7 @@ export async function getInmobiliariaById(id) {
 
   if (!snap.exists()) return null;
 
-  const data = snap.data();
-
-  return {
-    id: snap.id,
-    ...data,
-    createdAt: normalizeTimestamp(data.createdAt),
-    updatedAt: normalizeTimestamp(data.updatedAt),
-  };
+  return mapInmobiliariaData(snap);
 }
 
 /**
@@ -215,35 +284,37 @@ export async function getPublicInmobiliariaById(id) {
     razonSocial: data.razonSocial || "",
     branding: data.branding || {},
     configuracion: {
+      ...data.configuracion,
       contacto: {
         email: data.configuracion?.contacto?.email || "",
         telefono: data.configuracion?.contacto?.telefono || "",
         whatsapp: data.configuracion?.contacto?.whatsapp || "",
       },
     },
+    dominiosPublicos: data.dominiosPublicos || [],
   };
 }
 
 /**
- * 🔍 Obtener inmobiliaria por Slug
+ * 🔍 Obtener inmobiliaria pública por Slug
  */
 export async function getInmobiliariaBySlug(slug) {
-  if (!slug) throw new Error("Slug requerido");
+  const cleanSlug = normalizeSlug(slug);
 
-  const q = query(inmobiliariasRef, where("slug", "==", slug.trim()));
+  if (!cleanSlug) throw new Error("Slug requerido");
+
+  const q = query(
+    inmobiliariasRef,
+    where("activa", "==", true),
+    where("slug", "==", cleanSlug),
+    limit(1),
+  );
+
   const snapshot = await getDocs(q);
 
   if (snapshot.empty) return null;
 
-  const docSnap = snapshot.docs[0];
-  const data = docSnap.data();
-
-  return {
-    id: docSnap.id,
-    ...data,
-    createdAt: normalizeTimestamp(data.createdAt),
-    updatedAt: normalizeTimestamp(data.updatedAt),
-  };
+  return mapInmobiliariaData(snapshot.docs[0]);
 }
 
 /**
@@ -257,15 +328,7 @@ export async function getAllInmobiliarias() {
 
   const snapshot = await getDocs(inmobiliariasRef);
 
-  return snapshot.docs.map((docSnap) => {
-    const data = docSnap.data();
-    return {
-      id: docSnap.id,
-      ...data,
-      createdAt: normalizeTimestamp(data.createdAt),
-      updatedAt: normalizeTimestamp(data.updatedAt),
-    };
-  });
+  return snapshot.docs.map((docSnap) => mapInmobiliariaData(docSnap));
 }
 
 /**
@@ -282,15 +345,7 @@ export async function getInmobiliariasByRole(user) {
   if (user.role === "root") {
     const snapshot = await getDocs(inmobiliariasRef);
 
-    return snapshot.docs.map((docSnap) => {
-      const data = docSnap.data();
-      return {
-        id: docSnap.id,
-        ...data,
-        createdAt: normalizeTimestamp(data.createdAt),
-        updatedAt: normalizeTimestamp(data.updatedAt),
-      };
-    });
+    return snapshot.docs.map((docSnap) => mapInmobiliariaData(docSnap));
   }
 
   /* =========================
@@ -307,13 +362,7 @@ export async function getInmobiliariasByRole(user) {
 
         if (!snap.exists()) return null;
 
-        const data = snap.data();
-        return {
-          id: snap.id,
-          ...data,
-          createdAt: normalizeTimestamp(data.createdAt),
-          updatedAt: normalizeTimestamp(data.updatedAt),
-        };
+        return mapInmobiliariaData(snap);
       }),
     );
 
@@ -444,9 +493,6 @@ export async function removeAdminFromInmobiliaria(inmobiliariaId, userId) {
 /**
  * 📉 Baja lógica de inmobiliaria (soft delete)
  */
-/**
- * 📉 Baja lógica de inmobiliaria (soft delete)
- */
 export async function bajaInmobiliaria(id) {
   if (!id) throw new Error("ID de inmobiliaria requerido");
 
@@ -533,7 +579,7 @@ export async function checkSlugExists(slug, excludeId = null) {
     throw new Error("Usuario no autenticado");
   }
 
-  const normalizedSlug = slug.trim().toLowerCase();
+  const normalizedSlug = normalizeSlug(slug);
 
   const q = query(inmobiliariasRef, where("slug", "==", normalizedSlug));
 
@@ -542,7 +588,7 @@ export async function checkSlugExists(slug, excludeId = null) {
   if (snapshot.empty) return false;
 
   if (excludeId) {
-    return snapshot.docs.some((doc) => doc.id !== excludeId);
+    return snapshot.docs.some((docSnap) => docSnap.id !== excludeId);
   }
 
   return true;

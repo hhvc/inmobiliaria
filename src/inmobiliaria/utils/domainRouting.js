@@ -1,16 +1,18 @@
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
+const PORTAL_HOSTS = new Set([
+    "inmobiliaria-bcc63.web.app",
+    "inmobiliaria-bcc63.firebaseapp.com",
+]);
+
 /**
- * Mapa futuro de dominios propios.
+ * Fallback manual.
  *
- * Cuando una inmobiliaria tenga dominio propio, agregamos:
+ * Idealmente, los dominios se resuelven desde Firestore usando:
+ * dominiosPublicos: ["dominio.com.ar", "www.dominio.com.ar"]
  *
- * "cliente.com.ar": "slug-de-la-inmobiliaria",
- * "www.cliente.com.ar": "slug-de-la-inmobiliaria",
- *
- * Importante:
- * - La clave es el dominio.
- * - El valor es el slug público de la inmobiliaria.
+ * Este mapa queda como respaldo por si todavía no se cargó el dominio
+ * en el documento de la inmobiliaria.
  */
 export const CUSTOM_DOMAIN_SLUGS = {
     "ladoctaprop.com.ar": "ladoctaprop",
@@ -23,8 +25,20 @@ export const getHostname = () => {
     return window.location.hostname.toLowerCase();
 };
 
-export const isLocalhost = () => {
-    return LOCAL_HOSTS.has(getHostname());
+export const isLocalhost = (hostname = getHostname()) => {
+    return LOCAL_HOSTS.has(hostname);
+};
+
+export const isPortalHost = (hostname = getHostname()) => {
+    return PORTAL_HOSTS.has(hostname);
+};
+
+export const shouldResolveDomainFromFirestore = (hostname = getHostname()) => {
+    if (!hostname) return false;
+    if (isLocalhost(hostname)) return false;
+    if (isPortalHost(hostname)) return false;
+
+    return true;
 };
 
 export const getAgencySlugFromPath = (pathname = "") => {

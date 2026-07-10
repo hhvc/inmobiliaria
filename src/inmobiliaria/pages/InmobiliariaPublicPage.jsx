@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { getInmobiliariaBySlug } from "../services/inmobiliaria.service";
 import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueble.service";
 import { getAgencySlugFromDomain } from "../utils/domainRouting";
+import { useDomainAgency } from "../context/useDomainAgency";
 
 const INITIAL_FILTERS = {
   search: "",
@@ -133,10 +134,12 @@ const getFeaturedInmuebles = (inmuebles) => {
   return inmuebles.slice(0, 3);
 };
 
-export default function InmobiliariaPublicPage() {
+export default function InmobiliariaPublicPage({ forcedSlug = null }) {
   const { slug: routeSlug } = useParams();
+  const { slug: contextDomainSlug } = useDomainAgency();
+
   const domainSlug = getAgencySlugFromDomain();
-  const slug = routeSlug || domainSlug;
+  const slug = routeSlug || forcedSlug || contextDomainSlug || domainSlug;
 
   const [inmobiliaria, setInmobiliaria] = useState(null);
   const [inmuebles, setInmuebles] = useState([]);

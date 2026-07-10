@@ -46,6 +46,7 @@ import InmueblePublicPage from "./inmueble/pages/InmueblePublicPage";
 import InmueblePortalPage from "./inmueble/pages/InmueblePortalPage";
 import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
 import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
+import { DomainAgencyProvider } from "./inmobiliaria/context/DomainAgencyContext";
 
 function App() {
   useEffect(() => {
@@ -60,254 +61,256 @@ function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <Router>
-        <div className="modern">
-          <Navbar />
+    <DomainAgencyProvider>
+      <AuthProvider>
+        <Router>
+          <div className="modern">
+            <Navbar />
 
-          <Routes>
-            {/* =========================
+            <Routes>
+              {/* =========================
                 Rutas públicas generales
                ========================= */}
 
-            <Route path="/" element={<PublicHomeRoute />} />
-            <Route path="/access-denied" element={<AccessDenied />} />
-            <Route path="/galeria" element={<DynamicGallery />} />
-            <Route path="/contacto" element={<Contact />} />
-            <Route path="/reservar" element={<ReservationPage />} />
+              <Route path="/" element={<PublicHomeRoute />} />
+              <Route path="/access-denied" element={<AccessDenied />} />
+              <Route path="/galeria" element={<DynamicGallery />} />
+              <Route path="/contacto" element={<Contact />} />
+              <Route path="/reservar" element={<ReservationPage />} />
 
-            {/* =========================
+              {/* =========================
                 Portal público inmobiliario
                ========================= */}
 
-            <Route path="/inmuebles" element={<InmueblePortalPage />} />
-            <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
+              <Route path="/inmuebles" element={<InmueblePortalPage />} />
+              <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
 
-            <Route
-              path="/inmobiliaria/:slug"
-              element={<InmobiliariaPublicPage />}
-            />
+              <Route
+                path="/inmobiliaria/:slug"
+                element={<InmobiliariaPublicPage />}
+              />
 
-            {/* =========================
+              {/* =========================
                 Usuario autenticado
                ========================= */}
 
-            <Route
-              path="/perfil"
-              element={
-                <ProtectedRoute>
-                  <UserProfilePage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/perfil"
+                element={
+                  <ProtectedRoute>
+                    <UserProfilePage />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* =========================
+              {/* =========================
                 Admin - Inmobiliarias
                ========================= */}
 
-            <Route
-              path="/admin/inmobiliarias"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmobiliariaListPage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/inmobiliarias"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaListPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/inmobiliarias/nueva"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmobiliariaCreatePage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/inmobiliarias/nueva"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaCreatePage />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/inmobiliarias/:id/editar"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmobiliariaEditPage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/inmobiliarias/:id/editar"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaEditPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* =========================
+              {/* =========================
                 Admin - Inmuebles
                ========================= */}
 
-            <Route
-              path="/admin/inmuebles"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmuebleAdminPage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/inmuebles"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmuebleAdminPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/inmuebles/listado"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmuebleListPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/inmuebles/consultas"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmuebleConsultasPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/inmuebles/nuevo"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmuebleCreatePage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/inmuebles/listado"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmuebleListPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/inmuebles/consultas"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmuebleConsultasPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/inmuebles/nuevo"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmuebleCreatePage />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/inmuebles/:id/editar"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmuebleEditPage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/inmuebles/:id/editar"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmuebleEditPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/inmuebles/:id/preview"
-              element={
-                <ProtectedRoute role="admin">
-                  <InmueblePreviewPage />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/inmuebles/:id/preview"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmueblePreviewPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* =========================
+              {/* =========================
                 Admin - General / legado
                ========================= */}
 
-            <Route
-              path="/admin/dashboard"
-              element={
-                <ProtectedRoute role="admin">
-                  <AdminDashboard />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/dashboard"
+                element={
+                  <ProtectedRoute role="admin">
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/gallery"
-              element={
-                <ProtectedRoute role="admin">
-                  <GalleryManager />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/gallery"
+                element={
+                  <ProtectedRoute role="admin">
+                    <GalleryManager />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/contactos"
-              element={
-                <ProtectedRoute role="admin">
-                  <ContactMessages />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/contactos"
+                element={
+                  <ProtectedRoute role="admin">
+                    <ContactMessages />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/calendar"
-              element={
-                <ProtectedRoute role="admin">
-                  <Calendar />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/calendar"
+                element={
+                  <ProtectedRoute role="admin">
+                    <Calendar />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/reservas"
-              element={
-                <ProtectedRoute role="admin">
-                  <ReservationManagement />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/reservas"
+                element={
+                  <ProtectedRoute role="admin">
+                    <ReservationManagement />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/testimonios"
-              element={
-                <ProtectedRoute role="admin">
-                  <TestimonialManagement />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/testimonios"
+                element={
+                  <ProtectedRoute role="admin">
+                    <TestimonialManagement />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* =========================
+              {/* =========================
                 Admin - Cabañas / legado
                ========================= */}
 
-            <Route
-              path="/admin/listadocabanas"
-              element={
-                <ProtectedRoute role="admin">
-                  <CabanasList />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/listadocabanas"
+                element={
+                  <ProtectedRoute role="admin">
+                    <CabanasList />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/cabanas"
-              element={
-                <ProtectedRoute role="admin">
-                  <AdminCabanas />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/cabanas"
+                element={
+                  <ProtectedRoute role="admin">
+                    <AdminCabanas />
+                  </ProtectedRoute>
+                }
+              />
 
-            <Route
-              path="/admin/cabanasform"
-              element={
-                <ProtectedRoute role="admin">
-                  <CabanaForm />
-                </ProtectedRoute>
-              }
-            />
+              <Route
+                path="/admin/cabanasform"
+                element={
+                  <ProtectedRoute role="admin">
+                    <CabanaForm />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* =========================
+              {/* =========================
                 404
                ========================= */}
 
-            <Route
-              path="*"
-              element={
-                <div className="container mt-4">
-                  <h1>
-                    Error 404 - Estás intentando ingresar a una página
-                    inexistente.
-                  </h1>
-                  <h3>
-                    Por favor, revisa la dirección o ponte en contacto con el
-                    administrador.
-                  </h3>
-                </div>
-              }
-            />
-          </Routes>
+              <Route
+                path="*"
+                element={
+                  <div className="container mt-4">
+                    <h1>
+                      Error 404 - Estás intentando ingresar a una página
+                      inexistente.
+                    </h1>
+                    <h3>
+                      Por favor, revisa la dirección o ponte en contacto con el
+                      administrador.
+                    </h3>
+                  </div>
+                }
+              />
+            </Routes>
 
-          {/* Login oculto que se moverá al modal */}
-          <div id="login-section" style={{ display: "none" }}>
-            <Login />
+            {/* Login oculto que se moverá al modal */}
+            <div id="login-section" style={{ display: "none" }}>
+              <Login />
+            </div>
+
+            <Footer />
+            <WhatsAppButton />
           </div>
-
-          <Footer />
-          <WhatsAppButton />
-        </div>
-      </Router>
-    </AuthProvider>
+        </Router>
+      </AuthProvider>
+    </DomainAgencyProvider>
   );
 }
 

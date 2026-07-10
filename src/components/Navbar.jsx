@@ -9,6 +9,7 @@ import {
   buildAgencyPath,
   getActiveAgencySlug,
 } from "../inmobiliaria/utils/domainRouting";
+import { useDomainAgency } from "../inmobiliaria/context/useDomainAgency";
 
 /**
  * Futuro: dominios propios por inmobiliaria.
@@ -45,8 +46,10 @@ const Navbar = () => {
   const { user, logout, hasRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { slug: contextDomainSlug } = useDomainAgency();
 
-  const activeAgencySlug = getActiveAgencySlug(location.pathname);
+  const activeAgencySlug =
+    getActiveAgencySlug(location.pathname) || contextDomainSlug;
   const isAgencyContext = Boolean(activeAgencySlug);
   const agencyBasePath = buildAgencyPath(activeAgencySlug);
 
