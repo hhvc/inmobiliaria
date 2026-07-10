@@ -611,7 +611,7 @@ const InmueblePublicPage = () => {
 
               {inmueble.inmobiliariaId && (
                 <div className="small text-muted">
-                  Inmobiliaria: {inmueble.inmobiliariaId}
+                  Inmobiliaria: {inmueble.nombre}
                 </div>
               )}
             </div>

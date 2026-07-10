@@ -1,17 +1,53 @@
 // src/components/Navbar.jsx
-import { useState, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useMemo, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/auth/useAuth";
 import Login from "./auth/Login";
 import InmobiliariaSelector from "./context/InmobiliariaSelector";
 
-const MENU_ITEMS = [
-  { type: "scroll", id: "page-top", label: "Inicio" },
-  { type: "route", path: "/inmuebles", label: "Inmuebles" },
-  { type: "scroll", id: "fotos", label: "Fotos" },
-  { type: "scroll", id: "contact", label: "Contacto" },
-];
+/**
+ * Futuro: dominios propios por inmobiliaria.
+ *
+ * Ejemplo:
+ * const CUSTOM_DOMAIN_SLUGS = {
+ *   "ladocta.com.ar": "la-docta",
+ *   "www.ladocta.com.ar": "la-docta",
+ * };
+ */
+const CUSTOM_DOMAIN_SLUGS = {};
+
+const getHostname = () => {
+  if (typeof window === "undefined") return "";
+  return window.location.hostname;
+};
+
+const getAgencySlugFromPath = (pathname = "") => {
+  const match = pathname.match(/^\/inmobiliaria\/([^/]+)/);
+  return match?.[1] || null;
+};
+
+const getAgencySlugFromDomain = () => {
+  const hostname = getHostname();
+  return CUSTOM_DOMAIN_SLUGS[hostname] || null;
+};
+
+const scrollToHash = (hash) => {
+  if (!hash) return;
+
+  const targetId = hash.replace("#", "");
+
+  window.setTimeout(() => {
+    const target = document.getElementById(targetId);
+
+    if (target) {
+      target.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }
+  }, 150);
+};
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -20,6 +56,17 @@ const Navbar = () => {
 
   const { user, logout, hasRole } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const agencySlugFromPath = getAgencySlugFromPath(location.pathname);
+  const agencySlugFromDomain = getAgencySlugFromDomain();
+
+  const activeAgencySlug = agencySlugFromPath || agencySlugFromDomain;
+  const isAgencyContext = Boolean(activeAgencySlug);
+
+  const agencyBasePath = activeAgencySlug
+    ? `/inmobiliaria/${activeAgencySlug}`
+    : null;
 
   const isAdminUser =
     hasRole?.("admin") ||
@@ -27,36 +74,76 @@ const Navbar = () => {
     user?.role === "admin" ||
     user?.role === "root";
 
+  const brandTarget = isAgencyContext && agencyBasePath ? agencyBasePath : "/";
+
+  const publicMenuItems = useMemo(() => {
+    if (isAgencyContext && agencyBasePath) {
+      return [
+        {
+          label: "Inicio",
+          to: agencyBasePath,
+        },
+        {
+          label: "Inmuebles",
+          to: `${agencyBasePath}#inmuebles-publicados`,
+          hash: "#inmuebles-publicados",
+        },
+        {
+          label: "Contacto",
+          to: `${agencyBasePath}#contacto`,
+          hash: "#contacto",
+        },
+      ];
+    }
+
+    return [
+      {
+        label: "Inicio",
+        to: "/",
+      },
+      {
+        label: "Inmuebles",
+        to: "/inmuebles",
+      },
+      {
+        label: "Contacto",
+        to: "/#contact",
+        hash: "#contact",
+      },
+    ];
+  }, [agencyBasePath, isAgencyContext]);
+
   const closeMenus = useCallback(() => {
     setIsMenuOpen(false);
     setIsUserMenuOpen(false);
   }, []);
 
-  const toggleMenu = () => setIsMenuOpen((prev) => !prev);
-  const toggleUserMenu = () => setIsUserMenuOpen((prev) => !prev);
+  const toggleMenu = () => {
+    setIsMenuOpen((prev) => !prev);
+  };
 
-  /** 🧭 Scroll suave con redirección inteligente */
-  const handleScroll = (e, targetId) => {
-    e.preventDefault();
+  const toggleUserMenu = () => {
+    setIsUserMenuOpen((prev) => !prev);
+  };
+
+  const handleNavClick = (item) => {
     closeMenus();
 
-    const scrollToTarget = () => {
-      const target = document.getElementById(targetId);
+    if (!item.hash) return;
 
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
-    };
+    const [path] = item.to.split("#");
+    const currentPath = location.pathname;
 
-    if (window.location.pathname !== "/") {
-      navigate("/");
-      setTimeout(scrollToTarget, 300);
+    if (path === currentPath) {
+      scrollToHash(item.hash);
     } else {
-      scrollToTarget();
+      window.setTimeout(() => {
+        scrollToHash(item.hash);
+      }, 300);
     }
   };
 
-  const handleRouteClick = () => {
+  const handleBrandClick = () => {
     closeMenus();
   };
 
@@ -64,7 +151,7 @@ const Navbar = () => {
     try {
       await logout();
       closeMenus();
-      navigate("/");
+      navigate(isAgencyContext && agencyBasePath ? agencyBasePath : "/");
     } catch (error) {
       console.error("Error al cerrar sesión:", error);
     }
@@ -75,87 +162,79 @@ const Navbar = () => {
     closeMenus();
   };
 
-  const closeLoginModal = () => setShowLoginModal(false);
+  const closeLoginModal = () => {
+    setShowLoginModal(false);
+  };
 
   return (
     <>
-      <nav className="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
+      <nav className="navbar navbar-expand-lg navbar-dark bg-dark fixed-top shadow-sm">
         <div className="container">
-          {/* Logo */}
-          <a
-            className="navbar-brand"
-            href="#page-top"
-            onClick={(e) => handleScroll(e, "page-top")}
+          <Link
+            className="navbar-brand d-flex align-items-center gap-2"
+            to={brandTarget}
+            onClick={handleBrandClick}
           >
             <img
               src="/assets/img/Logo.png"
               alt="LaDocTaProp"
               className="img-fluid"
-              style={{ maxHeight: 50 }}
+              style={{
+                maxHeight: 42,
+              }}
             />
-          </a>
+          </Link>
 
-          {/* Toggler */}
           <button
             className="navbar-toggler"
             type="button"
             onClick={toggleMenu}
-            aria-controls="navbarNav"
+            aria-controls="mainNavbar"
             aria-expanded={isMenuOpen}
-            aria-label="Toggle navigation"
+            aria-label="Abrir menú"
           >
-            <span className="navbar-toggler-icon"></span>
+            <span className="navbar-toggler-icon" />
           </button>
 
-          {/* Menú */}
           <div
             className={`collapse navbar-collapse ${isMenuOpen ? "show" : ""}`}
-            id="navbarNav"
+            id="mainNavbar"
           >
-            <ul className="navbar-nav ms-auto">
-              {MENU_ITEMS.map((item) => (
+            <ul className="navbar-nav ms-auto align-items-lg-center gap-lg-1">
+              {publicMenuItems.map((item) => (
                 <li className="nav-item" key={item.label}>
-                  {item.type === "route" ? (
-                    <Link
-                      to={item.path}
-                      className="nav-link"
-                      onClick={handleRouteClick}
-                    >
-                      {item.label}
-                    </Link>
-                  ) : (
-                    <a
-                      href={`#${item.id}`}
-                      className="nav-link"
-                      onClick={(e) => handleScroll(e, item.id)}
-                    >
-                      {item.label}
-                    </a>
-                  )}
+                  <Link
+                    to={item.to}
+                    className="nav-link"
+                    onClick={() => handleNavClick(item)}
+                  >
+                    {item.label}
+                  </Link>
                 </li>
               ))}
 
-              {/* 🔑 Selector de Inmobiliaria Activa */}
-              {user &&
+              {!isAgencyContext &&
+                user &&
                 Array.isArray(user.inmobiliarias) &&
                 user.inmobiliarias.length > 1 && (
-                  <li className="nav-item d-flex align-items-center me-3">
+                  <li className="nav-item d-flex align-items-center px-lg-2 mt-2 mt-lg-0">
                     <InmobiliariaSelector />
                   </li>
                 )}
 
-              {/* Usuario */}
               <li className="nav-item dropdown">
                 {user ? (
                   <>
                     <button
-                      className="nav-link dropdown-toggle btn btn-link"
+                      type="button"
+                      className="nav-link dropdown-toggle btn btn-link d-flex align-items-center"
                       onClick={toggleUserMenu}
                       aria-expanded={isUserMenuOpen}
                       style={{
                         border: "none",
                         background: "none",
                         color: "rgba(255,255,255,0.85)",
+                        textDecoration: "none",
                       }}
                     >
                       {user.photoURL ? (
@@ -163,13 +242,19 @@ const Navbar = () => {
                           src={user.photoURL}
                           alt="Perfil"
                           className="rounded-circle me-2"
-                          style={{ width: 32, height: 32 }}
+                          style={{
+                            width: 30,
+                            height: 30,
+                            objectFit: "cover",
+                          }}
                         />
                       ) : (
-                        <i className="fa fa-user me-2"></i>
+                        <span className="me-2">👤</span>
                       )}
 
-                      {user.displayName || "Usuario"}
+                      <span className="text-truncate" style={{ maxWidth: 160 }}>
+                        {user.displayName || user.email || "Usuario"}
+                      </span>
                     </button>
 
                     <ul
@@ -184,7 +269,7 @@ const Navbar = () => {
                         <br />
 
                         <small className="text-muted">
-                          Rol: <strong>{user.role}</strong>
+                          Rol: <strong>{user.role || "usuario"}</strong>
                         </small>
                       </li>
 
@@ -200,7 +285,6 @@ const Navbar = () => {
                               to="/admin/dashboard"
                               onClick={closeMenus}
                             >
-                              <i className="fa fa-dashboard me-2"></i>
                               Dashboard Admin
                             </Link>
                           </li>
@@ -211,7 +295,6 @@ const Navbar = () => {
                               to="/admin/inmuebles"
                               onClick={closeMenus}
                             >
-                              <i className="fa fa-building me-2"></i>
                               Panel de Inmuebles
                             </Link>
                           </li>
@@ -222,7 +305,6 @@ const Navbar = () => {
                               to="/admin/inmuebles/listado"
                               onClick={closeMenus}
                             >
-                              <i className="fa fa-list me-2"></i>
                               Listado de Inmuebles
                             </Link>
                           </li>
@@ -233,7 +315,6 @@ const Navbar = () => {
                               to="/admin/inmuebles/consultas"
                               onClick={closeMenus}
                             >
-                              <i className="fa fa-envelope me-2"></i>
                               Consultas de Inmuebles
                             </Link>
                           </li>
@@ -244,7 +325,6 @@ const Navbar = () => {
                               to="/admin/inmuebles/nuevo"
                               onClick={closeMenus}
                             >
-                              <i className="fa fa-plus me-2"></i>
                               Nueva Publicación
                             </Link>
                           </li>
@@ -255,7 +335,6 @@ const Navbar = () => {
                               to="/admin/inmobiliarias"
                               onClick={closeMenus}
                             >
-                              <i className="fa fa-briefcase me-2"></i>
                               Inmobiliarias
                             </Link>
                           </li>
@@ -272,21 +351,33 @@ const Navbar = () => {
                           to="/perfil"
                           onClick={closeMenus}
                         >
-                          <i className="fa fa-user-circle me-2"></i>
                           Mi Perfil
                         </Link>
                       </li>
 
-                      <li>
-                        <Link
-                          className="dropdown-item"
-                          to="/inmuebles"
-                          onClick={closeMenus}
-                        >
-                          <i className="fa fa-search me-2"></i>
-                          Ver Portal Público
-                        </Link>
-                      </li>
+                      {!isAgencyContext && (
+                        <li>
+                          <Link
+                            className="dropdown-item"
+                            to="/inmuebles"
+                            onClick={closeMenus}
+                          >
+                            Ver Portal Público
+                          </Link>
+                        </li>
+                      )}
+
+                      {isAgencyContext && agencyBasePath && (
+                        <li>
+                          <Link
+                            className="dropdown-item"
+                            to={agencyBasePath}
+                            onClick={closeMenus}
+                          >
+                            Ver sitio de inmobiliaria
+                          </Link>
+                        </li>
+                      )}
 
                       <li>
                         <hr className="dropdown-divider" />
@@ -294,27 +385,28 @@ const Navbar = () => {
 
                       <li>
                         <button
+                          type="button"
                           className="dropdown-item text-danger"
                           onClick={handleLogout}
                         >
-                          <i className="fa fa-sign-out me-2"></i>
-                          Cerrar Sesión
+                          Cerrar sesión
                         </button>
                       </li>
                     </ul>
                   </>
                 ) : (
                   <button
+                    type="button"
                     className="nav-link btn btn-link"
                     onClick={openLoginModal}
                     style={{
                       border: "none",
                       background: "none",
                       color: "rgba(255,255,255,0.85)",
+                      textDecoration: "none",
                     }}
                   >
-                    <i className="fa fa-user me-2"></i>
-                    Iniciar Sesión
+                    Iniciar sesión
                   </button>
                 )}
               </li>
@@ -323,11 +415,12 @@ const Navbar = () => {
         </div>
       </nav>
 
-      {/* Modal Login */}
       {showLoginModal && (
         <div
           className="modal show d-block"
-          style={{ backgroundColor: "rgba(0,0,0,0.5)" }}
+          style={{
+            backgroundColor: "rgba(0,0,0,0.5)",
+          }}
           onClick={closeLoginModal}
         >
           <div
@@ -336,13 +429,13 @@ const Navbar = () => {
           >
             <div className="modal-content">
               <div className="modal-header">
-                <h5 className="modal-title">Iniciar Sesión</h5>
+                <h5 className="modal-title">Iniciar sesión</h5>
 
                 <button
                   type="button"
                   className="btn-close"
                   onClick={closeLoginModal}
-                  aria-label="Close"
+                  aria-label="Cerrar"
                 />
               </div>
 

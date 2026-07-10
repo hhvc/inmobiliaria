@@ -1,339 +1,247 @@
-/* === Estilos globales === */
+/* =========================
+   Base global
+   ========================= */
+
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
+  font-family:
+    Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #1f2937;
+  background: #f6f7fb;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+
+  --portal-bg: #f6f7fb;
+  --portal-surface: #ffffff;
+  --portal-dark: #111827;
+  --portal-muted: #6b7280;
+  --portal-border: #e5e7eb;
+  --portal-primary: #0d6efd;
+  --portal-soft-blue: #eef5ff;
+  --portal-soft-green: #eaf8f0;
 }
 
-/* === Ajustes base === */
 html,
 body {
   margin: 0;
-  padding: 0; /* reseteo */
+  padding: 0;
+  min-height: 100%;
   box-sizing: border-box;
   overflow-x: hidden;
   scroll-behavior: smooth;
 }
 
-/* 🧩 IMPORTANTE: padding para evitar solapamiento con navbar fijo */
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
 body {
-  padding-top: 70px; /* navbar fijo */
-  background-image: url("/assets/img/EnConstrucción.jpg");
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-  background-attachment: fixed;
+  padding-top: 70px;
+  background: var(--portal-bg);
+  color: #1f2937;
 }
 
 a {
-  font-weight: 500;
-  color: #646cff;
+  color: inherit;
   text-decoration: none;
 }
+
 a:hover {
-  color: #535bf2;
+  color: var(--portal-primary);
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
-
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
-
-/* === Tema claro === */
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
-  a:hover {
-    color: #747bff;
-  }
-  button {
-    background-color: #f9f9f9;
-  }
-}
-
-/* === Header === */
-header {
-  position: relative;
-}
-
-.intro-content {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-}
-
-.img-responsive {
+img {
   max-width: 100%;
-  height: auto;
-  display: block;
 }
 
-.img-centered {
-  margin-left: auto;
-  margin-right: auto;
+/* =========================
+   Bootstrap ajustes suaves
+   ========================= */
+
+.card {
+  border-color: var(--portal-border);
 }
 
-/* === Responsividad de header === */
-@media (max-width: 768px) {
-  header {
-    height: 70vh !important;
-  }
-  .intro-content img {
-    max-width: 200px !important;
-  }
+.card,
+.btn,
+.form-control,
+.form-select,
+.alert {
+  border-radius: 0.85rem;
 }
 
-@media (max-width: 480px) {
-  header {
-    height: 60vh !important;
-  }
-  .intro-content img {
-    max-width: 150px !important;
-  }
+.btn {
+  font-weight: 600;
 }
 
-/* === Navbar === */
+.btn-sm {
+  border-radius: 0.65rem;
+}
+
+.text-muted {
+  color: var(--portal-muted) !important;
+}
+
+/* =========================
+   Navbar
+   ========================= */
+
 .navbar {
-  margin-bottom: 0;
   border: none;
-  transition: all 0.3s ease;
-}
-
-.navbar-fixed-top {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 1030;
-}
-
-.navbar-inverse {
-  background-color: rgba(0, 0, 0, 0.8);
-  border-color: transparent;
-}
-
-.navbar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .navbar-brand img {
-  max-height: 50px;
+  max-height: 42px;
   width: auto;
-}
-
-.navbar-nav {
-  display: flex;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.navbar-nav li a {
-  color: #fff;
-  padding: 10px 15px;
-  display: block;
-  transition: color 0.3s ease;
-}
-.navbar-nav li a:hover {
-  color: #f05f40;
-}
-
-.navbar-right {
-  margin-left: auto;
-}
-
-/* === Navbar móvil === */
-@media (max-width: 768px) {
-  .navbar-collapse {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background-color: rgba(0, 0, 0, 0.9);
-    padding: 10px 0;
-  }
-
-  .navbar-nav {
-    flex-direction: column;
-  }
-
-  .navbar-nav li {
-    text-align: center;
-  }
-
-  .navbar-nav li a {
-    padding: 15px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
-
-  .navbar-nav li:last-child a {
-    border-bottom: none;
-  }
-}
-
-/* === Botón WhatsApp === */
-.btn-wsp {
-  position: fixed;
-  width: 60px;
-  height: 60px;
-  bottom: 30px;
-  right: 30px;
-  background: #25d366;
-  color: #fff;
-  border-radius: 50%;
-  text-align: center;
-  font-size: 30px;
-  box-shadow: 0px 1px 10px rgba(0, 0, 0, 0.3);
-  z-index: 1000;
-  transition: all 300ms ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.btn-wsp:hover {
-  background: #20bd5a;
-  transform: scale(1.1);
-}
-.btn-wsp svg {
-  filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.2));
-}
-
-/* Responsive botón WhatsApp */
-@media (max-width: 768px) {
-  .btn-wsp {
-    width: 50px;
-    height: 50px;
-    bottom: 20px;
-    right: 20px;
-  }
-}
-@media (max-width: 480px) {
-  .btn-wsp {
-    width: 45px;
-    height: 45px;
-    bottom: 15px;
-    right: 15px;
-  }
-}
-
-/* === Dropdown menú usuario === */
-.navbar-dark .navbar-nav .nav-link {
-  color: rgba(255, 255, 255, 0.85);
-}
-.navbar-dark .navbar-nav .nav-link:hover {
-  color: #fff;
 }
 
 .dropdown-menu {
   border: none;
-  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+  box-shadow: 0 0.75rem 2rem rgba(15, 23, 42, 0.18);
 }
 
 .dropdown-item {
-  padding: 0.5rem 1rem;
+  padding: 0.55rem 1rem;
   color: #212529 !important;
   background-color: transparent !important;
 }
+
 .dropdown-item:hover {
   color: #0d6efd !important;
   background-color: #f8f9fa !important;
 }
 
-/* === Avatar usuario === */
-.navbar .rounded-circle {
-  object-fit: cover;
+/* =========================
+   Portal Home
+   ========================= */
+
+.portal-home {
+  background:
+    radial-gradient(circle at top left, rgba(13, 110, 253, 0.12), transparent 34rem),
+    radial-gradient(circle at top right, rgba(25, 135, 84, 0.1), transparent 30rem),
+    var(--portal-bg);
 }
 
-/* === Modal === */
-.modal-backdrop {
-  background-color: rgba(0, 0, 0, 0.5);
-}
-.modal-content {
-  border: none;
-  border-radius: 0.5rem;
+.portal-hero {
+  min-height: calc(100vh - 70px);
+  display: flex;
+  align-items: center;
+  padding: 5rem 0;
 }
 
-/* === Botones deshabilitados === */
-.btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.portal-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgba(13, 110, 253, 0.18);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0d6efd;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
 }
 
-/* === FIX: visibilidad de items dentro del menú de usuario === */
-.dropdown-menu .dropdown-item,
-.dropdown-menu .nav-link {
-  color: #212529 !important; /* texto visible */
-  background-color: transparent !important;
+.portal-hero-title {
+  font-size: clamp(2.4rem, 5vw, 4.7rem);
+  line-height: 0.98;
+  letter-spacing: -0.05em;
+  font-weight: 800;
+  color: var(--portal-dark);
 }
 
-.dropdown-menu .dropdown-item:hover,
-.dropdown-menu .nav-link:hover {
-  color: #0d6efd !important; /* azul Bootstrap */
-  background-color: #f8f9fa !important;
+.portal-hero-text {
+  max-width: 680px;
+  font-size: 1.15rem;
+  color: var(--portal-muted);
 }
 
-/*ESTILOS SECCIONES*/
-/* === Secciones sobre fondo global === */
+.portal-search-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(229, 231, 235, 0.9);
+  box-shadow: 0 1.5rem 4rem rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.portal-stat {
+  padding: 1.15rem;
+  border: 1px solid var(--portal-border);
+  border-radius: 1rem;
+  background: #ffffff;
+}
+
+.portal-stat-number {
+  font-size: 1.7rem;
+  font-weight: 800;
+  color: var(--portal-dark);
+}
+
+.portal-feature-card {
+  height: 100%;
+  padding: 1.5rem;
+  border: 1px solid var(--portal-border);
+  border-radius: 1.25rem;
+  background: #ffffff;
+  box-shadow: 0 0.75rem 2rem rgba(15, 23, 42, 0.06);
+}
+
+.portal-feature-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 1rem;
+  background: var(--portal-soft-blue);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  color: var(--portal-primary);
+  margin-bottom: 1rem;
+}
+
+.portal-section {
+  padding: 5rem 0;
+}
+
+.portal-section-title {
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  color: var(--portal-dark);
+}
+
+.portal-cta {
+  border-radius: 1.5rem;
+  background:
+    linear-gradient(135deg, rgba(13, 110, 253, 0.95), rgba(17, 24, 39, 0.95));
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.portal-cta .text-muted {
+  color: rgba(255, 255, 255, 0.76) !important;
+}
+
+/* =========================
+   Utilidades
+   ========================= */
+
 .section-transparent {
   background: transparent;
   position: relative;
 }
 
-/* === Panel de contenido (legible siempre) === */
 .section-panel {
-  background: rgba(255, 255, 255, 0.8); /* más sólido */
-  backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(8px);
   border-radius: 1rem;
   padding: 3rem 2rem;
-  color: #212529; /* FUERZA color de texto */
+  color: #212529;
 }
 
-/* Ajuste fino solo para mobile */
-@media (max-width: 768px) {
-  .section-panel {
-    background: rgba(255, 255, 255, 0.8);
-    padding: 2rem 1.25rem;
-  }
-
-  .section-panel .text-muted {
-    color: #495057 !important;
-  }
-}
-
-/* === Imágenes de cards === */
 .card-img-cover {
   object-fit: cover;
 }
@@ -350,8 +258,77 @@ header {
   cursor: pointer;
 }
 
-/* === Modal galería fullscreen === */
 .modal-gallery {
   display: block;
   background-color: rgba(0, 0, 0, 0.9);
+}
+
+/* =========================
+   Botón WhatsApp flotante
+   ========================= */
+
+.btn-wsp {
+  position: fixed;
+  width: 60px;
+  height: 60px;
+  bottom: 30px;
+  right: 30px;
+  background: #25d366;
+  color: #fff;
+  border-radius: 50%;
+  text-align: center;
+  font-size: 30px;
+  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.22);
+  z-index: 1000;
+  transition: all 300ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-wsp:hover {
+  background: #20bd5a;
+  color: #fff;
+  transform: scale(1.06);
+}
+
+/* =========================
+   Responsive
+   ========================= */
+
+@media (max-width: 991px) {
+  .portal-hero {
+    min-height: auto;
+    padding: 4rem 0;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    padding-top: 66px;
+  }
+
+  .portal-section {
+    padding: 3.5rem 0;
+  }
+
+  .section-panel {
+    padding: 2rem 1.25rem;
+  }
+
+  .btn-wsp {
+    width: 50px;
+    height: 50px;
+    bottom: 20px;
+    right: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .btn-wsp {
+    width: 45px;
+    height: 45px;
+    bottom: 15px;
+    right: 15px;
+  }
 }
