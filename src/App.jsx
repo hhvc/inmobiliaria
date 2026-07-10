@@ -25,6 +25,7 @@ import ContactMessages from "./components/admin/ContactMessages";
 import Calendar from "./components/admin/calendar/Calendar";
 import ReservationManagement from "./components/admin/ReservationManagement";
 import TestimonialManagement from "./components/admin/TestimonialManagement";
+import UserAdminPage from "./pages/UserAdminPage";
 
 // Cabañas - legado
 import CabanasList from "./cabanas/CabanasList";
@@ -32,10 +33,12 @@ import AdminCabanas from "./cabanas/AdminCabanas";
 import CabanaForm from "./cabanas/CabanaForm";
 
 // Inmobiliarias
+import InmobiliariaDashboardPage from "./inmobiliaria/pages/InmobiliariaDashboardPage";
 import InmobiliariaListPage from "./inmobiliaria/pages/InmobiliariaListPage";
 import InmobiliariaCreatePage from "./inmobiliaria/pages/InmobiliariaCreatePage";
 import InmobiliariaEditPage from "./inmobiliaria/pages/InmobiliariaEditPage";
 import InmobiliariaPublicPage from "./inmobiliaria/pages/InmobiliariaPublicPage";
+import InmobiliariaDomainsPage from "./inmobiliaria/pages/InmobiliariaDomainsPage";
 
 // Inmuebles
 import InmuebleAdminPage from "./inmueble/pages/InmuebleAdminPage";
@@ -108,10 +111,19 @@ function App() {
                ========================= */}
 
               <Route
-                path="/admin/inmobiliarias"
+                path="/admin/inmobiliaria"
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaListPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/inmobiliaria/dominios"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaDomainsPage />
                   </ProtectedRoute>
                 }
               />
@@ -130,6 +142,15 @@ function App() {
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaEditPage />
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/inmobiliaria"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaDashboardPage />
                   </ProtectedRoute>
                 }
               />
@@ -193,6 +214,15 @@ function App() {
               {/* =========================
                 Admin - General / legado
                ========================= */}
+
+              <Route
+                path="/admin/usuarios"
+                element={
+                  <ProtectedRoute role="root">
+                    <UserAdminPage />
+                  </ProtectedRoute>
+                }
+              />
 
               <Route
                 path="/admin/dashboard"

@@ -287,6 +287,26 @@ const Navbar = () => {
                           <li>
                             <Link
                               className="dropdown-item"
+                              to="/admin/inmobiliaria"
+                              onClick={closeMenus}
+                            >
+                              Panel de Inmobiliaria
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmobiliaria/dominios"
+                              onClick={closeMenus}
+                            >
+                              Dominios de Inmobiliaria
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
                               to="/admin/inmuebles/listado"
                               onClick={closeMenus}
                             >
