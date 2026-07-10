@@ -352,6 +352,18 @@ const Navbar = () => {
                             </li>
                           )}
 
+                          {hasModule("usuarios") && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/inmobiliaria/usuarios"
+                                onClick={closeMenus}
+                              >
+                                Usuarios de Inmobiliaria
+                              </Link>
+                            </li>
+                          )}
+
                           {hasModule("inmuebles") && (
                             <>
                               <li>

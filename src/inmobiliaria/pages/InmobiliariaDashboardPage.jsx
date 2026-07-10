@@ -46,10 +46,9 @@ const MODULE_CARDS = [
         id: "usuarios",
         title: "Usuarios",
         description: "Administrar usuarios vinculados a la inmobiliaria.",
-        route: "/admin/usuarios",
+        route: "/admin/inmobiliaria/usuarios",
         cta: "Gestionar usuarios",
         icon: "👥",
-        rootOnlyRoute: true,
     },
     {
         id: "reportes",
