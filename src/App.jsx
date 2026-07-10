@@ -41,6 +41,7 @@ import InmobiliariaPublicPage from "./inmobiliaria/pages/InmobiliariaPublicPage"
 import InmobiliariaDomainsPage from "./inmobiliaria/pages/InmobiliariaDomainsPage";
 import InmobiliariaModuleGuard from "./inmobiliaria/components/InmobiliariaModuleGuard";
 import { DomainAgencyProvider } from "./inmobiliaria/context/DomainAgencyContext";
+import InmobiliariaBrandingPage from "./inmobiliaria/pages/InmobiliariaBrandingPage";
 
 // Inmuebles
 import InmuebleAdminPage from "./inmueble/pages/InmuebleAdminPage";
@@ -126,6 +127,17 @@ function App() {
                   <ProtectedRoute role="admin">
                     <InmobiliariaModuleGuard moduleId="dominios">
                       <InmobiliariaDomainsPage />
+                    </InmobiliariaModuleGuard>
+                  </ProtectedRoute>
+                }
+              />
+
+              <Route
+                path="/admin/inmobiliaria/branding"
+                element={
+                  <ProtectedRoute role="admin">
+                    <InmobiliariaModuleGuard moduleId="branding">
+                      <InmobiliariaBrandingPage />
                     </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }

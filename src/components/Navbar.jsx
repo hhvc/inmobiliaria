@@ -1,5 +1,5 @@
 // src/components/Navbar.jsx
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/auth/useAuth";
@@ -10,6 +10,7 @@ import {
   getActiveAgencySlug,
 } from "../inmobiliaria/utils/domainRouting";
 import { useDomainAgency } from "../inmobiliaria/context/useDomainAgency";
+import { getInmobiliariaBySlug } from "../inmobiliaria/services/inmobiliaria.service";
 
 /**
  * Futuro: dominios propios por inmobiliaria.
@@ -43,15 +44,57 @@ const Navbar = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  const [navbarInmobiliaria, setNavbarInmobiliaria] = useState(null);
+
   const { user, logout, hasRole } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { slug: contextDomainSlug } = useDomainAgency();
+  const {
+    slug: contextDomainSlug,
+    inmobiliaria: domainInmobiliaria,
+  } = useDomainAgency();
 
   const activeAgencySlug =
     getActiveAgencySlug(location.pathname) || contextDomainSlug;
   const isAgencyContext = Boolean(activeAgencySlug);
   const agencyBasePath = buildAgencyPath(activeAgencySlug);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadNavbarInmobiliaria = async () => {
+      try {
+        setNavbarInmobiliaria(null);
+
+        if (!activeAgencySlug) {
+          return;
+        }
+
+        if (domainInmobiliaria?.slug === activeAgencySlug) {
+          setNavbarInmobiliaria(domainInmobiliaria);
+          return;
+        }
+
+        const data = await getInmobiliariaBySlug(activeAgencySlug);
+
+        if (!active) return;
+
+        setNavbarInmobiliaria(data);
+      } catch (error) {
+        console.warn("No se pudo cargar el logo de la inmobiliaria:", error);
+
+        if (active) {
+          setNavbarInmobiliaria(null);
+        }
+      }
+    };
+
+    loadNavbarInmobiliaria();
+
+    return () => {
+      active = false;
+    };
+  }, [activeAgencySlug, domainInmobiliaria]);
 
   const isAdminUser =
     hasRole?.("admin") ||
@@ -151,6 +194,16 @@ const Navbar = () => {
     setShowLoginModal(false);
   };
 
+  const navbarLogoUrl =
+    isAgencyContext && navbarInmobiliaria?.branding?.logo?.url
+      ? navbarInmobiliaria.branding.logo.url
+      : "/assets/img/Logo.png";
+
+  const navbarLogoAlt =
+    isAgencyContext && navbarInmobiliaria?.nombre
+      ? navbarInmobiliaria.nombre
+      : "LaDocTaProp";
+
   return (
     <>
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark fixed-top shadow-sm">
@@ -161,11 +214,13 @@ const Navbar = () => {
             onClick={handleBrandClick}
           >
             <img
-              src="/assets/img/Logo.png"
-              alt="LaDocTaProp"
+              src={navbarLogoUrl}
+              alt={navbarLogoAlt}
               className="img-fluid"
               style={{
                 maxHeight: 42,
+                maxWidth: 180,
+                objectFit: "contain",
               }}
             />
           </Link>
@@ -291,6 +346,16 @@ const Navbar = () => {
                               onClick={closeMenus}
                             >
                               Panel de Inmobiliaria
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmobiliaria/branding"
+                              onClick={closeMenus}
+                            >
+                              Branding de Inmobiliaria
                             </Link>
                           </li>
 

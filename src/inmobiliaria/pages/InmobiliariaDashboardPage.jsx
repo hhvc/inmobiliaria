@@ -38,8 +38,7 @@ const MODULE_CARDS = [
         id: "branding",
         title: "Branding",
         description: "Actualizar logo, portada, contacto y datos comerciales.",
-        routeFactory: (inmobiliariaId) =>
-            inmobiliariaId ? `/admin/inmobiliarias/${inmobiliariaId}/editar` : null,
+        route: "/admin/inmobiliaria/branding",
         cta: "Editar marca",
         icon: "🎨",
     },
