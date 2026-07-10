@@ -33,12 +33,24 @@ const formatNumber = (value) => {
   return number.toLocaleString("es-AR");
 };
 
-const buildAddress = (direccion = {}) => {
+const toNumber = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : null;
+};
+
+const getDireccionValue = (inmueble, key) => {
+  return inmueble?.direccion?.[key] || inmueble?.[key] || "";
+};
+
+const buildAddress = (inmueble) => {
   return [
-    direccion.calle,
-    direccion.numero,
-    direccion.barrio,
-    direccion.ciudad,
+    getDireccionValue(inmueble, "calle"),
+    getDireccionValue(inmueble, "numero"),
+    getDireccionValue(inmueble, "barrio"),
+    getDireccionValue(inmueble, "ciudad"),
   ]
     .filter(Boolean)
     .join(", ");
@@ -66,6 +78,7 @@ const buildWhatsappMessage = (inmueble) => {
     inmueble?.titulo ? `Inmueble: ${inmueble.titulo}` : "",
     inmueble?.operacion ? `Operación: ${inmueble.operacion}` : "",
     inmueble?.tipo ? `Tipo: ${inmueble.tipo}` : "",
+    inmueble?.precio ? `Precio: ${formatPrice(inmueble)}` : "",
     pageUrl ? `Link: ${pageUrl}` : "",
   ].filter(Boolean);
 
@@ -82,6 +95,54 @@ const buildWhatsappUrl = ({ whatsapp, inmueble }) => {
   return `https://wa.me/${cleanNumber}?text=${message}`;
 };
 
+const getFeatureItems = (inmueble) => {
+  const items = [];
+
+  if (inmueble.superficie?.total) {
+    items.push({
+      label: "Superficie total",
+      value: `${formatNumber(inmueble.superficie.total)} m²`,
+    });
+  }
+
+  if (inmueble.superficie?.cubierta) {
+    items.push({
+      label: "Cubierta",
+      value: `${formatNumber(inmueble.superficie.cubierta)} m²`,
+    });
+  }
+
+  if (inmueble.ambientes) {
+    items.push({
+      label: "Ambientes",
+      value: inmueble.ambientes,
+    });
+  }
+
+  if (inmueble.dormitorios) {
+    items.push({
+      label: "Dormitorios",
+      value: inmueble.dormitorios,
+    });
+  }
+
+  if (inmueble.banos) {
+    items.push({
+      label: "Baños",
+      value: inmueble.banos,
+    });
+  }
+
+  if (inmueble.cocheras) {
+    items.push({
+      label: "Cocheras",
+      value: inmueble.cocheras,
+    });
+  }
+
+  return items;
+};
+
 const InmueblePublicPage = () => {
   const { slug } = useParams();
 
@@ -91,6 +152,8 @@ const InmueblePublicPage = () => {
   const [loading, setLoading] = useState(true);
   const [contactLoading, setContactLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const [consultaValues, setConsultaValues] = useState(INITIAL_CONSULTA);
   const [consultaLoading, setConsultaLoading] = useState(false);
@@ -127,11 +190,11 @@ const InmueblePublicPage = () => {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   }, [inmueble]);
 
-  const coverImage = sortedImages[0] || null;
-
-  const address = buildAddress(inmueble?.direccion);
-
+  const selectedImage = sortedImages[selectedImageIndex] || sortedImages[0];
+  const address = buildAddress(inmueble);
+  const featureItems = getFeatureItems(inmueble || {});
   const contactoInmobiliaria = inmobiliaria?.configuracion?.contacto || {};
+  const expensas = toNumber(inmueble?.expensas);
 
   const whatsappUrl = useMemo(() => {
     return buildWhatsappUrl({
@@ -139,6 +202,10 @@ const InmueblePublicPage = () => {
       inmueble,
     });
   }, [contactoInmobiliaria.whatsapp, inmueble]);
+
+  useEffect(() => {
+    setSelectedImageIndex(0);
+  }, [slug]);
 
   useEffect(() => {
     const fetchInmueble = async () => {
@@ -271,14 +338,17 @@ const InmueblePublicPage = () => {
         inmueble?.titulo ? `Inmueble: ${inmueble.titulo}` : "",
         inmueble?.operacion ? `Operación: ${inmueble.operacion}` : "",
         inmueble?.tipo ? `Tipo: ${inmueble.tipo}` : "",
+        inmueble?.precio ? `Precio: ${formatPrice(inmueble)}` : "",
         currentUrl,
       ]
         .filter(Boolean)
         .join("\n");
 
-      const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+      const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(
+        message,
+      )}`;
 
-      window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+      window.open(whatsappShareUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
       console.error("Error compartiendo inmueble por WhatsApp:", err);
       alert("No se pudo abrir WhatsApp para compartir el inmueble.");
@@ -287,16 +357,26 @@ const InmueblePublicPage = () => {
 
   if (loading) {
     return (
-      <main className="container py-5">
-        <p className="text-muted">Cargando inmueble...</p>
+      <main className="portal-home">
+        <div className="container py-5">
+          <div className="alert alert-light border">
+            Cargando inmueble publicado...
+          </div>
+        </div>
       </main>
     );
   }
 
   if (error) {
     return (
-      <main className="container py-5">
-        <div className="alert alert-warning mb-0">{error}</div>
+      <main className="portal-home">
+        <div className="container py-5">
+          <div className="alert alert-warning mb-3">{error}</div>
+
+          <Link to="/inmuebles" className="btn btn-primary">
+            Volver al portal
+          </Link>
+        </div>
       </main>
     );
   }
@@ -306,318 +386,363 @@ const InmueblePublicPage = () => {
   }
 
   return (
-    <main className="container py-4">
-      {/* =========================
-          Header
-         ========================= */}
-      <header className="mb-4">
-        <div className="mb-3">
-          <Link to={lastSearchUrl} className="btn btn-outline-secondary btn-sm">
-            ← Volver a la búsqueda
-          </Link>
-        </div>
-
-        <div className="d-flex flex-wrap justify-content-between gap-3 align-items-start">
-          <div>
-            <p className="text-uppercase text-muted small mb-1">
-              {inmueble.operacion || "Inmueble"}
-              {inmueble.tipo ? ` · ${inmueble.tipo}` : ""}
-            </p>
-
-            <h1 className="h2 mb-2">{inmueble.titulo}</h1>
-
-            {address && <p className="text-muted mb-0">{address}</p>}
-
-            {inmobiliaria?.nombre && (
-              <p className="text-muted mt-2 mb-0">
-                Publicado por <strong>{inmobiliaria.nombre}</strong>
-              </p>
-            )}
+    <main className="portal-home">
+      <section className="py-4 py-lg-5">
+        <div className="container">
+          <div className="mb-4">
+            <Link to={lastSearchUrl} className="btn btn-outline-secondary btn-sm">
+              ← Volver a la búsqueda
+            </Link>
           </div>
 
-          <div className="text-md-end">
-            <div className="h3 mb-1">{formatPrice(inmueble)}</div>
+          {/* =========================
+              Header comercial
+             ========================= */}
+          <section className="card border-0 shadow-sm overflow-hidden mb-4">
+            <div className="row g-0">
+              <div className="col-lg-7">
+                <div className="p-3 p-lg-4">
+                  {selectedImage ? (
+                    <img
+                      src={selectedImage.url}
+                      alt={inmueble.titulo}
+                      className="img-fluid rounded-4 w-100"
+                      style={{
+                        height: 520,
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="bg-light rounded-4 d-flex align-items-center justify-content-center text-muted"
+                      style={{ height: 520 }}
+                    >
+                      Sin imagen disponible
+                    </div>
+                  )}
 
-            {inmueble.expensas > 0 && (
-              <div className="text-muted">
-                Expensas: ${formatNumber(inmueble.expensas)}
+                  {sortedImages.length > 1 && (
+                    <div className="d-flex gap-2 mt-3 overflow-auto pb-1">
+                      {sortedImages.map((img, index) => (
+                        <button
+                          key={img.storagePath || img.url}
+                          type="button"
+                          className={`border rounded-3 p-0 overflow-hidden ${selectedImageIndex === index
+                            ? "border-primary border-3"
+                            : "border-light"
+                            }`}
+                          onClick={() => setSelectedImageIndex(index)}
+                          style={{
+                            width: 92,
+                            height: 70,
+                            flex: "0 0 auto",
+                            background: "transparent",
+                          }}
+                          aria-label={`Ver imagen ${index + 1}`}
+                        >
+                          <img
+                            src={img.url}
+                            alt={`${inmueble.titulo} - imagen ${index + 1}`}
+                            className="w-100 h-100"
+                            style={{ objectFit: "cover" }}
+                            loading="lazy"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
 
-            <div className="d-flex flex-wrap gap-2 justify-content-md-end mt-3">
-              <button
-                type="button"
-                className="btn btn-outline-primary btn-sm"
-                onClick={handleCopyInmuebleLink}
-              >
-                {copySuccess ? "Link copiado" : "Copiar link"}
-              </button>
+              <div className="col-lg-5">
+                <div className="p-4 p-lg-5 h-100 d-flex flex-column">
+                  <div className="mb-3 d-flex flex-wrap gap-2">
+                    {inmueble.operacion && (
+                      <span className="badge text-bg-primary">
+                        {inmueble.operacion}
+                      </span>
+                    )}
 
-              <button
-                type="button"
-                className="btn btn-success btn-sm"
-                onClick={handleShareInmuebleByWhatsapp}
-              >
-                Compartir por WhatsApp
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+                    {inmueble.tipo && (
+                      <span className="badge text-bg-dark">{inmueble.tipo}</span>
+                    )}
 
-      {/* =========================
-          Portada
-         ========================= */}
-      {coverImage && (
-        <section className="mb-4">
-          <img
-            src={coverImage.url}
-            alt={inmueble.titulo}
-            className="img-fluid rounded w-100"
-            style={{
-              maxHeight: 520,
-              objectFit: "cover",
-            }}
-          />
-        </section>
-      )}
+                    {inmueble.destacado && (
+                      <span className="badge text-bg-warning">Destacado</span>
+                    )}
+                  </div>
 
-      {/* =========================
-          Galería secundaria
-         ========================= */}
-      {sortedImages.length > 1 && (
-        <section className="mb-4">
-          <div className="row g-3">
-            {sortedImages.slice(1).map((img, index) => (
-              <div className="col-6 col-md-3" key={img.storagePath || img.url}>
-                <img
-                  src={img.url}
-                  alt={`${inmueble.titulo} - imagen ${index + 2}`}
-                  className="img-fluid rounded w-100"
-                  style={{
-                    height: 160,
-                    objectFit: "cover",
-                  }}
-                  loading="lazy"
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+                  <h1 className="display-6 fw-bold mb-3">{inmueble.titulo}</h1>
 
-      <div className="row g-4">
-        {/* =========================
-            Información principal
-           ========================= */}
-        <section className="col-lg-8">
-          <div className="card mb-4">
-            <div className="card-header fw-semibold">Características</div>
+                  {address && <p className="text-muted mb-3">{address}</p>}
 
-            <div className="card-body">
-              <div className="row g-3">
-                {inmueble.superficie?.total && (
-                  <div className="col-6 col-md-4">
-                    <div className="text-muted small">Superficie total</div>
-                    <div className="fw-semibold">
-                      {formatNumber(inmueble.superficie.total)} m²
+                  {inmobiliaria?.nombre && (
+                    <p className="text-muted mb-4">
+                      Publicado por{" "}
+                      {inmobiliaria.slug ? (
+                        <Link to={`/inmobiliaria/${inmobiliaria.slug}`}>
+                          <strong>{inmobiliaria.nombre}</strong>
+                        </Link>
+                      ) : (
+                        <strong>{inmobiliaria.nombre}</strong>
+                      )}
+                    </p>
+                  )}
+
+                  <div className="mb-4">
+                    <div className="text-muted small">Precio</div>
+                    <div className="display-6 fw-bold">{formatPrice(inmueble)}</div>
+
+                    {expensas > 0 && (
+                      <div className="text-muted mt-1">
+                        Expensas: ${formatNumber(expensas)}
+                      </div>
+                    )}
+                  </div>
+
+                  {featureItems.length > 0 && (
+                    <div className="row g-2 mb-4">
+                      {featureItems.slice(0, 4).map((item) => (
+                        <div className="col-6" key={item.label}>
+                          <div className="border rounded-3 p-3 h-100 bg-white">
+                            <div className="fw-semibold">{item.value}</div>
+                            <div className="small text-muted">{item.label}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="d-grid gap-2 mt-auto">
+                    {whatsappUrl && (
+                      <a
+                        href={whatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-success btn-lg"
+                      >
+                        Consultar por WhatsApp
+                      </a>
+                    )}
+
+                    <a href="#consulta" className="btn btn-primary">
+                      Enviar consulta
+                    </a>
+
+                    <div className="d-flex gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary w-50"
+                        onClick={handleCopyInmuebleLink}
+                      >
+                        {copySuccess ? "Link copiado" : "Copiar link"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline-success w-50"
+                        onClick={handleShareInmuebleByWhatsapp}
+                      >
+                        Compartir
+                      </button>
                     </div>
                   </div>
-                )}
+                </div>
+              </div>
+            </div>
+          </section>
 
-                {inmueble.superficie?.cubierta && (
-                  <div className="col-6 col-md-4">
-                    <div className="text-muted small">Superficie cubierta</div>
-                    <div className="fw-semibold">
-                      {formatNumber(inmueble.superficie.cubierta)} m²
+          <div className="row g-4">
+            {/* =========================
+                Información principal
+               ========================= */}
+            <section className="col-lg-8">
+              {featureItems.length > 0 && (
+                <div className="card border-0 shadow-sm mb-4">
+                  <div className="card-body p-4">
+                    <h2 className="h4 mb-3">Características</h2>
+
+                    <div className="row g-3">
+                      {featureItems.map((item) => (
+                        <div className="col-6 col-md-4" key={item.label}>
+                          <div className="border rounded-3 p-3 h-100">
+                            <div className="h5 mb-1">{item.value}</div>
+                            <div className="small text-muted">{item.label}</div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                {inmueble.ambientes && (
-                  <div className="col-6 col-md-4">
-                    <div className="text-muted small">Ambientes</div>
-                    <div className="fw-semibold">{inmueble.ambientes}</div>
-                  </div>
-                )}
+              {inmueble.descripcion && (
+                <div className="card border-0 shadow-sm mb-4">
+                  <div className="card-body p-4">
+                    <h2 className="h4 mb-3">Descripción</h2>
 
-                {inmueble.dormitorios && (
-                  <div className="col-6 col-md-4">
-                    <div className="text-muted small">Dormitorios</div>
-                    <div className="fw-semibold">{inmueble.dormitorios}</div>
+                    <p
+                      className="mb-0 text-muted"
+                      style={{
+                        whiteSpace: "pre-line",
+                        fontSize: "1.05rem",
+                      }}
+                    >
+                      {inmueble.descripcion}
+                    </p>
                   </div>
-                )}
+                </div>
+              )}
 
-                {inmueble.banos && (
-                  <div className="col-6 col-md-4">
-                    <div className="text-muted small">Baños</div>
-                    <div className="fw-semibold">{inmueble.banos}</div>
-                  </div>
-                )}
+              <div className="card border-0 shadow-sm">
+                <div className="card-body p-4">
+                  <h2 className="h4 mb-3">Ubicación</h2>
 
-                {inmueble.cocheras && (
-                  <div className="col-6 col-md-4">
-                    <div className="text-muted small">Cocheras</div>
-                    <div className="fw-semibold">{inmueble.cocheras}</div>
-                  </div>
-                )}
+                  {address ? (
+                    <p className="text-muted mb-0">{address}</p>
+                  ) : (
+                    <p className="text-muted mb-0">
+                      La ubicación se informará al contactar.
+                    </p>
+                  )}
+                </div>
               </div>
-            </div>
+            </section>
+
+            {/* =========================
+                Contacto / consulta
+               ========================= */}
+            <aside className="col-lg-4" id="consulta">
+              <div className="card border-0 shadow-sm sticky-top" style={{ top: 90 }}>
+                <div className="card-body p-4">
+                  <h2 className="h4 mb-2">Consultar inmueble</h2>
+
+                  <p className="text-muted">
+                    Dejá tus datos y la inmobiliaria se pondrá en contacto para
+                    brindarte más información.
+                  </p>
+
+                  {contactLoading && (
+                    <p className="small text-muted">Cargando contacto...</p>
+                  )}
+
+                  {whatsappUrl && (
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-success w-100 mb-3"
+                    >
+                      Consultar por WhatsApp
+                    </a>
+                  )}
+
+                  {inmobiliaria?.nombre && (
+                    <div className="small text-muted mb-2">
+                      Inmobiliaria: <strong>{inmobiliaria.nombre}</strong>
+                    </div>
+                  )}
+
+                  {contactoInmobiliaria.email && (
+                    <div className="small text-muted mb-2">
+                      Email:{" "}
+                      <a href={`mailto:${contactoInmobiliaria.email}`}>
+                        {contactoInmobiliaria.email}
+                      </a>
+                    </div>
+                  )}
+
+                  {contactoInmobiliaria.telefono && (
+                    <div className="small text-muted mb-3">
+                      Teléfono:{" "}
+                      <a href={`tel:${contactoInmobiliaria.telefono}`}>
+                        {contactoInmobiliaria.telefono}
+                      </a>
+                    </div>
+                  )}
+
+                  {consultaSuccess && (
+                    <div className="alert alert-success">
+                      Consulta enviada correctamente. Gracias por contactarte.
+                    </div>
+                  )}
+
+                  {consultaError && (
+                    <div className="alert alert-danger">{consultaError}</div>
+                  )}
+
+                  <form onSubmit={handleConsultaSubmit}>
+                    <div className="mb-3">
+                      <label className="form-label">Nombre *</label>
+                      <input
+                        type="text"
+                        name="nombre"
+                        className="form-control"
+                        value={consultaValues.nombre}
+                        onChange={handleConsultaChange}
+                        disabled={consultaLoading}
+                        required
+                      />
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        className="form-control"
+                        value={consultaValues.email}
+                        onChange={handleConsultaChange}
+                        disabled={consultaLoading}
+                      />
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">Teléfono / WhatsApp</label>
+                      <input
+                        type="tel"
+                        name="telefono"
+                        className="form-control"
+                        value={consultaValues.telefono}
+                        onChange={handleConsultaChange}
+                        disabled={consultaLoading}
+                      />
+                      <div className="form-text">
+                        Ingresá al menos un email o teléfono.
+                      </div>
+                    </div>
+
+                    <div className="mb-3">
+                      <label className="form-label">Mensaje</label>
+                      <textarea
+                        name="mensaje"
+                        className="form-control"
+                        rows={4}
+                        value={consultaValues.mensaje}
+                        onChange={handleConsultaChange}
+                        disabled={consultaLoading}
+                        placeholder="Hola, me interesa este inmueble..."
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="btn btn-primary w-100"
+                      disabled={consultaLoading}
+                    >
+                      {consultaLoading ? "Enviando..." : "Enviar consulta"}
+                    </button>
+                  </form>
+
+                  <hr />
+
+                  <div className="small text-muted">Código interno: {inmueble.id}</div>
+                </div>
+              </div>
+            </aside>
           </div>
-
-          {inmueble.descripcion && (
-            <div className="card">
-              <div className="card-header fw-semibold">Descripción</div>
-
-              <div className="card-body">
-                <p className="mb-0" style={{ whiteSpace: "pre-line" }}>
-                  {inmueble.descripcion}
-                </p>
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* =========================
-            Contacto / consulta
-           ========================= */}
-        <aside className="col-lg-4">
-          <div className="card sticky-top" style={{ top: 90 }}>
-            <div className="card-header fw-semibold">Consultar inmueble</div>
-
-            <div className="card-body">
-              <p className="text-muted">
-                Dejá tus datos y la inmobiliaria se pondrá en contacto para
-                brindarte más información.
-              </p>
-
-              {contactLoading && (
-                <p className="small text-muted">Cargando contacto...</p>
-              )}
-
-              {whatsappUrl && (
-                <>
-                  <a
-                    href={whatsappUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-success w-100 mb-3"
-                  >
-                    Consultar por WhatsApp
-                  </a>
-
-                  <div className="small text-muted mb-3">
-                    Se abrirá WhatsApp con un mensaje prearmado.
-                  </div>
-                </>
-              )}
-
-              {contactoInmobiliaria.email && (
-                <div className="small text-muted mb-2">
-                  Email:{" "}
-                  <a href={`mailto:${contactoInmobiliaria.email}`}>
-                    {contactoInmobiliaria.email}
-                  </a>
-                </div>
-              )}
-
-              {contactoInmobiliaria.telefono && (
-                <div className="small text-muted mb-3">
-                  Teléfono:{" "}
-                  <a href={`tel:${contactoInmobiliaria.telefono}`}>
-                    {contactoInmobiliaria.telefono}
-                  </a>
-                </div>
-              )}
-
-              {consultaSuccess && (
-                <div className="alert alert-success">
-                  Consulta enviada correctamente. Gracias por contactarte.
-                </div>
-              )}
-
-              {consultaError && (
-                <div className="alert alert-danger">{consultaError}</div>
-              )}
-
-              <form onSubmit={handleConsultaSubmit}>
-                <div className="mb-3">
-                  <label className="form-label">Nombre *</label>
-                  <input
-                    type="text"
-                    name="nombre"
-                    className="form-control"
-                    value={consultaValues.nombre}
-                    onChange={handleConsultaChange}
-                    disabled={consultaLoading}
-                    required
-                  />
-                </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Email</label>
-                  <input
-                    type="email"
-                    name="email"
-                    className="form-control"
-                    value={consultaValues.email}
-                    onChange={handleConsultaChange}
-                    disabled={consultaLoading}
-                  />
-                </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Teléfono / WhatsApp</label>
-                  <input
-                    type="tel"
-                    name="telefono"
-                    className="form-control"
-                    value={consultaValues.telefono}
-                    onChange={handleConsultaChange}
-                    disabled={consultaLoading}
-                  />
-                  <div className="form-text">
-                    Ingresá al menos un email o teléfono.
-                  </div>
-                </div>
-
-                <div className="mb-3">
-                  <label className="form-label">Mensaje</label>
-                  <textarea
-                    name="mensaje"
-                    className="form-control"
-                    rows={4}
-                    value={consultaValues.mensaje}
-                    onChange={handleConsultaChange}
-                    disabled={consultaLoading}
-                    placeholder="Hola, me interesa este inmueble..."
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="btn btn-primary w-100"
-                  disabled={consultaLoading}
-                >
-                  {consultaLoading ? "Enviando..." : "Enviar consulta"}
-                </button>
-              </form>
-
-              <hr />
-
-              <div className="small text-muted">
-                Código interno: {inmueble.id}
-              </div>
-
-              {inmueble.inmobiliariaId && (
-                <div className="small text-muted">
-                  Inmobiliaria: {inmueble.nombre}
-                </div>
-              )}
-            </div>
-          </div>
-        </aside>
-      </div>
+        </div>
+      </section>
     </main>
   );
 };
