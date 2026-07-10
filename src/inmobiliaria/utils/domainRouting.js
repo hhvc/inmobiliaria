@@ -13,8 +13,8 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1"]);
  * - El valor es el slug público de la inmobiliaria.
  */
 export const CUSTOM_DOMAIN_SLUGS = {
-    // "cliente.com.ar": "slug-cliente",
-    // "www.cliente.com.ar": "slug-cliente",
+    "ladoctaprop.com.ar": "ladoctaprop",
+    "www.ladoctaprop.com.ar": "ladoctaprop",
 };
 
 export const getHostname = () => {
