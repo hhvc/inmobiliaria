@@ -136,22 +136,44 @@ match /users/{userId} {
       : [];
   }
 
-  function adminCanOnlyChangeOwnInmobiliariaLinks() {
-    return isAdmin()
-      && userDoc().data.keys().hasAny(["inmobiliarias"])
-      && userDoc().data.inmobiliarias is list
-      && request.resource.data
-        .diff(resource.data)
-        .affectedKeys()
-        .hasOnly([
-          "inmobiliarias",
-          "updatedAt"
-        ])
-      && requestedUserInmobiliarias()
-        .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
-      && existingUserInmobiliarias()
-        .hasOnly(requestedUserInmobiliarias() + userDoc().data.inmobiliarias);
-  }
+ function existingUserInmobiliariaRoles() {
+  return resource.data.keys().hasAny(["inmobiliariaRoles"])
+    && resource.data.inmobiliariaRoles is map
+    ? resource.data.inmobiliariaRoles
+    : {};
+}
+
+function requestedUserInmobiliariaRoles() {
+  return request.resource.data.keys().hasAny(["inmobiliariaRoles"])
+    && request.resource.data.inmobiliariaRoles is map
+    ? request.resource.data.inmobiliariaRoles
+    : {};
+}
+
+function adminCanOnlyChangeOwnInmobiliariaLinks() {
+  return isAdmin()
+    && userDoc().data.keys().hasAny(["inmobiliarias"])
+    && userDoc().data.inmobiliarias is list
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "inmobiliarias",
+        "inmobiliariaRoles",
+        "updatedAt"
+      ])
+    // No puede agregar inmobiliarias que no sean propias.
+    && requestedUserInmobiliarias()
+      .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
+    // No puede quitar inmobiliarias que no sean propias.
+    && existingUserInmobiliarias()
+      .hasOnly(requestedUserInmobiliarias() + userDoc().data.inmobiliarias)
+    // No puede modificar roles internos de inmobiliarias ajenas.
+    && requestedUserInmobiliariaRoles()
+      .diff(existingUserInmobiliariaRoles())
+      .affectedKeys()
+      .hasOnly(userDoc().data.inmobiliarias);
+}
 
   // Lectura de documento individual.
   allow get: if

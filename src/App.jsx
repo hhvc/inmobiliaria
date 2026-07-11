@@ -33,6 +33,7 @@ import AdminCabanas from "./cabanas/AdminCabanas";
 import CabanaForm from "./cabanas/CabanaForm";
 
 // Inmobiliarias
+import InmobiliariaInternalPermissionGuard from "./inmobiliaria/components/InmobiliariaInternalPermissionGuard";
 import InmobiliariaDashboardPage from "./inmobiliaria/pages/InmobiliariaDashboardPage";
 import InmobiliariaListPage from "./inmobiliaria/pages/InmobiliariaListPage";
 import InmobiliariaCreatePage from "./inmobiliaria/pages/InmobiliariaCreatePage";
@@ -127,7 +128,9 @@ function App() {
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaModuleGuard moduleId="dominios">
-                      <InmobiliariaDomainsPage />
+                      <InmobiliariaInternalPermissionGuard permission="canManageDomains">
+                        <InmobiliariaDomainsPage />
+                      </InmobiliariaInternalPermissionGuard>
                     </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
@@ -138,7 +141,9 @@ function App() {
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaModuleGuard moduleId="branding">
-                      <InmobiliariaBrandingPage />
+                      <InmobiliariaInternalPermissionGuard permission="canManageBranding">
+                        <InmobiliariaBrandingPage />
+                      </InmobiliariaInternalPermissionGuard>
                     </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
@@ -149,7 +154,9 @@ function App() {
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaModuleGuard moduleId="usuarios">
-                      <InmobiliariaUsersPage />
+                      <InmobiliariaInternalPermissionGuard permission="canManageUsers">
+                        <InmobiliariaUsersPage />
+                      </InmobiliariaInternalPermissionGuard>
                     </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
@@ -219,7 +226,9 @@ function App() {
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaModuleGuard moduleId="consultas">
-                      <InmuebleConsultasPage />
+                      <InmobiliariaInternalPermissionGuard permission="canViewConsultas">
+                        <InmuebleConsultasPage />
+                      </InmobiliariaInternalPermissionGuard>
                     </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
@@ -230,7 +239,9 @@ function App() {
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaModuleGuard moduleId="inmuebles">
-                      <InmuebleCreatePage />
+                      <InmobiliariaInternalPermissionGuard permission="canCreateInmuebles">
+                        <InmuebleCreatePage />
+                      </InmobiliariaInternalPermissionGuard>
                     </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
@@ -241,7 +252,9 @@ function App() {
                 element={
                   <ProtectedRoute role="admin">
                     <InmobiliariaModuleGuard moduleId="inmuebles">
-                      <InmuebleEditPage />
+                      <InmobiliariaInternalPermissionGuard permission="canEditInmuebles">
+                        <InmuebleEditPage />
+                      </InmobiliariaInternalPermissionGuard>
                     </InmobiliariaModuleGuard>
                   </ProtectedRoute>
                 }
