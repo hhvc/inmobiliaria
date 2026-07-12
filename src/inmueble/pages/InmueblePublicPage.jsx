@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import SEO from "../../components/SEO";
 import { getPublicInmuebleBySlug } from "../services/inmueble.service";
 import { createInmuebleConsulta } from "../services/inmuebleConsulta.service";
 import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
@@ -11,6 +12,8 @@ const INITIAL_CONSULTA = {
   telefono: "",
   mensaje: "",
 };
+
+const DEFAULT_SEO_IMAGE = "/assets/img/Logo.png";
 
 const formatPrice = (inmueble) => {
   if (!inmueble?.precio) return "Consultar";
@@ -41,6 +44,29 @@ const toNumber = (value) => {
   return Number.isFinite(number) ? number : null;
 };
 
+const normalizeSeoText = (value = "") => {
+  return value
+    .toString()
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+const truncateText = (value = "", maxLength = 155) => {
+  const cleanValue = normalizeSeoText(value);
+
+  if (cleanValue.length <= maxLength) return cleanValue;
+
+  return `${cleanValue.slice(0, maxLength - 1).trim()}…`;
+};
+
+const capitalize = (value = "") => {
+  const cleanValue = normalizeSeoText(value);
+
+  if (!cleanValue) return "";
+
+  return cleanValue.charAt(0).toUpperCase() + cleanValue.slice(1);
+};
+
 const getDireccionValue = (inmueble, key) => {
   return inmueble?.direccion?.[key] || inmueble?.[key] || "";
 };
@@ -56,6 +82,20 @@ const buildAddress = (inmueble) => {
     .join(", ");
 };
 
+const getLocationParts = (inmueble) => {
+  return {
+    streetAddress: [
+      getDireccionValue(inmueble, "calle"),
+      getDireccionValue(inmueble, "numero"),
+    ]
+      .filter(Boolean)
+      .join(" "),
+    neighborhood: getDireccionValue(inmueble, "barrio"),
+    city: getDireccionValue(inmueble, "ciudad"),
+    province: getDireccionValue(inmueble, "provincia"),
+  };
+};
+
 const getCurrentPageUrl = (slug) => {
   if (!slug) return "";
 
@@ -64,6 +104,16 @@ const getCurrentPageUrl = (slug) => {
   }
 
   return `${window.location.origin}/inmueble/${slug}`;
+};
+
+const getAgencyUrl = (inmobiliaria) => {
+  if (!inmobiliaria?.slug) return undefined;
+
+  if (typeof window === "undefined") {
+    return `/inmobiliaria/${inmobiliaria.slug}`;
+  }
+
+  return `${window.location.origin}/inmobiliaria/${inmobiliaria.slug}`;
 };
 
 const normalizeWhatsappNumber = (value = "") => {
@@ -143,6 +193,139 @@ const getFeatureItems = (inmueble) => {
   return items;
 };
 
+const getCurrencyCode = (moneda) => {
+  const value = (moneda || "USD").toString().trim().toUpperCase();
+
+  if (value === "$" || value === "ARS" || value.includes("PESO")) {
+    return "ARS";
+  }
+
+  if (value === "U$S" || value === "US$" || value === "USD") {
+    return "USD";
+  }
+
+  return value || "USD";
+};
+
+const getPropertySchemaType = (tipo = "") => {
+  const normalizedTipo = tipo
+    .toString()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+
+  if (normalizedTipo.includes("departamento")) return "Apartment";
+  if (normalizedTipo.includes("casa")) return "House";
+  if (normalizedTipo.includes("quinta")) return "House";
+
+  return "Place";
+};
+
+const buildSeoTitle = (inmueble, inmobiliaria) => {
+  const title = normalizeSeoText(inmueble?.titulo);
+  const operation = capitalize(inmueble?.operacion);
+  const type = capitalize(inmueble?.tipo);
+  const city = getDireccionValue(inmueble, "ciudad");
+  const agencyName = inmobiliaria?.nombre || "LaDoctaProp";
+
+  if (title) {
+    return `${title} | ${agencyName}`;
+  }
+
+  return [operation, type, city ? `en ${city}` : "", agencyName]
+    .filter(Boolean)
+    .join(" ");
+};
+
+const buildSeoDescription = ({ inmueble, inmobiliaria, address, featureItems }) => {
+  const operation = capitalize(inmueble?.operacion);
+  const type = capitalize(inmueble?.tipo);
+  const price = formatPrice(inmueble);
+  const agencyName = inmobiliaria?.nombre || "LaDoctaProp";
+
+  const featureText =
+    featureItems.length > 0
+      ? featureItems
+        .slice(0, 4)
+        .map((item) => `${item.value} ${item.label.toLowerCase()}`)
+        .join(", ")
+      : "";
+
+  const descriptionParts = [
+    operation && type ? `${type} en ${operation}.` : "",
+    address ? `Ubicación: ${address}.` : "",
+    price ? `Precio: ${price}.` : "",
+    featureText ? `Características: ${featureText}.` : "",
+    inmueble?.descripcion ? normalizeSeoText(inmueble.descripcion) : "",
+    `Publicado por ${agencyName}.`,
+  ].filter(Boolean);
+
+  return truncateText(descriptionParts.join(" "), 165);
+};
+
+const buildPropertyJsonLd = ({
+  inmueble,
+  inmobiliaria,
+  seoTitle,
+  seoDescription,
+  seoUrl,
+  seoImage,
+  address,
+  contactoInmobiliaria,
+}) => {
+  const locationParts = getLocationParts(inmueble);
+  const price = toNumber(inmueble?.precio);
+  const propertySchemaType = getPropertySchemaType(inmueble?.tipo);
+  const agencyUrl = getAgencyUrl(inmobiliaria);
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "Offer",
+    name: seoTitle,
+    description: seoDescription,
+    url: seoUrl,
+    image: seoImage,
+    price: price || undefined,
+    priceCurrency: getCurrencyCode(inmueble?.moneda),
+    availability: "https://schema.org/InStock",
+    itemOffered: {
+      "@type": propertySchemaType,
+      name: inmueble?.titulo || seoTitle,
+      description: normalizeSeoText(inmueble?.descripcion) || seoDescription,
+      image: seoImage,
+      url: seoUrl,
+      address: address
+        ? {
+          "@type": "PostalAddress",
+          streetAddress: locationParts.streetAddress || undefined,
+          addressLocality: locationParts.city || undefined,
+          addressRegion: locationParts.province || undefined,
+          addressCountry: "AR",
+        }
+        : undefined,
+      floorSize: inmueble?.superficie?.cubierta
+        ? {
+          "@type": "QuantitativeValue",
+          value: Number(inmueble.superficie.cubierta),
+          unitCode: "MTK",
+        }
+        : undefined,
+    },
+    seller: inmobiliaria?.nombre
+      ? {
+        "@type": "RealEstateAgent",
+        name: inmobiliaria.nombre,
+        url: agencyUrl,
+        telephone:
+          contactoInmobiliaria?.telefono ||
+          contactoInmobiliaria?.whatsapp ||
+          undefined,
+        email: contactoInmobiliaria?.email || undefined,
+      }
+      : undefined,
+  };
+};
+
 const InmueblePublicPage = () => {
   const { slug } = useParams();
 
@@ -193,8 +376,55 @@ const InmueblePublicPage = () => {
   const selectedImage = sortedImages[selectedImageIndex] || sortedImages[0];
   const address = buildAddress(inmueble);
   const featureItems = getFeatureItems(inmueble || {});
-  const contactoInmobiliaria = inmobiliaria?.configuracion?.contacto || {};
+  const contactoInmobiliaria = useMemo(() => {
+    return inmobiliaria?.configuracion?.contacto || {};
+  }, [inmobiliaria]);
   const expensas = toNumber(inmueble?.expensas);
+
+  const seoUrl = useMemo(() => {
+    return getCurrentPageUrl(inmueble?.slug || slug);
+  }, [inmueble?.slug, slug]);
+
+  const seoImage = useMemo(() => {
+    return selectedImage?.url || sortedImages[0]?.url || DEFAULT_SEO_IMAGE;
+  }, [selectedImage?.url, sortedImages]);
+
+  const seoTitle = useMemo(() => {
+    return buildSeoTitle(inmueble, inmobiliaria);
+  }, [inmobiliaria, inmueble]);
+
+  const seoDescription = useMemo(() => {
+    return buildSeoDescription({
+      inmueble,
+      inmobiliaria,
+      address,
+      featureItems,
+    });
+  }, [address, featureItems, inmobiliaria, inmueble]);
+
+  const inmuebleJsonLd = useMemo(() => {
+    if (!inmueble) return null;
+
+    return buildPropertyJsonLd({
+      inmueble,
+      inmobiliaria,
+      seoTitle,
+      seoDescription,
+      seoUrl,
+      seoImage,
+      address,
+      contactoInmobiliaria,
+    });
+  }, [
+    address,
+    contactoInmobiliaria,
+    inmobiliaria,
+    inmueble,
+    seoDescription,
+    seoImage,
+    seoTitle,
+    seoUrl,
+  ]);
 
   const whatsappUrl = useMemo(() => {
     return buildWhatsappUrl({
@@ -358,6 +588,14 @@ const InmueblePublicPage = () => {
   if (loading) {
     return (
       <main className="portal-home">
+        <SEO
+          title="Cargando inmueble | LaDoctaProp"
+          description="Cargando ficha pública del inmueble."
+          image={DEFAULT_SEO_IMAGE}
+          url={getCurrentPageUrl(slug)}
+          noIndex
+        />
+
         <div className="container py-5">
           <div className="alert alert-light border">
             Cargando inmueble publicado...
@@ -370,6 +608,14 @@ const InmueblePublicPage = () => {
   if (error) {
     return (
       <main className="portal-home">
+        <SEO
+          title="Inmueble no disponible | LaDoctaProp"
+          description="El inmueble solicitado no existe, no está publicado o no se encuentra disponible."
+          image={DEFAULT_SEO_IMAGE}
+          url={getCurrentPageUrl(slug)}
+          noIndex
+        />
+
         <div className="container py-5">
           <div className="alert alert-warning mb-3">{error}</div>
 
@@ -387,6 +633,16 @@ const InmueblePublicPage = () => {
 
   return (
     <main className="portal-home">
+      <SEO
+        title={seoTitle}
+        description={seoDescription}
+        image={seoImage}
+        url={seoUrl}
+        type="article"
+        siteName={inmobiliaria?.nombre || "LaDoctaProp"}
+        jsonLd={inmuebleJsonLd}
+      />
+
       <section className="py-4 py-lg-5">
         <div className="container">
           <div className="mb-4">

@@ -6,6 +6,8 @@ import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueb
 import { getAgencySlugFromDomain } from "../utils/domainRouting";
 import { useDomainAgency } from "../context/useDomainAgency";
 
+import SEO from "../../components/SEO";
+
 const INITIAL_FILTERS = {
   search: "",
   operacion: "",
@@ -228,6 +230,46 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     slug,
   });
 
+  const seoTitle = `${inmobiliaria.nombre} | Propiedades publicadas`;
+  const seoDescription = [
+    inmobiliaria.razonSocial,
+    `Conocé las propiedades publicadas por ${inmobiliaria.nombre}.`,
+    contacto.telefono ? `Teléfono: ${contacto.telefono}.` : "",
+    contacto.whatsapp ? `WhatsApp: ${contacto.whatsapp}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const seoImage =
+    inmobiliaria.branding?.logo?.url ||
+    inmobiliaria.branding?.backgrounds?.hero?.url ||
+    "/assets/img/Logo.png";
+
+  const seoUrl =
+    typeof window !== "undefined" ? window.location.href : `/inmobiliaria/${slug}`;
+
+  const inmobiliariaJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "RealEstateAgent",
+    name: inmobiliaria.nombre,
+    url: seoUrl,
+    image: seoImage,
+    telephone: contacto.telefono || contacto.whatsapp || undefined,
+    email: contacto.email || undefined,
+    address: {
+      "@type": "PostalAddress",
+      addressLocality:
+        inmobiliaria.configuracion?.ubicacion?.ciudad ||
+        contacto.ciudad ||
+        undefined,
+      addressRegion:
+        inmobiliaria.configuracion?.ubicacion?.provincia ||
+        contacto.provincia ||
+        undefined,
+      addressCountry: "AR",
+    },
+  };
+
   const operacionesPermitidas =
     inmobiliaria?.configuracion?.operacionesPermitidas || [];
 
@@ -317,6 +359,17 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
 
   return (
     <main className="portal-home">
+
+      <SEO
+        title={seoTitle}
+        description={seoDescription}
+        image={seoImage}
+        url={seoUrl}
+        type="website"
+        siteName={inmobiliaria.nombre}
+        jsonLd={inmobiliariaJsonLd}
+      />
+
       {/* =========================
           Hero sitio inmobiliaria
          ========================= */}
