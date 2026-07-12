@@ -43,7 +43,26 @@ const formatPrice = (inmueble) => {
 
 const buildPublicUrl = (slug) => {
   if (!slug) return null;
+
   return `/inmueble/${slug}`;
+};
+
+const getLocationLabel = (inmueble) => {
+  const ciudad = inmueble?.direccion?.ciudad || inmueble?.ciudad || "";
+  const barrio = inmueble?.direccion?.barrio || inmueble?.barrio || "";
+
+  if (ciudad && barrio) return `${ciudad} · ${barrio}`;
+  if (ciudad) return ciudad;
+  if (barrio) return barrio;
+
+  return "Sin ubicación cargada";
+};
+
+const getOperationTypeLabel = (inmueble) => {
+  const operacion = inmueble?.operacion || "Sin operación";
+  const tipo = inmueble?.tipo || "Sin tipo";
+
+  return `${operacion} · ${tipo}`;
 };
 
 const InmuebleListPage = () => {
@@ -95,6 +114,7 @@ const InmuebleListPage = () => {
         });
 
         const data = Array.isArray(result) ? result : result?.data || [];
+
         const newLastDoc = Array.isArray(result)
           ? null
           : result?.lastDoc || null;
@@ -127,6 +147,14 @@ const InmuebleListPage = () => {
 
   const handleEdit = (id) => {
     navigate(`/admin/inmuebles/${id}/editar`);
+  };
+
+  const handlePreview = (id) => {
+    navigate(`/admin/inmuebles/${id}/preview`);
+  };
+
+  const handleMarketing = (id) => {
+    navigate(`/admin/inmuebles/${id}/marketing`);
   };
 
   const handleDelete = async (id) => {
@@ -231,202 +259,266 @@ const InmuebleListPage = () => {
      Render
      ========================================================= */
 
-  if (loading) return <p>Cargando inmuebles...</p>;
+  if (loading) {
+    return (
+      <main className="container py-5 text-center">
+        <div className="spinner-border" />
+        <p className="text-muted mt-3">Cargando inmuebles...</p>
+      </main>
+    );
+  }
 
   if (error) {
     return (
-      <section className="page-container">
-        <div className="error-box">{error}</div>
-      </section>
+      <main className="container py-5">
+        <div className="alert alert-danger">{error}</div>
+
+        <button
+          type="button"
+          className="btn btn-outline-primary"
+          onClick={() => fetchInmuebles({ append: false, cursor: null })}
+        >
+          Reintentar
+        </button>
+      </main>
     );
   }
 
   return (
-    <section className="page-container">
-      <header className="page-header">
+    <main className="container py-4">
+      <header className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
         <div>
-          <h1>Inmuebles</h1>
+          <p className="text-uppercase text-muted small mb-1">
+            Panel de inmuebles
+          </p>
+
+          <h1 className="h3 mb-1">Inmuebles</h1>
+
           <p className="text-muted mb-0">
-            Administración de inmuebles de la inmobiliaria activa
+            Administración de publicaciones de la inmobiliaria activa.
           </p>
         </div>
 
         <button
           type="button"
-          className="btn-primary"
+          className="btn btn-primary"
           onClick={() => navigate("/admin/inmuebles/nuevo")}
           disabled={!activeInmobiliariaId}
         >
-          + Nuevo Inmueble
+          + Nuevo inmueble
         </button>
       </header>
 
-      {/* ================= Filtros ================= */}
-
-      <InmuebleFilters
-        filters={filters}
-        onChange={setFilters}
-        onReset={handleResetFilters}
-        loading={loading || loadingMore}
-      />
-
-      {/* ================= Listado ================= */}
+      <section className="card border-0 shadow-sm mb-4">
+        <div className="card-body p-4">
+          <InmuebleFilters
+            filters={filters}
+            onChange={setFilters}
+            onReset={handleResetFilters}
+            loading={loading || loadingMore}
+          />
+        </div>
+      </section>
 
       {inmuebles.length === 0 ? (
-        <p>No hay inmuebles cargados.</p>
+        <section className="card border-0 shadow-sm">
+          <div className="card-body p-5 text-center">
+            <div className="display-6 mb-3">🏠</div>
+
+            <h2 className="h5">No hay inmuebles cargados</h2>
+
+            <p className="text-muted mb-4">
+              Creá tu primera publicación para comenzar a mostrar propiedades en
+              el portal.
+            </p>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => navigate("/admin/inmuebles/nuevo")}
+              disabled={!activeInmobiliariaId}
+            >
+              + Nuevo inmueble
+            </button>
+          </div>
+        </section>
       ) : (
         <>
-          <div className="inmueble-list">
+          <section className="vstack gap-3">
             {inmuebles.map((inmueble) => {
               const coverImage = getCoverImage(inmueble);
               const publicUrl = buildPublicUrl(inmueble.slug);
               const isPublicado = inmueble.publicarEnPortal === true;
+              const isActivo = inmueble.estado === "activo";
+              const updatingPortal = togglingPortalId === inmueble.id;
+              const updatingDestacado = togglingDestacadoId === inmueble.id;
+              const deleting = deletingId === inmueble.id;
 
               return (
-                <article key={inmueble.id} className="inmueble-card">
-                  {/* 🖼️ Miniatura */}
-                  <div className="inmueble-thumb">
-                    {coverImage ? (
-                      <img
-                        src={coverImage.url}
-                        alt={inmueble.titulo || "Inmueble"}
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="thumb-placeholder">Sin imagen</div>
-                    )}
-                  </div>
-
-                  <div className="inmueble-info">
-                    <h3>
-                      {inmueble.titulo || "Inmueble sin título"}{" "}
-                      {inmueble.destacado && (
-                        <span className="badge-destacado">★</span>
-                      )}
-                    </h3>
-
-                    <p className="muted">
-                      {inmueble.direccion?.ciudad || "Sin ciudad"}
-                      {inmueble.direccion?.barrio
-                        ? ` · ${inmueble.direccion.barrio}`
-                        : ""}
-                    </p>
-
-                    <p>
-                      {inmueble.operacion || "Sin operación"} ·{" "}
-                      {inmueble.tipo || "Sin tipo"}
-                    </p>
-
-                    <strong>{formatPrice(inmueble)}</strong>
-
-                    <div className="mt-2 d-flex flex-wrap gap-2">
-                      <span
-                        className={
-                          inmueble.estado === "activo"
-                            ? "badge bg-success"
-                            : "badge bg-secondary"
-                        }
-                      >
-                        Estado: {inmueble.estado || "sin estado"}
-                      </span>
-
-                      <span
-                        className={
-                          isPublicado ? "badge bg-primary" : "badge bg-light text-dark"
-                        }
-                      >
-                        Portal: {isPublicado ? "Publicado" : "No publicado"}
-                      </span>
-
-                      {inmueble.destacado && (
-                        <span className="badge bg-warning text-dark">
-                          Destacado
-                        </span>
+                <article
+                  key={inmueble.id}
+                  className="card border-0 shadow-sm overflow-hidden"
+                >
+                  <div className="row g-0">
+                    <div className="col-md-3 col-lg-2">
+                      {coverImage ? (
+                        <img
+                          src={coverImage.url}
+                          alt={inmueble.titulo || "Inmueble"}
+                          loading="lazy"
+                          className="w-100 h-100"
+                          style={{
+                            minHeight: 190,
+                            objectFit: "cover",
+                          }}
+                        />
+                      ) : (
+                        <div
+                          className="bg-light text-muted d-flex align-items-center justify-content-center h-100"
+                          style={{ minHeight: 190 }}
+                        >
+                          Sin imagen
+                        </div>
                       )}
                     </div>
 
-                    {inmueble.slug && (
-                      <p className="small text-muted mt-2 mb-0">
-                        <strong>Slug:</strong> {inmueble.slug}
-                      </p>
-                    )}
-                  </div>
+                    <div className="col-md-6 col-lg-7">
+                      <div className="card-body p-4">
+                        <div className="d-flex flex-wrap align-items-center gap-2 mb-2">
+                          <span
+                            className={`badge ${isActivo ? "text-bg-success" : "text-bg-secondary"
+                              }`}
+                          >
+                            {inmueble.estado || "sin estado"}
+                          </span>
 
-                  <div className="inmueble-actions">
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      onClick={() => handleEdit(inmueble.id)}
-                    >
-                      Editar
-                    </button>
+                          <span
+                            className={`badge ${isPublicado
+                              ? "text-bg-primary"
+                              : "text-bg-light border text-dark"
+                              }`}
+                          >
+                            {isPublicado ? "Publicado en portal" : "No publicado"}
+                          </span>
 
-                    <button
-                      type="button"
-                      className="btn-outline"
-                      onClick={() => navigate(`/admin/inmuebles/${inmueble.id}/preview`)}
-                    >
-                      Vista previa
-                    </button>
+                          {inmueble.destacado && (
+                            <span className="badge text-bg-warning">
+                              ★ Destacado
+                            </span>
+                          )}
+                        </div>
 
-                    {isPublicado && publicUrl && (
-                      <a
-                        href={publicUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="btn-outline"
-                      >
-                        Ver publicación
-                      </a>
-                    )}
+                        <h2 className="h5 mb-2">
+                          {inmueble.titulo || "Inmueble sin título"}
+                        </h2>
 
-                    <button
-                      type="button"
-                      className="btn-outline"
-                      disabled={togglingPortalId === inmueble.id}
-                      onClick={() => togglePublicarEnPortal(inmueble)}
-                    >
-                      {togglingPortalId === inmueble.id
-                        ? "Actualizando..."
-                        : isPublicado
-                          ? "Despublicar"
-                          : "Publicar"}
-                    </button>
+                        <p className="text-muted mb-2">
+                          {getLocationLabel(inmueble)}
+                        </p>
 
-                    <button
-                      type="button"
-                      className="btn-outline"
-                      disabled={togglingDestacadoId === inmueble.id}
-                      onClick={() => toggleDestacado(inmueble)}
-                    >
-                      {togglingDestacadoId === inmueble.id
-                        ? "Actualizando..."
-                        : inmueble.destacado
-                          ? "Quitar destacado"
-                          : "Destacar"}
-                    </button>
+                        <p className="mb-2">{getOperationTypeLabel(inmueble)}</p>
 
-                    <button
-                      type="button"
-                      className="btn-danger"
-                      disabled={deletingId === inmueble.id}
-                      onClick={() => handleDelete(inmueble.id)}
-                    >
-                      {deletingId === inmueble.id
-                        ? "Eliminando..."
-                        : "Eliminar"}
-                    </button>
+                        <div className="h5 mb-3">{formatPrice(inmueble)}</div>
+
+                        {inmueble.slug && (
+                          <p className="small text-muted mb-0">
+                            <strong>Slug:</strong> {inmueble.slug}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="col-md-3 col-lg-3 border-start bg-light">
+                      <div className="card-body p-3 h-100 d-flex flex-column gap-2">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm w-100"
+                          onClick={() => handleEdit(inmueble.id)}
+                        >
+                          Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm w-100"
+                          onClick={() => handlePreview(inmueble.id)}
+                        >
+                          Vista previa
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-outline-success btn-sm w-100"
+                          onClick={() => handleMarketing(inmueble.id)}
+                        >
+                          Marketing
+                        </button>
+
+                        {isPublicado && publicUrl && (
+                          <a
+                            href={publicUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-outline-primary btn-sm w-100"
+                          >
+                            Ver publicación
+                          </a>
+                        )}
+
+                        <hr className="my-2" />
+
+                        <button
+                          type="button"
+                          className={`btn btn-sm w-100 ${isPublicado
+                            ? "btn-outline-warning"
+                            : "btn-outline-primary"
+                            }`}
+                          disabled={updatingPortal}
+                          onClick={() => togglePublicarEnPortal(inmueble)}
+                        >
+                          {updatingPortal
+                            ? "Actualizando..."
+                            : isPublicado
+                              ? "Despublicar"
+                              : "Publicar"}
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-outline-warning btn-sm w-100"
+                          disabled={updatingDestacado}
+                          onClick={() => toggleDestacado(inmueble)}
+                        >
+                          {updatingDestacado
+                            ? "Actualizando..."
+                            : inmueble.destacado
+                              ? "Quitar destacado"
+                              : "Destacar"}
+                        </button>
+
+                        <div className="mt-auto">
+                          <button
+                            type="button"
+                            className="btn btn-outline-danger btn-sm w-100"
+                            disabled={deleting}
+                            onClick={() => handleDelete(inmueble.id)}
+                          >
+                            {deleting ? "Eliminando..." : "Eliminar"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </article>
               );
             })}
-          </div>
+          </section>
 
           {lastDoc && (
-            <div className="load-more">
+            <div className="text-center mt-4">
               <button
                 type="button"
-                className="btn-secondary"
+                className="btn btn-outline-primary"
                 disabled={loadingMore}
                 onClick={handleLoadMore}
               >
@@ -436,7 +528,7 @@ const InmuebleListPage = () => {
           )}
         </>
       )}
-    </section>
+    </main>
   );
 };
 

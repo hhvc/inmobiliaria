@@ -31,6 +31,7 @@ const scrollToHash = (hash) => {
 };
 
 const Navbar = () => {
+
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -202,10 +203,15 @@ const Navbar = () => {
 
   return (
     <>
-      <nav className="navbar navbar-expand-lg navbar-dark bg-dark fixed-top shadow-sm">
+      <nav
+        className="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm"
+        style={{
+          zIndex: 1040,
+        }}
+      >
         <div className="container">
           <Link
-            className="navbar-brand d-flex align-items-center gap-2"
+            className="navbar-brand d-flex align-items-center gap-2 py-1"
             to={brandTarget}
             onClick={handleBrandClick}
           >
@@ -534,11 +540,18 @@ const Navbar = () => {
         </div>
       </nav>
 
+      {/* 
+        Espaciador global:
+        Como el Navbar está fixed-top, este bloque reserva la altura real
+        del Navbar para que no tape títulos, botones ni headers de páginas.
+      */}
+
       {showLoginModal && (
         <div
           className="modal show d-block"
           style={{
             backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 1055,
           }}
           onClick={closeLoginModal}
         >

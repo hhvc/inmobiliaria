@@ -23,10 +23,15 @@
 }
 
 html,
+body,
+#root {
+  min-height: 100%;
+}
+
+html,
 body {
   margin: 0;
   padding: 0;
-  min-height: 100%;
   box-sizing: border-box;
   overflow-x: hidden;
   scroll-behavior: smooth;
@@ -39,7 +44,6 @@ body {
 }
 
 body {
-  padding-top: 70px;
   background: var(--portal-bg);
   color: #1f2937;
 }
@@ -304,10 +308,6 @@ img {
 }
 
 @media (max-width: 768px) {
-  body {
-    padding-top: 66px;
-  }
-
   .portal-section {
     padding: 3.5rem 0;
   }
@@ -331,4 +331,26 @@ img {
     bottom: 15px;
     right: 15px;
   }
+}
+
+.modern {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.modern>main {
+  flex: 1 0 auto;
+  padding-bottom: 3rem;
+}
+
+.site-footer {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  right: auto !important;
+  width: 100%;
+  flex-shrink: 0;
+  margin-top: auto;
+  z-index: 1;
 }
