@@ -29,3 +29,4 @@ serviceAccountKey.json
 
 # Firebase Hosting cache
 .firebase/hosting.*
+.secrets/
