@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
+import SEO from "../../components/SEO";
 import { getPublicInmuebles } from "../services/inmueble.service";
 
 const INITIAL_FILTERS = {
@@ -44,6 +45,8 @@ const SORT_OPTIONS = [
     { value: "superficie_desc", label: "Mayor superficie" },
 ];
 
+const DEFAULT_SEO_IMAGE = "/assets/img/Logo.png";
+
 const normalizeText = (value = "") => {
     return value
         .toString()
@@ -51,6 +54,21 @@ const normalizeText = (value = "") => {
         .toLowerCase()
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "");
+};
+
+const normalizeSeoText = (value = "") => {
+    return value
+        .toString()
+        .replace(/\s+/g, " ")
+        .trim();
+};
+
+const truncateText = (value = "", maxLength = 165) => {
+    const cleanValue = normalizeSeoText(value);
+
+    if (cleanValue.length <= maxLength) return cleanValue;
+
+    return `${cleanValue.slice(0, maxLength - 1).trim()}…`;
 };
 
 const toNumber = (value) => {
@@ -350,6 +368,147 @@ const sortInmuebles = (items, sortBy) => {
     return sortedItems;
 };
 
+const buildPortalUrl = (searchParamsString = "") => {
+    const path = "/inmuebles";
+    const suffix = searchParamsString ? `?${searchParamsString}` : "";
+
+    if (typeof window === "undefined") {
+        return `${path}${suffix}`;
+    }
+
+    return `${window.location.origin}${path}${suffix}`;
+};
+
+const buildSeoTitle = (filters) => {
+    const parts = [];
+
+    if (filters.tipo) {
+        parts.push(getOptionLabel(TIPOS, filters.tipo));
+    }
+
+    if (filters.operacion) {
+        parts.push(`en ${getOptionLabel(OPERACIONES, filters.operacion)}`);
+    }
+
+    if (filters.barrio) {
+        parts.push(`en ${filters.barrio}`);
+    } else if (filters.ciudad) {
+        parts.push(`en ${filters.ciudad}`);
+    }
+
+    if (filters.search) {
+        parts.push(`| ${filters.search}`);
+    }
+
+    if (parts.length === 0) {
+        return "Inmuebles publicados | LaDoctaProp";
+    }
+
+    return `${parts.join(" ")} | LaDoctaProp`;
+};
+
+const buildSeoDescription = ({ filters, resultCount }) => {
+    const parts = [];
+
+    if (resultCount > 0) {
+        parts.push(
+            `${resultCount} ${resultCount === 1 ? "inmueble publicado" : "inmuebles publicados"
+            }`,
+        );
+    } else {
+        parts.push("Buscador de inmuebles publicados");
+    }
+
+    if (filters.operacion) {
+        parts.push(`operación ${getOptionLabel(OPERACIONES, filters.operacion)}`);
+    }
+
+    if (filters.tipo) {
+        parts.push(`tipo ${getOptionLabel(TIPOS, filters.tipo)}`);
+    }
+
+    if (filters.ciudad) {
+        parts.push(`en ${filters.ciudad}`);
+    }
+
+    if (filters.barrio) {
+        parts.push(`barrio ${filters.barrio}`);
+    }
+
+    if (filters.dormitoriosMin) {
+        parts.push(`desde ${filters.dormitoriosMin} dormitorios`);
+    }
+
+    if (filters.precioMin || filters.precioMax) {
+        const priceText = [
+            filters.precioMin ? `precio mínimo ${filters.precioMin}` : "",
+            filters.precioMax ? `precio máximo ${filters.precioMax}` : "",
+        ]
+            .filter(Boolean)
+            .join(" y ");
+
+        parts.push(priceText);
+    }
+
+    const baseDescription =
+        parts.length > 1
+            ? parts.join(", ")
+            : "Filtrá propiedades por operación, tipo, ciudad, barrio, dormitorios y precio.";
+
+    return truncateText(
+        `${baseDescription}. Consultá propiedades publicadas en LaDoctaProp y compartí búsquedas inmobiliarias.`,
+    );
+};
+
+const buildItemListJsonLd = ({ filteredInmuebles, seoUrl }) => {
+    return {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        name: "Inmuebles publicados en LaDoctaProp",
+        description:
+            "Buscador público de inmuebles publicados en LaDoctaProp.",
+        url: seoUrl,
+        mainEntity: {
+            "@type": "ItemList",
+            itemListElement: filteredInmuebles.slice(0, 20).map((inmueble, index) => {
+                const detalleUrl = buildPortalItemUrl(inmueble);
+                const coverImage = getCoverImage(inmueble);
+
+                return {
+                    "@type": "ListItem",
+                    position: index + 1,
+                    url: detalleUrl,
+                    item: {
+                        "@type": "Offer",
+                        name: inmueble.titulo || "Inmueble publicado",
+                        url: detalleUrl,
+                        image: coverImage?.url || undefined,
+                        price: toNumber(inmueble.precio) || undefined,
+                        priceCurrency: inmueble.moneda || "USD",
+                        itemOffered: {
+                            "@type": "Place",
+                            name: inmueble.titulo || "Inmueble publicado",
+                            address: buildAddress(inmueble) || undefined,
+                        },
+                    },
+                };
+            }),
+        },
+    };
+};
+
+const buildPortalItemUrl = (inmueble) => {
+    const slugOrId = inmueble?.slug || inmueble?.id;
+
+    if (!slugOrId) return "";
+
+    if (typeof window === "undefined") {
+        return `/inmueble/${slugOrId}`;
+    }
+
+    return `${window.location.origin}/inmueble/${slugOrId}`;
+};
+
 const InmueblePortalPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
 
@@ -361,6 +520,8 @@ const InmueblePortalPage = () => {
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    const searchParamsString = searchParams.toString();
 
     useEffect(() => {
         setFilters(getFiltersFromSearchParams(searchParams));
@@ -413,6 +574,36 @@ const InmueblePortalPage = () => {
     const destacadosCount = useMemo(() => {
         return inmuebles.filter((inmueble) => inmueble.destacado).length;
     }, [inmuebles]);
+
+    const seoUrl = useMemo(() => {
+        return buildPortalUrl(searchParamsString);
+    }, [searchParamsString]);
+
+    const seoTitle = useMemo(() => {
+        return buildSeoTitle(filters);
+    }, [filters]);
+
+    const seoDescription = useMemo(() => {
+        return buildSeoDescription({
+            filters,
+            resultCount: filteredInmuebles.length,
+        });
+    }, [filteredInmuebles.length, filters]);
+
+    const seoImage = useMemo(() => {
+        const firstCover = filteredInmuebles
+            .map((inmueble) => getCoverImage(inmueble))
+            .find((image) => image?.url);
+
+        return firstCover?.url || DEFAULT_SEO_IMAGE;
+    }, [filteredInmuebles]);
+
+    const portalJsonLd = useMemo(() => {
+        return buildItemListJsonLd({
+            filteredInmuebles,
+            seoUrl,
+        });
+    }, [filteredInmuebles, seoUrl]);
 
     useEffect(() => {
         const fetchInmuebles = async () => {
@@ -535,6 +726,16 @@ const InmueblePortalPage = () => {
 
     return (
         <main className="portal-home">
+            <SEO
+                title={seoTitle}
+                description={seoDescription}
+                image={seoImage}
+                url={seoUrl}
+                type="website"
+                siteName="LaDoctaProp"
+                jsonLd={portalJsonLd}
+            />
+
             <section className="py-5">
                 <div className="container">
                     <div className="row align-items-end g-4 mb-4">
@@ -563,9 +764,7 @@ const InmueblePortalPage = () => {
 
                                 <div className="col-6">
                                     <div className="portal-stat">
-                                        <div className="portal-stat-number">
-                                            {destacadosCount}
-                                        </div>
+                                        <div className="portal-stat-number">{destacadosCount}</div>
                                         <div className="small text-muted">Destacadas</div>
                                     </div>
                                 </div>
