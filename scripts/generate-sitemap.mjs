@@ -3,10 +3,15 @@ import path from "node:path";
 
 import admin from "firebase-admin";
 
-const SITE_URL =
-    process.env.SITE_URL ||
-    process.env.VITE_PUBLIC_SITE_URL ||
-    "https://ladoctaprop.com.ar";
+const DEFAULT_SITE_URL = "https://onoprop.com";
+
+const getSiteUrl = () => {
+    return (
+        process.env.SITE_URL ||
+        process.env.VITE_PUBLIC_SITE_URL ||
+        DEFAULT_SITE_URL
+    );
+};
 
 const OUTPUT_PATH = path.resolve("public", "sitemap.xml");
 
@@ -113,7 +118,7 @@ const normalizeSlug = (value = "") => {
 };
 
 const buildUrl = (routePath) => {
-    const baseUrl = normalizeBaseUrl(SITE_URL);
+    const baseUrl = normalizeBaseUrl(getSiteUrl());
     const cleanPath = routePath.startsWith("/") ? routePath : `/${routePath}`;
 
     return `${baseUrl}${cleanPath}`;

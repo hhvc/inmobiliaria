@@ -77,6 +77,7 @@ const InmuebleForm = ({
 
       // Publicación en portal público
       publicarEnPortal: Boolean(values?.publicarEnPortal),
+      noIndex: Boolean(values?.noIndex),
     });
   };
 
@@ -348,8 +349,8 @@ const InmuebleForm = ({
       </div>
 
       {/* =========================
-          Publicación
-         ========================= */}
+    Publicación
+   ========================= */}
       <div className="card mb-4">
         <div className="card-header fw-semibold">Publicación</div>
         <div className="card-body row g-3 align-items-end">
@@ -384,6 +385,7 @@ const InmuebleForm = ({
               <label className="form-check-label">Destacado</label>
             </div>
           </div>
+
           <div className="col-md-4">
             <div className="form-check mt-4">
               <input
@@ -396,6 +398,29 @@ const InmuebleForm = ({
               <label className="form-check-label">Publicar en portal</label>
             </div>
           </div>
+
+          <div className="col-md-4">
+            <div className="form-check mt-4">
+              <input
+                className="form-check-input"
+                type="checkbox"
+                name="noIndex"
+                checked={Boolean(values?.noIndex)}
+                onChange={handleChange}
+              />
+              <label className="form-check-label">No indexar en Google</label>
+            </div>
+          </div>
+
+          {values?.noIndex && (
+            <div className="col-12">
+              <div className="alert alert-warning small mb-0">
+                Esta publicación puede verse si está publicada en el portal, pero no
+                será incluida en el sitemap y la ficha pública enviará la indicación
+                <strong> noindex</strong> a los buscadores.
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

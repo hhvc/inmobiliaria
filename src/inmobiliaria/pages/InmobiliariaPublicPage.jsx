@@ -14,6 +14,8 @@ const INITIAL_FILTERS = {
   tipo: "",
 };
 
+const DEFAULT_SEO_IMAGE = "/assets/img/Logo.png";
+
 const formatPrice = (inmueble) => {
   if (!inmueble?.precio) return "Consultar";
 
@@ -86,7 +88,8 @@ const buildWhatsappUrl = ({ whatsapp, inmobiliaria, slug }) => {
   const pageUrl = getCurrentInmobiliariaUrl(slug);
 
   const message = [
-    `Hola, quiero consultar por las propiedades de ${inmobiliaria?.nombre || "la inmobiliaria"}.`,
+    `Hola, quiero consultar por las propiedades de ${inmobiliaria?.nombre || "la inmobiliaria"
+    }.`,
     pageUrl ? `Link: ${pageUrl}` : "",
   ]
     .filter(Boolean)
@@ -134,6 +137,52 @@ const getFeaturedInmuebles = (inmuebles) => {
   }
 
   return inmuebles.slice(0, 3);
+};
+
+const buildSeoDescription = ({ inmobiliaria, contacto }) => {
+  if (!inmobiliaria) {
+    return "Sitio público de inmobiliaria en LaDoctaProp.";
+  }
+
+  return [
+    inmobiliaria.razonSocial,
+    `Conocé las propiedades publicadas por ${inmobiliaria.nombre}.`,
+    contacto.telefono ? `Teléfono: ${contacto.telefono}.` : "",
+    contacto.whatsapp ? `WhatsApp: ${contacto.whatsapp}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+};
+
+const buildInmobiliariaJsonLd = ({
+  inmobiliaria,
+  contacto,
+  seoUrl,
+  seoImage,
+}) => {
+  if (!inmobiliaria) return null;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "RealEstateAgent",
+    name: inmobiliaria.nombre,
+    url: seoUrl,
+    image: seoImage,
+    telephone: contacto.telefono || contacto.whatsapp || undefined,
+    email: contacto.email || undefined,
+    address: {
+      "@type": "PostalAddress",
+      addressLocality:
+        inmobiliaria.configuracion?.ubicacion?.ciudad ||
+        contacto.ciudad ||
+        undefined,
+      addressRegion:
+        inmobiliaria.configuracion?.ubicacion?.provincia ||
+        contacto.provincia ||
+        undefined,
+      addressCountry: "AR",
+    },
+  };
 };
 
 export default function InmobiliariaPublicPage({ forcedSlug = null }) {
@@ -222,53 +271,58 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     loadInmobiliaria();
   }, [loadInmobiliaria]);
 
-  const contacto = inmobiliaria?.configuracion?.contacto || {};
+  const contacto = useMemo(() => {
+    return inmobiliaria?.configuracion?.contacto || {};
+  }, [inmobiliaria]);
 
-  const whatsappUrl = buildWhatsappUrl({
-    whatsapp: contacto.whatsapp,
-    inmobiliaria,
-    slug,
-  });
+  const whatsappUrl = useMemo(() => {
+    return buildWhatsappUrl({
+      whatsapp: contacto.whatsapp,
+      inmobiliaria,
+      slug,
+    });
+  }, [contacto.whatsapp, inmobiliaria, slug]);
 
-  const seoTitle = `${inmobiliaria.nombre} | Propiedades publicadas`;
-  const seoDescription = [
-    inmobiliaria.razonSocial,
-    `Conocé las propiedades publicadas por ${inmobiliaria.nombre}.`,
-    contacto.telefono ? `Teléfono: ${contacto.telefono}.` : "",
-    contacto.whatsapp ? `WhatsApp: ${contacto.whatsapp}.` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const seoTitle = useMemo(() => {
+    return inmobiliaria?.nombre
+      ? `${inmobiliaria.nombre} | Propiedades publicadas`
+      : "Inmobiliaria | LaDoctaProp";
+  }, [inmobiliaria]);
 
-  const seoImage =
-    inmobiliaria.branding?.logo?.url ||
-    inmobiliaria.branding?.backgrounds?.hero?.url ||
-    "/assets/img/Logo.png";
+  const seoDescription = useMemo(() => {
+    return buildSeoDescription({
+      inmobiliaria,
+      contacto,
+    });
+  }, [contacto, inmobiliaria]);
 
-  const seoUrl =
-    typeof window !== "undefined" ? window.location.href : `/inmobiliaria/${slug}`;
+  const seoImage = useMemo(() => {
+    return (
+      inmobiliaria?.branding?.logo?.url ||
+      inmobiliaria?.branding?.backgrounds?.hero?.url ||
+      DEFAULT_SEO_IMAGE
+    );
+  }, [inmobiliaria]);
 
-  const inmobiliariaJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "RealEstateAgent",
-    name: inmobiliaria.nombre,
-    url: seoUrl,
-    image: seoImage,
-    telephone: contacto.telefono || contacto.whatsapp || undefined,
-    email: contacto.email || undefined,
-    address: {
-      "@type": "PostalAddress",
-      addressLocality:
-        inmobiliaria.configuracion?.ubicacion?.ciudad ||
-        contacto.ciudad ||
-        undefined,
-      addressRegion:
-        inmobiliaria.configuracion?.ubicacion?.provincia ||
-        contacto.provincia ||
-        undefined,
-      addressCountry: "AR",
-    },
-  };
+  const seoUrl = useMemo(() => {
+    if (typeof window !== "undefined") {
+      return window.location.href;
+    }
+
+    return slug ? `/inmobiliaria/${slug}` : "/";
+  }, [slug]);
+
+  const inmobiliariaJsonLd = useMemo(() => {
+    return buildInmobiliariaJsonLd({
+      inmobiliaria,
+      contacto,
+      seoUrl,
+      seoImage,
+    });
+  }, [contacto, inmobiliaria, seoImage, seoUrl]);
+
+  const shouldNoIndexInmobiliaria =
+    inmobiliaria?.noIndex === true || inmobiliaria?.seo?.noIndex === true;
 
   const operacionesPermitidas =
     inmobiliaria?.configuracion?.operacionesPermitidas || [];
@@ -334,6 +388,14 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
   if (loading) {
     return (
       <main className="portal-home">
+        <SEO
+          title="Cargando inmobiliaria | LaDoctaProp"
+          description="Cargando sitio público de inmobiliaria."
+          image={DEFAULT_SEO_IMAGE}
+          url={seoUrl}
+          noIndex
+        />
+
         <div className="container py-5">
           <div className="alert alert-light border">Cargando inmobiliaria...</div>
         </div>
@@ -344,6 +406,14 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
   if (error || !inmobiliaria) {
     return (
       <main className="portal-home">
+        <SEO
+          title="Inmobiliaria no disponible | LaDoctaProp"
+          description="La inmobiliaria solicitada no existe o no se encuentra disponible."
+          image={DEFAULT_SEO_IMAGE}
+          url={seoUrl}
+          noIndex
+        />
+
         <div className="container py-5">
           <div className="alert alert-danger">
             {error || "Inmobiliaria no encontrada"}
@@ -359,15 +429,15 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
 
   return (
     <main className="portal-home">
-
       <SEO
         title={seoTitle}
         description={seoDescription}
         image={seoImage}
         url={seoUrl}
         type="website"
-        siteName={inmobiliaria.nombre}
+        siteName={inmobiliaria?.nombre || "LaDoctaProp"}
         jsonLd={inmobiliariaJsonLd}
+        noIndex={shouldNoIndexInmobiliaria}
       />
 
       {/* =========================
@@ -395,14 +465,20 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                     {inmobiliaria.nombre}
                   </h1>
 
-                  <p className="lead mb-4" style={{ color: "rgba(255,255,255,0.82)" }}>
+                  <p
+                    className="lead mb-4"
+                    style={{ color: "rgba(255,255,255,0.82)" }}
+                  >
                     Propiedades seleccionadas, contacto directo y atención
                     personalizada. Encontrá opciones de {tiposTexto} para{" "}
                     {operacionesTexto}.
                   </p>
 
                   {inmobiliaria.razonSocial && (
-                    <p className="mb-4" style={{ color: "rgba(255,255,255,0.72)" }}>
+                    <p
+                      className="mb-4"
+                      style={{ color: "rgba(255,255,255,0.72)" }}
+                    >
                       {inmobiliaria.razonSocial}
                     </p>
                   )}

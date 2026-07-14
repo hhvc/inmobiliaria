@@ -40,6 +40,7 @@ const INITIAL_VALUES = {
   estado: "activo",
   destacado: false,
   publicarEnPortal: false,
+  noIndex: false,
   images: [],
 
   // 🔑 Dominio / compatibilidad
@@ -145,6 +146,7 @@ const InmuebleCreatePage = () => {
         estado: formValues?.estado || "activo",
         destacado: Boolean(formValues?.destacado),
         publicarEnPortal: Boolean(formValues?.publicarEnPortal),
+        noIndex: Boolean(formValues?.noIndex),
       };
 
       const inmuebleId = await createInmueble(

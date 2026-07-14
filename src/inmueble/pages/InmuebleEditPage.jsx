@@ -41,6 +41,7 @@ const EMPTY_VALUES = {
   estado: "activo",
   destacado: false,
   publicarEnPortal: false,
+  noIndex: false,
   images: [],
 
   inmobiliariaId: "",
@@ -134,6 +135,7 @@ const InmuebleEditPage = () => {
           estado: data.estado || "activo",
           destacado: Boolean(data.destacado),
           publicarEnPortal: Boolean(data.publicarEnPortal),
+          noIndex: Boolean(data.noIndex),
         };
 
         setInmueble({
@@ -143,6 +145,7 @@ const InmuebleEditPage = () => {
             data.ownerInmobiliariaId || resolvedInmobiliariaId,
           destacado: Boolean(data.destacado),
           publicarEnPortal: Boolean(data.publicarEnPortal),
+          noIndex: Boolean(data.noIndex),
         });
 
         setValues(formattedValues);
@@ -318,6 +321,7 @@ const InmuebleEditPage = () => {
         estado: formValues.estado || "activo",
         destacado: Boolean(formValues?.destacado),
         publicarEnPortal: Boolean(formValues?.publicarEnPortal),
+        noIndex: Boolean(formValues?.noIndex),
       };
 
       await updateInmueble(currentInmobiliariaId, id, updatedInmueble);
