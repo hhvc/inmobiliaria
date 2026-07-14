@@ -26,11 +26,6 @@ const STATIC_ROUTES = [
         changefreq: "daily",
         priority: "0.9",
     },
-    {
-        path: "/contacto",
-        changefreq: "monthly",
-        priority: "0.5",
-    },
 ];
 
 const ENV_FILES = [".env.local", ".env"];

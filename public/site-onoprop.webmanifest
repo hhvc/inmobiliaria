@@ -1,0 +1,17 @@
+{
+    "name": "ONO Prop",
+    "short_name": "ONO Prop",
+    "description": "Plataforma inmobiliaria para publicar propiedades, crear sitios propios para inmobiliarias y gestionar consultas comerciales.",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "theme_color": "#111827",
+    "background_color": "#ffffff",
+    "icons": [
+        {
+            "src": "/FaviconONOProp2.ico",
+            "sizes": "any",
+            "type": "image/x-icon"
+        }
+    ]
+}

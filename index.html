@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
 
-  <!-- Favicon dinámico por dominio -->
+  <!-- Favicon y manifest dinámicos por dominio -->
   <script>
     (function () {
       const hostname = window.location.hostname.toLowerCase();
@@ -21,14 +21,18 @@
       const isOnoPropDomain = ONO_PROP_HOSTS.has(hostname);
 
       const faviconHref = isOnoPropDomain
-        ? "/FaviconONOProp2.ico?v=onoprop-2"
-        : "/favicon.ico?v=ladoctaprop-2";
+        ? "/FaviconONOProp2.ico?v=onoprop-3"
+        : "/favicon.ico?v=ladoctaprop-3";
 
       const appleTouchIconHref = isOnoPropDomain
-        ? "/FaviconONOProp2.ico?v=onoprop-2"
-        : "/apple-touch-icon.png?v=ladoctaprop-2";
+        ? "/FaviconONOProp2.ico?v=onoprop-3"
+        : "/apple-touch-icon.png?v=ladoctaprop-3";
 
-      const upsertIcon = ({ rel, href, type, sizes }) => {
+      const manifestHref = isOnoPropDomain
+        ? "/site-onoprop.webmanifest?v=onoprop-3"
+        : "/site-ladoctaprop.webmanifest?v=ladoctaprop-3";
+
+      const upsertLink = ({ rel, href, type, sizes }) => {
         let link = document.querySelector(`link[rel="${rel}"]`);
 
         if (!link) {
@@ -48,29 +52,32 @@
         }
       };
 
-      upsertIcon({
+      upsertLink({
         rel: "icon",
         href: faviconHref,
         type: "image/x-icon",
         sizes: "any",
       });
 
-      upsertIcon({
+      upsertLink({
         rel: "shortcut icon",
         href: faviconHref,
         type: "image/x-icon",
         sizes: "any",
       });
 
-      upsertIcon({
+      upsertLink({
         rel: "apple-touch-icon",
         href: appleTouchIconHref,
         sizes: "180x180",
       });
+
+      upsertLink({
+        rel: "manifest",
+        href: manifestHref,
+      });
     })();
   </script>
-
-  <link rel="manifest" href="/site.webmanifest" />
 
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
 
