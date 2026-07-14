@@ -1,5 +1,37 @@
+import { Link } from "react-router-dom";
+
+import { useDomainAgency } from "../inmobiliaria/context/useDomainAgency";
+import { isPortalBaseDomain } from "../inmobiliaria/utils/domainRouting";
+
+const ONO_PROP_LOGO_URL = "/assets/img/logoONOProp3.png";
+const DEFAULT_INMOBILIARIA_LOGO_URL = "/assets/img/Logo.png";
+
 const Footer = () => {
   const currentYear = new Date().getFullYear();
+
+  const { inmobiliaria: domainInmobiliaria, slug: domainSlug } =
+    useDomainAgency();
+
+  const isPortalDomain = isPortalBaseDomain();
+  const isCustomAgencyDomain = !isPortalDomain && Boolean(domainSlug);
+
+  const brandName =
+    isCustomAgencyDomain && domainInmobiliaria?.nombre
+      ? domainInmobiliaria.nombre
+      : "ONO Prop";
+
+  const brandLogoUrl =
+    isCustomAgencyDomain && domainInmobiliaria?.branding?.logo?.url
+      ? domainInmobiliaria.branding.logo.url
+      : isCustomAgencyDomain
+        ? DEFAULT_INMOBILIARIA_LOGO_URL
+        : ONO_PROP_LOGO_URL;
+
+  const brandDescription = isCustomAgencyDomain
+    ? "Sitio inmobiliario desarrollado con ONO Prop."
+    : "Plataforma inmobiliaria para publicar propiedades, crear sitios propios, conectar dominios y gestionar consultas comerciales.";
+
+  const brandTarget = isCustomAgencyDomain ? "/" : "/";
 
   return (
     <footer
@@ -18,26 +50,50 @@ const Footer = () => {
       }}
     >
       <div className="container py-4">
-        <div className="row align-items-center g-3">
+        <div className="row align-items-center g-4">
           <div className="col-md-6 text-center text-md-start">
-            <p className="mb-1 fw-semibold text-white">LaDoctaProp</p>
+            <Link
+              to={brandTarget}
+              className="d-inline-flex align-items-center gap-3 text-decoration-none mb-2"
+              style={{ color: "#ffffff" }}
+              aria-label={`Ir al inicio de ${brandName}`}
+            >
+              <img
+                src={brandLogoUrl}
+                alt={brandName}
+                style={{
+                  maxHeight: 46,
+                  maxWidth: 190,
+                  objectFit: "contain",
+                }}
+              />
+            </Link>
 
-            <p className="small mb-0" style={{ color: "rgba(255,255,255,0.62)" }}>
-              Plataforma inmobiliaria para publicar, administrar y promocionar
-              propiedades.
+            <p
+              className="small mb-0"
+              style={{ color: "rgba(255,255,255,0.62)" }}
+            >
+              {brandDescription}
             </p>
           </div>
 
           <div className="col-md-6 text-center text-md-end">
-            <p className="small mb-2" style={{ color: "rgba(255,255,255,0.62)" }}>
-              Desarrollado por
+            <p
+              className="small mb-2"
+              style={{ color: "rgba(255,255,255,0.62)" }}
+            >
+              {isCustomAgencyDomain ? "Tecnología" : "Desarrollado por"}
             </p>
 
             <a
-              href="https://ono.ar/"
+              href={isCustomAgencyDomain ? "https://onoprop.com/" : "https://ono.ar/"}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Visitar sitio web de ONO"
+              aria-label={
+                isCustomAgencyDomain
+                  ? "Visitar sitio web de ONO Prop"
+                  : "Visitar sitio web de ONO"
+              }
               className="d-inline-flex align-items-center gap-2 text-decoration-none"
               style={{ color: "#ffffff" }}
             >
@@ -55,12 +111,17 @@ const Footer = () => {
               </span>
 
               <span>
-                <span className="d-block fw-semibold">ono.ar</span>
+                <span className="d-block fw-semibold">
+                  {isCustomAgencyDomain ? "ONO Prop" : "ono.ar"}
+                </span>
+
                 <span
                   className="d-block small"
                   style={{ color: "rgba(255,255,255,0.62)" }}
                 >
-                  Webapps, datos y automatización
+                  {isCustomAgencyDomain
+                    ? "Portal inmobiliario y sitios para agencias"
+                    : "Webapps, datos y automatización"}
                 </span>
               </span>
             </a>
@@ -71,18 +132,30 @@ const Footer = () => {
 
         <div className="d-flex flex-wrap justify-content-center justify-content-md-between gap-2 small">
           <span style={{ color: "rgba(255,255,255,0.52)" }}>
-            © {currentYear} LaDoctaProp.
+            © {currentYear} {brandName}.
           </span>
 
-          <a
-            href="https://ono.ar/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-decoration-none"
-            style={{ color: "rgba(255,255,255,0.72)" }}
-          >
-            Tecnología inmobiliaria desarrollada en Córdoba, Argentina.
-          </a>
+          {isCustomAgencyDomain ? (
+            <a
+              href="https://onoprop.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-decoration-none"
+              style={{ color: "rgba(255,255,255,0.72)" }}
+            >
+              Sitio inmobiliario desarrollado con ONO Prop.
+            </a>
+          ) : (
+            <a
+              href="https://ono.ar/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-decoration-none"
+              style={{ color: "rgba(255,255,255,0.72)" }}
+            >
+              Tecnología inmobiliaria desarrollada por ONO.
+            </a>
+          )}
         </div>
       </div>
     </footer>

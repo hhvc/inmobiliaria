@@ -1,4 +1,3 @@
-// src/components/Navbar.jsx
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 
@@ -8,10 +7,14 @@ import InmobiliariaSelector from "./context/InmobiliariaSelector";
 import {
   buildAgencyPath,
   getActiveAgencySlug,
+  isPortalBaseDomain,
 } from "../inmobiliaria/utils/domainRouting";
 import { useDomainAgency } from "../inmobiliaria/context/useDomainAgency";
 import { getInmobiliariaBySlug } from "../inmobiliaria/services/inmobiliaria.service";
 import { useActiveInmobiliariaModules } from "../inmobiliaria/hooks/useActiveInmobiliariaModules";
+
+const ONO_PROP_LOGO_URL = "/assets/img/logoONOProp3.png";
+const DEFAULT_INMOBILIARIA_LOGO_URL = "/assets/img/Logo.png";
 
 const scrollToHash = (hash) => {
   if (!hash) return;
@@ -31,7 +34,6 @@ const scrollToHash = (hash) => {
 };
 
 const Navbar = () => {
-
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -41,17 +43,29 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const {
-    slug: contextDomainSlug,
-    inmobiliaria: domainInmobiliaria,
-  } = useDomainAgency();
+  const { slug: contextDomainSlug, inmobiliaria: domainInmobiliaria } =
+    useDomainAgency();
 
   const { isRoot, isAdmin, hasModule } = useActiveInmobiliariaModules();
+
+  const isPortalDomain = isPortalBaseDomain();
 
   const activeAgencySlug =
     getActiveAgencySlug(location.pathname) || contextDomainSlug;
 
   const isAgencyContext = Boolean(activeAgencySlug);
+
+  /*
+    Dominio personalizado de inmobiliaria:
+    - ladoctaprop.com.ar
+    - www.ladoctaprop.com.ar
+    - futuros dominios propios de clientes
+
+    En dominios base del portal, aunque la ruta sea /inmobiliaria/:slug,
+    el logo debe seguir siendo ONO Prop.
+  */
+  const isCustomAgencyDomain = !isPortalDomain && Boolean(activeAgencySlug);
+
   const agencyBasePath = buildAgencyPath(activeAgencySlug);
 
   useEffect(() => {
@@ -99,7 +113,13 @@ const Navbar = () => {
     user?.role === "admin" ||
     user?.role === "root";
 
-  const brandTarget = isAgencyContext && agencyBasePath ? agencyBasePath : "/";
+  const brandTarget = isPortalDomain
+    ? "/"
+    : isCustomAgencyDomain
+      ? "/"
+      : isAgencyContext && agencyBasePath
+        ? agencyBasePath
+        : "/";
 
   const publicMenuItems = useMemo(() => {
     if (isAgencyContext && agencyBasePath) {
@@ -192,14 +212,18 @@ const Navbar = () => {
   };
 
   const navbarLogoUrl =
-    isAgencyContext && navbarInmobiliaria?.branding?.logo?.url
+    isCustomAgencyDomain && navbarInmobiliaria?.branding?.logo?.url
       ? navbarInmobiliaria.branding.logo.url
-      : "/assets/img/Logo.png";
+      : isCustomAgencyDomain
+        ? DEFAULT_INMOBILIARIA_LOGO_URL
+        : ONO_PROP_LOGO_URL;
 
   const navbarLogoAlt =
-    isAgencyContext && navbarInmobiliaria?.nombre
+    isCustomAgencyDomain && navbarInmobiliaria?.nombre
       ? navbarInmobiliaria.nombre
-      : "LaDocTaProp";
+      : isCustomAgencyDomain
+        ? "Inmobiliaria"
+        : "ONO Prop";
 
   return (
     <>
@@ -214,6 +238,7 @@ const Navbar = () => {
             className="navbar-brand d-flex align-items-center gap-2 py-1"
             to={brandTarget}
             onClick={handleBrandClick}
+            aria-label={navbarLogoAlt}
           >
             <img
               src={navbarLogoUrl}
@@ -221,7 +246,7 @@ const Navbar = () => {
               className="img-fluid"
               style={{
                 maxHeight: 42,
-                maxWidth: 180,
+                maxWidth: 210,
                 objectFit: "contain",
               }}
             />
@@ -539,12 +564,6 @@ const Navbar = () => {
           </div>
         </div>
       </nav>
-
-      {/* 
-        Espaciador global:
-        Como el Navbar está fixed-top, este bloque reserva la altura real
-        del Navbar para que no tape títulos, botones ni headers de páginas.
-      */}
 
       {showLoginModal && (
         <div

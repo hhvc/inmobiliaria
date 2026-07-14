@@ -3,19 +3,85 @@
 
 <head>
   <meta charset="UTF-8" />
-  <!-- Favicons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-  <link rel="icon" href="/favicon.ico" />
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+  <!-- Favicon dinámico por dominio -->
+  <script>
+    (function () {
+      const hostname = window.location.hostname.toLowerCase();
+
+      const ONO_PROP_HOSTS = new Set([
+        "onoprop.com",
+        "www.onoprop.com",
+        "inmobiliaria-bcc63.web.app",
+        "inmobiliaria-bcc63.firebaseapp.com",
+        "localhost",
+        "127.0.0.1",
+      ]);
+
+      const isOnoPropDomain = ONO_PROP_HOSTS.has(hostname);
+
+      const faviconHref = isOnoPropDomain
+        ? "/FaviconONOProp2.ico?v=onoprop-2"
+        : "/favicon.ico?v=ladoctaprop-2";
+
+      const appleTouchIconHref = isOnoPropDomain
+        ? "/FaviconONOProp2.ico?v=onoprop-2"
+        : "/apple-touch-icon.png?v=ladoctaprop-2";
+
+      const upsertIcon = ({ rel, href, type, sizes }) => {
+        let link = document.querySelector(`link[rel="${rel}"]`);
+
+        if (!link) {
+          link = document.createElement("link");
+          link.rel = rel;
+          document.head.appendChild(link);
+        }
+
+        link.href = href;
+
+        if (type) {
+          link.type = type;
+        }
+
+        if (sizes) {
+          link.setAttribute("sizes", sizes);
+        }
+      };
+
+      upsertIcon({
+        rel: "icon",
+        href: faviconHref,
+        type: "image/x-icon",
+        sizes: "any",
+      });
+
+      upsertIcon({
+        rel: "shortcut icon",
+        href: faviconHref,
+        type: "image/x-icon",
+        sizes: "any",
+      });
+
+      upsertIcon({
+        rel: "apple-touch-icon",
+        href: appleTouchIconHref,
+        sizes: "180x180",
+      });
+    })();
+  </script>
+
   <link rel="manifest" href="/site.webmanifest" />
+
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet" />
+
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <title>ONO Prop</title>
 </head>
 
 <body>
   <div id="root"></div>
+
   <script type="module" src="/src/main.jsx"></script>
 </body>
 
