@@ -10,6 +10,25 @@ import { canCreateInmueble } from "../helpers/permissions";
    Valores iniciales
    ========================= */
 
+const DEFAULT_SHARING = {
+  enabled: false,
+  mode: "all_colleagues",
+  allowColleagueContact: true,
+  showExactAddressToColleagues: false,
+  showOwnerDataToColleagues: false,
+};
+
+const DEFAULT_NETWORK_DATA = {
+  exactAddress: "",
+  commissionShare: "",
+  internalPrice: "",
+  documentationStatus: "",
+  visitInstructions: "",
+  notesForColleagues: "",
+  ownerName: "",
+  ownerPhone: "",
+};
+
 const INITIAL_VALUES = {
   titulo: "",
   descripcion: "",
@@ -50,6 +69,47 @@ const INITIAL_VALUES = {
   // 🤝 Compartir / soft delete
   sharedWith: {},
   deleted: false,
+
+  // 🤝 Red de colegas
+  sharing: DEFAULT_SHARING,
+  networkData: DEFAULT_NETWORK_DATA,
+};
+
+/* =========================
+   Normalización Red de colegas
+   ========================= */
+
+const normalizeSharing = (value = {}) => {
+  return {
+    ...DEFAULT_SHARING,
+    ...value,
+    enabled: Boolean(value.enabled),
+    mode: value.mode || "all_colleagues",
+    allowColleagueContact: Boolean(value.allowColleagueContact),
+    showExactAddressToColleagues: Boolean(
+      value.showExactAddressToColleagues,
+    ),
+    showOwnerDataToColleagues: Boolean(value.showOwnerDataToColleagues),
+  };
+};
+
+const normalizeNetworkData = ({ sharing, networkData }) => {
+  const data = {
+    ...DEFAULT_NETWORK_DATA,
+    ...(networkData || {}),
+  };
+
+  return {
+    ...data,
+
+    exactAddress: sharing.showExactAddressToColleagues
+      ? data.exactAddress || ""
+      : "",
+
+    ownerName: sharing.showOwnerDataToColleagues ? data.ownerName || "" : "",
+
+    ownerPhone: sharing.showOwnerDataToColleagues ? data.ownerPhone || "" : "",
+  };
 };
 
 const InmuebleCreatePage = () => {
@@ -119,8 +179,22 @@ const InmuebleCreatePage = () => {
         throw new Error("No tenés permisos para crear inmuebles");
       }
 
+      const normalizedSharing = normalizeSharing(formValues?.sharing);
+      const normalizedNetworkData = normalizeNetworkData({
+        sharing: normalizedSharing,
+        networkData: formValues?.networkData,
+      });
+
+      /*
+        IMPORTANTE:
+        networkData se separa del documento público del inmueble.
+        El servicio createInmueble deberá guardarlo en una estructura protegida.
+      */
+      const { networkData: _networkData, ...publicFormValues } =
+        formValues || {};
+
       const inmuebleData = {
-        ...formValues,
+        ...publicFormValues,
 
         // 🔑 Dominio principal
         ownerId: user.uid,
@@ -147,11 +221,17 @@ const InmuebleCreatePage = () => {
         destacado: Boolean(formValues?.destacado),
         publicarEnPortal: Boolean(formValues?.publicarEnPortal),
         noIndex: Boolean(formValues?.noIndex),
+
+        // Red de colegas: datos no sensibles para consulta/query
+        sharing: normalizedSharing,
       };
 
       const inmuebleId = await createInmueble(
         selectedInmobiliariaId,
         inmuebleData,
+        {
+          networkData: normalizedSharing.enabled ? normalizedNetworkData : null,
+        },
       );
 
       console.log("✅ Inmueble creado:", inmuebleId);

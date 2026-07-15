@@ -7,6 +7,8 @@ import {
   getDoc,
   getDocs,
   updateDoc,
+  setDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -20,6 +22,29 @@ import { assertInmobiliariaActiva } from "../../inmobiliaria/services/inmobiliar
 import { getActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
 
 /* =========================================================
+   Defaults Red de colegas
+   ========================================================= */
+
+const DEFAULT_SHARING = {
+  enabled: false,
+  mode: "all_colleagues",
+  allowColleagueContact: true,
+  showExactAddressToColleagues: false,
+  showOwnerDataToColleagues: false,
+};
+
+const DEFAULT_NETWORK_DATA = {
+  exactAddress: "",
+  commissionShare: "",
+  internalPrice: "",
+  documentationStatus: "",
+  visitInstructions: "",
+  notesForColleagues: "",
+  ownerName: "",
+  ownerPhone: "",
+};
+
+/* =========================================================
    Helpers
    ========================================================= */
 
@@ -28,6 +53,17 @@ const inmueblesCollection = (inmobiliariaId) =>
 
 const inmuebleDoc = (inmobiliariaId, inmuebleId) =>
   doc(db, "inmobiliarias", inmobiliariaId, "inmuebles", inmuebleId);
+
+const inmuebleNetworkDataDoc = (inmobiliariaId, inmuebleId) =>
+  doc(
+    db,
+    "inmobiliarias",
+    inmobiliariaId,
+    "inmuebles",
+    inmuebleId,
+    "private",
+    "networkData",
+  );
 
 const resolveInmuebleIds = (
   inmobiliariaIdOrInmuebleId,
@@ -158,6 +194,7 @@ const sanitizeUpdatePayload = (data = {}) => {
     id: _id,
     createdAt: _createdAt,
     updatedAt: _updatedAt,
+    networkData: _networkData,
     ...payload
   } = data;
 
@@ -185,14 +222,129 @@ const resolvePublicListArgs = (
 };
 
 /* =========================================================
+   Helpers Red de colegas
+   ========================================================= */
+
+const normalizeSharing = (value = {}) => {
+  return {
+    ...DEFAULT_SHARING,
+    ...value,
+    enabled: Boolean(value.enabled),
+    mode: value.mode || "all_colleagues",
+    allowColleagueContact:
+      value.allowColleagueContact === undefined
+        ? true
+        : Boolean(value.allowColleagueContact),
+    showExactAddressToColleagues: Boolean(
+      value.showExactAddressToColleagues,
+    ),
+    showOwnerDataToColleagues: Boolean(value.showOwnerDataToColleagues),
+  };
+};
+
+const sanitizeNetworkData = ({ sharing, networkData }) => {
+  const data = {
+    ...DEFAULT_NETWORK_DATA,
+    ...(networkData || {}),
+  };
+
+  return {
+    exactAddress: sharing.showExactAddressToColleagues
+      ? data.exactAddress || ""
+      : "",
+
+    commissionShare: data.commissionShare || "",
+    internalPrice: data.internalPrice || "",
+    documentationStatus: data.documentationStatus || "",
+    visitInstructions: data.visitInstructions || "",
+    notesForColleagues: data.notesForColleagues || "",
+
+    ownerName: sharing.showOwnerDataToColleagues ? data.ownerName || "" : "",
+
+    ownerPhone: sharing.showOwnerDataToColleagues ? data.ownerPhone || "" : "",
+  };
+};
+
+const getInmuebleNetworkData = async (inmobiliariaId, inmuebleId) => {
+  if (!inmobiliariaId || !inmuebleId) return null;
+
+  const ref = inmuebleNetworkDataDoc(inmobiliariaId, inmuebleId);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) return null;
+
+  return snap.data();
+};
+
+const writeInmuebleNetworkData = async ({
+  inmobiliariaId,
+  inmuebleId,
+  sharing,
+  networkData,
+}) => {
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos para guardar información de red");
+  }
+
+  /*
+    undefined = no tocar.
+    null = borrar datos protegidos.
+    object = crear/actualizar datos protegidos.
+  */
+  if (networkData === undefined) {
+    return;
+  }
+
+  const ref = inmuebleNetworkDataDoc(inmobiliariaId, inmuebleId);
+
+  if (networkData === null) {
+    await deleteDoc(ref);
+    return;
+  }
+
+  if (!networkData || typeof networkData !== "object") {
+    throw new Error("Datos de red inválidos");
+  }
+
+  const existingSnap = await getDoc(ref);
+
+  const payload = {
+    ...sanitizeNetworkData({
+      sharing,
+      networkData,
+    }),
+
+    inmobiliariaId,
+    inmuebleId,
+
+    updatedAt: serverTimestamp(),
+  };
+
+  if (!existingSnap.exists()) {
+    payload.createdAt = serverTimestamp();
+  }
+
+  await setDoc(ref, payload, {
+    merge: true,
+  });
+};
+
+/* =========================================================
    CREATE
    ========================================================= */
 
 /**
  * Crear inmueble en:
  * /inmobiliarias/{inmobiliariaId}/inmuebles/{inmuebleId}
+ *
+ * Datos protegidos de red:
+ * /inmobiliarias/{inmobiliariaId}/inmuebles/{inmuebleId}/private/networkData
  */
-export const createInmueble = async (inmobiliariaId, data) => {
+export const createInmueble = async (
+  inmobiliariaId,
+  data,
+  { networkData } = {},
+) => {
   console.log("🔥 createInmueble ejecutándose", inmobiliariaId, data);
 
   if (!inmobiliariaId) {
@@ -209,9 +361,12 @@ export const createInmueble = async (inmobiliariaId, data) => {
     const currentUser = auth.currentUser;
 
     const estadoValidado = validateInmuebleEstado(data.estado || "activo");
+    const sharing = normalizeSharing(data.sharing || {});
+
+    const publicPayload = sanitizeUpdatePayload(data);
 
     const docRef = await addDoc(inmueblesCollection(inmobiliariaId), {
-      ...data,
+      ...publicPayload,
 
       // 🔑 Dominio / compatibilidad
       inmobiliariaId,
@@ -230,6 +385,9 @@ export const createInmueble = async (inmobiliariaId, data) => {
           ? data.sharedWith
           : {},
 
+      // 🤝 Red de colegas: solo configuración no sensible
+      sharing,
+
       // 🧹 Estado interno
       estado: estadoValidado,
       deleted: false,
@@ -237,6 +395,7 @@ export const createInmueble = async (inmobiliariaId, data) => {
       // 🌐 Portal público
       destacado: Boolean(data.destacado),
       publicarEnPortal: Boolean(data.publicarEnPortal),
+      noIndex: Boolean(data.noIndex),
 
       // ⏱️ Timestamps
       createdAt: serverTimestamp(),
@@ -249,6 +408,15 @@ export const createInmueble = async (inmobiliariaId, data) => {
       slug,
       updatedAt: serverTimestamp(),
     });
+
+    if (sharing.enabled && networkData) {
+      await writeInmuebleNetworkData({
+        inmobiliariaId,
+        inmuebleId: docRef.id,
+        sharing,
+        networkData,
+      });
+    }
 
     console.log("✅ Inmueble creado:", docRef.id);
     return docRef.id;
@@ -268,6 +436,9 @@ export const createInmueble = async (inmobiliariaId, data) => {
  * Acepta dos firmas:
  * - getInmuebleById(inmobiliariaId, inmuebleId)
  * - getInmuebleById(inmuebleId) usando la inmobiliaria activa
+ *
+ * En contexto admin también intenta cargar:
+ * /private/networkData
  */
 export const getInmuebleById = async (
   inmobiliariaIdOrInmuebleId,
@@ -285,10 +456,24 @@ export const getInmuebleById = async (
 
   if (!snap.exists()) return null;
 
+  const data = snap.data();
+
+  let networkData = null;
+
+  try {
+    networkData = await getInmuebleNetworkData(inmobiliariaId, inmuebleId);
+  } catch (error) {
+    console.warn(
+      "No se pudo cargar la información de red del inmueble:",
+      error,
+    );
+  }
+
   return {
     id: snap.id,
     inmobiliariaId,
-    ...snap.data(),
+    ...data,
+    networkData: networkData || {},
   };
 };
 
@@ -297,6 +482,9 @@ export const getInmuebleById = async (
  *
  * Lee desde:
  * /inmobiliarias/{inmobiliariaId}/inmuebles
+ *
+ * No carga networkData para evitar traer datos protegidos
+ * en listados masivos. Eso se carga en detalle/edición.
  */
 export const getInmueblesByInmobiliaria = async (
   inmobiliariaId,
@@ -448,6 +636,8 @@ export const getPublicInmueblesByInmobiliaria = async (
  *
  * Usado por:
  * /inmueble/:slug
+ *
+ * Nunca carga networkData.
  */
 export const getPublicInmuebleBySlug = async (slug) => {
   if (!slug) return null;
@@ -484,20 +674,28 @@ export const getPublicInmuebleBySlug = async (slug) => {
 /**
  * Actualizar inmueble.
  *
- * Acepta dos firmas:
+ * Acepta tres firmas:
+ * - updateInmueble(inmobiliariaId, inmuebleId, data, options)
  * - updateInmueble(inmobiliariaId, inmuebleId, data)
  * - updateInmueble(inmuebleId, data) usando la inmobiliaria activa
+ *
+ * options:
+ * - networkData: undefined = no tocar
+ * - networkData: null = borrar datos de red
+ * - networkData: object = crear/actualizar datos de red
  */
 export const updateInmueble = async (
   inmobiliariaIdOrInmuebleId,
   inmuebleIdOrData,
   maybeData = null,
+  maybeOptions = {},
 ) => {
   let inmobiliariaId;
   let inmuebleId;
   let data;
+  let options = maybeOptions || {};
 
-  if (maybeData) {
+  if (maybeData && typeof inmuebleIdOrData === "string") {
     inmobiliariaId = inmobiliariaIdOrInmuebleId;
     inmuebleId = inmuebleIdOrData;
     data = maybeData;
@@ -506,6 +704,7 @@ export const updateInmueble = async (
     inmobiliariaId = resolved.inmobiliariaId;
     inmuebleId = resolved.inmuebleId;
     data = inmuebleIdOrData;
+    options = maybeData || {};
   }
 
   if (!inmobiliariaId) {
@@ -524,6 +723,7 @@ export const updateInmueble = async (
     await assertInmobiliariaActiva(inmobiliariaId);
 
     const payload = sanitizeUpdatePayload(data);
+    const sharing = normalizeSharing(payload.sharing || {});
 
     if (payload.estado) {
       payload.estado = validateInmuebleEstado(payload.estado);
@@ -535,7 +735,9 @@ export const updateInmueble = async (
 
     payload.destacado = Boolean(payload.destacado);
     payload.publicarEnPortal = Boolean(payload.publicarEnPortal);
+    payload.noIndex = Boolean(payload.noIndex);
     payload.images = Array.isArray(payload.images) ? payload.images : [];
+    payload.sharing = sharing;
 
     const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
 
@@ -548,6 +750,15 @@ export const updateInmueble = async (
 
       updatedAt: serverTimestamp(),
     });
+
+    if (Object.prototype.hasOwnProperty.call(options, "networkData")) {
+      await writeInmuebleNetworkData({
+        inmobiliariaId,
+        inmuebleId,
+        sharing,
+        networkData: options.networkData,
+      });
+    }
 
     console.log("✅ Inmueble actualizado:", inmuebleId);
   } catch (error) {
@@ -617,4 +828,96 @@ export const deleteInmueble = async (inmobiliariaId, inmuebleId) => {
     console.error("❌ Error en deleteInmueble:", error);
     throw error;
   }
+};
+
+/* =========================================================
+   RED DE COLEGAS
+   ========================================================= */
+
+/**
+ * Listar inmuebles compartidos en la Red de colegas.
+ *
+ * Lee documentos públicos compartidos desde collectionGroup("inmuebles")
+ * y luego intenta cargar /private/networkData para cada inmueble.
+ */
+export const getNetworkSharedInmuebles = async ({
+  search = "",
+  tipo = "",
+  operacion = "",
+  pageSize = 50,
+  excludeInmobiliariaIds = [],
+} = {}) => {
+  const ref = collectionGroup(db, "inmuebles");
+
+  const constraints = [
+    where("deleted", "==", false),
+    where("estado", "==", "activo"),
+    where("sharing.enabled", "==", true),
+    where("sharing.mode", "==", "all_colleagues"),
+    limit(pageSize),
+  ];
+
+  if (tipo) {
+    constraints.push(where("tipo", "==", tipo));
+  }
+
+  if (operacion) {
+    constraints.push(where("operacion", "==", operacion));
+  }
+
+  const q = query(ref, ...constraints);
+  const snap = await getDocs(q);
+
+  const rawItems = await Promise.all(
+    snap.docs.map(async (docSnap) => {
+      const resolvedInmobiliariaId = getInmobiliariaIdFromDocSnap(docSnap);
+      const data = docSnap.data();
+
+      let networkData = {};
+
+      try {
+        networkData =
+          (await getInmuebleNetworkData(resolvedInmobiliariaId, docSnap.id)) ||
+          {};
+      } catch (error) {
+        console.warn(
+          "No se pudo cargar networkData del inmueble compartido:",
+          error,
+        );
+      }
+
+      return {
+        id: docSnap.id,
+        inmobiliariaId: resolvedInmobiliariaId,
+        ...data,
+        networkData,
+      };
+    }),
+  );
+
+  const excludedIds = Array.isArray(excludeInmobiliariaIds)
+    ? excludeInmobiliariaIds
+    : [];
+
+  const filteredItems = rawItems.filter((item) => {
+    if (excludedIds.includes(item.inmobiliariaId)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  const data = sortPublicInmuebles(
+    applyClientFilters(filteredItems, {
+      search,
+      tipo,
+      operacion,
+      estado: "activo",
+    }),
+  );
+
+  return {
+    data,
+    lastDoc: null,
+  };
 };

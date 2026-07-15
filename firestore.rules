@@ -15,54 +15,68 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
 
-function userHasRole(roleName) {
-  return isSignedIn()
-    && (
-      (
-        userDoc().data.keys().hasAny(["role"])
-        && userDoc().data.role == roleName
-      )
-      ||
-      (
-        userDoc().data.keys().hasAny(["primaryRole"])
-        && userDoc().data.primaryRole == roleName
-      )
-      ||
-      (
-        userDoc().data.keys().hasAny(["roles"])
-        && userDoc().data.roles is list
-        && roleName in userDoc().data.roles
-      )
-    );
-}
+    function userHasRole(roleName) {
+      return isSignedIn()
+        && (
+          (
+            userDoc().data.keys().hasAny(["role"])
+            && userDoc().data.role == roleName
+          )
+          ||
+          (
+            userDoc().data.keys().hasAny(["primaryRole"])
+            && userDoc().data.primaryRole == roleName
+          )
+          ||
+          (
+            userDoc().data.keys().hasAny(["roles"])
+            && userDoc().data.roles is list
+            && roleName in userDoc().data.roles
+          )
+        );
+    }
 
-function userRole() {
-  return isSignedIn()
-    && userDoc().data.keys().hasAny(["role"])
-    ? userDoc().data.role
-    : null;
-}
+    function userRole() {
+      return isSignedIn()
+        && userDoc().data.keys().hasAny(["role"])
+        ? userDoc().data.role
+        : null;
+    }
 
-function isRoot() {
-  return userHasRole("root");
-}
+    function isRoot() {
+      return userHasRole("root");
+    }
 
-function isAdmin() {
-  return userHasRole("admin");
-}
+    function isAdmin() {
+      return userHasRole("admin");
+    }
+
+    function userInmobiliarias() {
+      return isSignedIn()
+        && userDoc().data.keys().hasAny(["inmobiliarias"])
+        && userDoc().data.inmobiliarias is list
+        ? userDoc().data.inmobiliarias
+        : [];
+    }
+
+    function isInmobiliariaUser() {
+      return isSignedIn()
+        && userInmobiliarias().size() > 0;
+    }
 
     function adminHasInmobiliaria(inmoId) {
       return isAdmin()
-        && inmoId in userDoc().data.inmobiliarias;
+        && inmoId in userInmobiliarias();
     }
 
     function belongsToUserInmobiliaria(inmoId) {
       return isSignedIn()
-        && inmoId in userDoc().data.inmobiliarias;
+        && inmoId in userInmobiliarias();
     }
 
     function isOwner(resource) {
       return isSignedIn()
+        && resource != null
         && resource.data.ownerId == request.auth.uid;
     }
 
@@ -77,10 +91,36 @@ function isAdmin() {
         && resource.data.publicarEnPortal == true;
     }
 
-function isPublicInmobiliaria(resource) {
-  return resource != null
-    && resource.data.activa == true;
-}
+    function isPublicInmobiliaria(resource) {
+      return resource != null
+        && resource.data.activa == true;
+    }
+
+    function inmuebleParentPath(inmoId, inmuebleId) {
+      return /databases/$(database)/documents/inmobiliarias/$(inmoId)/inmuebles/$(inmuebleId);
+    }
+
+    function hasParentInmueble(inmoId, inmuebleId) {
+      return exists(inmuebleParentPath(inmoId, inmuebleId));
+    }
+
+    function parentInmueble(inmoId, inmuebleId) {
+      return get(inmuebleParentPath(inmoId, inmuebleId));
+    }
+
+    function isSharedNetworkInmueble(resource) {
+      return resource != null
+        && resource.data.deleted == false
+        && resource.data.estado == "activo"
+        && resource.data.keys().hasAny(["sharing"])
+        && resource.data.sharing.enabled == true
+        && resource.data.sharing.mode == "all_colleagues";
+    }
+
+    function canReadNetworkInmueble(resource) {
+      return isInmobiliariaUser()
+        && isSharedNetworkInmueble(resource);
+    }
 
     function isSharedWithUser(resource, inmoId) {
       return isSignedIn()
@@ -116,96 +156,144 @@ function isPublicInmobiliaria(resource) {
         ]);
     }
 
+    function inmueblePublicDataHasNoProtectedFields(data) {
+      return !data.keys().hasAny([
+        "networkData",
+        "privateData",
+        "exactAddress",
+        "commissionShare",
+        "internalPrice",
+        "documentationStatus",
+        "visitInstructions",
+        "notesForColleagues",
+        "ownerName",
+        "ownerPhone"
+      ]);
+    }
+
+    function canReadInmueblePrivateData(inmoId, inmuebleId) {
+      return isRoot()
+        || adminHasInmobiliaria(inmoId)
+        || (
+          hasParentInmueble(inmoId, inmuebleId)
+          && (
+            isOwner(parentInmueble(inmoId, inmuebleId))
+            || canReadNetworkInmueble(parentInmueble(inmoId, inmuebleId))
+          )
+        );
+    }
+
+    function canManageInmueblePrivateData(inmoId, inmuebleId) {
+      return isRoot()
+        || adminHasInmobiliaria(inmoId)
+        || (
+          hasParentInmueble(inmoId, inmuebleId)
+          && isOwner(parentInmueble(inmoId, inmuebleId))
+        );
+    }
+
+    function isValidNetworkDataDocument(privateDocId, inmoId, inmuebleId) {
+      return privateDocId == "networkData"
+        && request.resource.data.keys().hasOnly([
+          "exactAddress",
+          "commissionShare",
+          "internalPrice",
+          "documentationStatus",
+          "visitInstructions",
+          "notesForColleagues",
+          "ownerName",
+          "ownerPhone",
+          "inmobiliariaId",
+          "inmuebleId",
+          "createdAt",
+          "updatedAt"
+        ])
+        && request.resource.data.inmobiliariaId == inmoId
+        && request.resource.data.inmuebleId == inmuebleId;
+    }
+
     /* ============================
        USERS
        ============================ */
 
-match /users/{userId} {
+    match /users/{userId} {
 
-  function existingUserInmobiliarias() {
-    return resource.data.keys().hasAny(["inmobiliarias"])
-      && resource.data.inmobiliarias is list
-      ? resource.data.inmobiliarias
-      : [];
-  }
+      function existingUserInmobiliarias() {
+        return resource.data.keys().hasAny(["inmobiliarias"])
+          && resource.data.inmobiliarias is list
+          ? resource.data.inmobiliarias
+          : [];
+      }
 
-  function requestedUserInmobiliarias() {
-    return request.resource.data.keys().hasAny(["inmobiliarias"])
-      && request.resource.data.inmobiliarias is list
-      ? request.resource.data.inmobiliarias
-      : [];
-  }
+      function requestedUserInmobiliarias() {
+        return request.resource.data.keys().hasAny(["inmobiliarias"])
+          && request.resource.data.inmobiliarias is list
+          ? request.resource.data.inmobiliarias
+          : [];
+      }
 
- function existingUserInmobiliariaRoles() {
-  return resource.data.keys().hasAny(["inmobiliariaRoles"])
-    && resource.data.inmobiliariaRoles is map
-    ? resource.data.inmobiliariaRoles
-    : {};
-}
+      function existingUserInmobiliariaRoles() {
+        return resource.data.keys().hasAny(["inmobiliariaRoles"])
+          && resource.data.inmobiliariaRoles is map
+          ? resource.data.inmobiliariaRoles
+          : {};
+      }
 
-function requestedUserInmobiliariaRoles() {
-  return request.resource.data.keys().hasAny(["inmobiliariaRoles"])
-    && request.resource.data.inmobiliariaRoles is map
-    ? request.resource.data.inmobiliariaRoles
-    : {};
-}
+      function requestedUserInmobiliariaRoles() {
+        return request.resource.data.keys().hasAny(["inmobiliariaRoles"])
+          && request.resource.data.inmobiliariaRoles is map
+          ? request.resource.data.inmobiliariaRoles
+          : {};
+      }
 
-function adminCanOnlyChangeOwnInmobiliariaLinks() {
-  return isAdmin()
-    && userDoc().data.keys().hasAny(["inmobiliarias"])
-    && userDoc().data.inmobiliarias is list
-    && request.resource.data
-      .diff(resource.data)
-      .affectedKeys()
-      .hasOnly([
-        "inmobiliarias",
-        "inmobiliariaRoles",
-        "updatedAt"
-      ])
-    // No puede agregar inmobiliarias que no sean propias.
-    && requestedUserInmobiliarias()
-      .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
-    // No puede quitar inmobiliarias que no sean propias.
-    && existingUserInmobiliarias()
-      .hasOnly(requestedUserInmobiliarias() + userDoc().data.inmobiliarias)
-    // No puede modificar roles internos de inmobiliarias ajenas.
-    && requestedUserInmobiliariaRoles()
-      .diff(existingUserInmobiliariaRoles())
-      .affectedKeys()
-      .hasOnly(userDoc().data.inmobiliarias);
-}
+      function adminCanOnlyChangeOwnInmobiliariaLinks() {
+        return isAdmin()
+          && userDoc().data.keys().hasAny(["inmobiliarias"])
+          && userDoc().data.inmobiliarias is list
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "inmobiliarias",
+              "inmobiliariaRoles",
+              "updatedAt"
+            ])
+          && requestedUserInmobiliarias()
+            .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
+          && existingUserInmobiliarias()
+            .hasOnly(requestedUserInmobiliarias() + userDoc().data.inmobiliarias)
+          && requestedUserInmobiliariaRoles()
+            .diff(existingUserInmobiliariaRoles())
+            .affectedKeys()
+            .hasOnly(userDoc().data.inmobiliarias);
+      }
 
-  // Lectura de documento individual.
-  allow get: if
-    isSignedIn()
-    && (
-      request.auth.uid == userId
-      || isRoot()
-      || isAdmin()
-    );
+      allow get: if
+        isSignedIn()
+        && (
+          request.auth.uid == userId
+          || isRoot()
+          || isAdmin()
+        );
 
-  // Consultas sobre colección users.
-  // Necesario para:
-  // - where("inmobiliarias", "array-contains", inmobiliariaId)
-  // - where("email", "==", email)
-  allow list: if
-    isSignedIn()
-    && (
-      isRoot()
-      || isAdmin()
-    );
+      allow list: if
+        isSignedIn()
+        && (
+          isRoot()
+          || isAdmin()
+        );
 
-  allow create: if
-    isSignedIn()
-    && request.auth.uid == userId
-    && !exists(/databases/$(database)/documents/users/$(userId));
+      allow create: if
+        isSignedIn()
+        && request.auth.uid == userId
+        && !exists(/databases/$(database)/documents/users/$(userId));
 
-  allow update: if
-    isRoot()
-    || adminCanOnlyChangeOwnInmobiliariaLinks();
+      allow update: if
+        isRoot()
+        || adminCanOnlyChangeOwnInmobiliariaLinks();
 
-  allow delete: if isRoot();
-}
+      allow delete: if isRoot();
+    }
 
     /* ============================
        INMOBILIARIAS
@@ -213,12 +301,12 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
 
     match /inmobiliarias/{inmoId} {
 
-  allow read: if
-    isRoot()
-    || adminHasInmobiliaria(inmoId)
-    || isPublicInmobiliaria(resource);
+      allow read: if
+        isRoot()
+        || adminHasInmobiliaria(inmoId)
+        || isPublicInmobiliaria(resource);
 
-  allow write: if isRoot();
+      allow write: if isRoot();
 
       /* ============================
          SUBCOLECCIÓN INMUEBLES
@@ -234,6 +322,7 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
           || adminHasInmobiliaria(inmoId)
           || isOwner(resource)
           || canSharedRead(resource, inmoId)
+          || canReadNetworkInmueble(resource)
           || isPublicInmueble(resource);
 
         /* =========
@@ -241,6 +330,7 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
            ========= */
         allow create: if
           isSignedIn()
+          && inmueblePublicDataHasNoProtectedFields(request.resource.data)
           && (
             isRoot()
             || (
@@ -256,6 +346,7 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
            ========= */
         allow update: if
           isSignedIn()
+          && inmueblePublicDataHasNoProtectedFields(request.resource.data)
           && (
             isRoot()
             || adminHasInmobiliaria(inmoId)
@@ -272,75 +363,99 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
         allow delete: if
           isRoot()
           || adminHasInmobiliaria(inmoId);
+
+        /* ============================
+           DATOS PRIVADOS DEL INMUEBLE
+
+           /inmobiliarias/{inmoId}/inmuebles/{inmuebleId}/private/networkData
+           ============================ */
+
+        match /private/{privateDocId} {
+
+          allow get: if
+            privateDocId == "networkData"
+            && canReadInmueblePrivateData(inmoId, inmuebleId);
+
+          allow list: if false;
+
+          allow create, update: if
+            isSignedIn()
+            && canManageInmueblePrivateData(inmoId, inmuebleId)
+            && isValidNetworkDataDocument(privateDocId, inmoId, inmuebleId);
+
+          allow delete: if
+            privateDocId == "networkData"
+            && canManageInmueblePrivateData(inmoId, inmuebleId);
+        }
       }
     }
 
     /* ============================
-       COLLECTION GROUP: INMUEBLES PÚBLICOS
+       COLLECTION GROUP: INMUEBLES
        ============================
 
-       Necesario para consultas:
-       collectionGroup(db, "inmuebles")
-
-       Permite leer únicamente inmuebles publicados en portal.
+       Permite:
+       - Leer inmuebles públicos del portal.
+       - Leer inmuebles compartidos en Red de colegas para usuarios de inmobiliarias.
     */
 
     match /{path=**}/inmuebles/{inmuebleId} {
-      allow read: if isPublicInmueble(resource);
+      allow read: if
+        isPublicInmueble(resource)
+        || canReadNetworkInmueble(resource);
+
       allow create, update, delete: if false;
     }
-/* ============================
-   CONSULTAS DE INMUEBLES
-   ============================ */
 
-match /inmueble_consultas/{consultaId} {
+    /* ============================
+       CONSULTAS DE INMUEBLES
+       ============================ */
 
-  // Cualquier visitante puede crear una consulta desde la ficha pública.
-  allow create: if
-    request.resource.data.inmuebleId is string
-    && request.resource.data.inmobiliariaId is string
-    && request.resource.data.nombre is string
-    && request.resource.data.nombre.size() >= 2
-    && (
-      (
-        request.resource.data.email is string
-        && request.resource.data.email.size() >= 5
-      )
-      ||
-      (
-        request.resource.data.telefono is string
-        && request.resource.data.telefono.size() >= 6
-      )
-    )
-    && request.resource.data.estado == "nueva"
-    && request.resource.data.leida == false
-    && request.resource.data.archivada == false;
+    match /inmueble_consultas/{consultaId} {
 
-  // Puede leer consultas el root o el admin de la inmobiliaria correspondiente.
-  allow read: if
-    isRoot()
-    || adminHasInmobiliaria(resource.data.inmobiliariaId);
+      allow create: if
+        request.resource.data.inmuebleId is string
+        && request.resource.data.inmobiliariaId is string
+        && request.resource.data.nombre is string
+        && request.resource.data.nombre.size() >= 2
+        && (
+          (
+            request.resource.data.email is string
+            && request.resource.data.email.size() >= 5
+          )
+          ||
+          (
+            request.resource.data.telefono is string
+            && request.resource.data.telefono.size() >= 6
+          )
+        )
+        && request.resource.data.estado == "nueva"
+        && request.resource.data.leida == false
+        && request.resource.data.archivada == false;
 
-  // El admin puede gestionar solo estado interno de la consulta.
-  allow update: if
-    isSignedIn()
-    && (
-      isRoot()
-      || adminHasInmobiliaria(resource.data.inmobiliariaId)
-    )
-    && request.resource.data
-      .diff(resource.data)
-      .affectedKeys()
-      .hasOnly([
-        "estado",
-        "leida",
-        "archivada",
-        "updatedAt"
-      ]);
+      allow read: if
+        isRoot()
+        || adminHasInmobiliaria(resource.data.inmobiliariaId);
 
-  // Borrado físico solo root. Para admins usamos archivado.
-  allow delete: if isRoot();
-}
+      allow update: if
+        isSignedIn()
+        && (
+          isRoot()
+          || adminHasInmobiliaria(resource.data.inmobiliariaId)
+        )
+        && request.resource.data
+          .diff(resource.data)
+          .affectedKeys()
+          .hasOnly([
+            "estado",
+            "leida",
+            "archivada",
+            "updatedAt"
+          ]);
+
+      allow delete: if isRoot();
+    }
+
     /* ============================
        TESTIMONIALS
        ============================ */

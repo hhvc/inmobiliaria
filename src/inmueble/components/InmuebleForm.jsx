@@ -10,6 +10,25 @@ import { AuthContext } from "../../context/auth/AuthContext";
 import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
 
+const DEFAULT_SHARING = {
+  enabled: false,
+  mode: "all_colleagues",
+  allowColleagueContact: true,
+  showExactAddressToColleagues: false,
+  showOwnerDataToColleagues: false,
+};
+
+const DEFAULT_NETWORK_DATA = {
+  exactAddress: "",
+  commissionShare: "",
+  internalPrice: "",
+  documentationStatus: "",
+  visitInstructions: "",
+  notesForColleagues: "",
+  ownerName: "",
+  ownerPhone: "",
+};
+
 const InmuebleForm = ({
   values = {},
   errors = {},
@@ -51,11 +70,49 @@ const InmuebleForm = ({
     userInmobiliarias.length > 1 &&
     (user?.role === "root" || user?.role === "admin");
 
+  const sharingValues = {
+    ...DEFAULT_SHARING,
+    ...(values?.sharing || {}),
+  };
+
+  const networkDataValues = {
+    ...DEFAULT_NETWORK_DATA,
+    ...(values?.networkData || {}),
+  };
+
+  const sharingEnabled = Boolean(sharingValues.enabled);
+
+  const updateSharingField = (field, value) => {
+    handleNestedChange("sharing", field, value);
+  };
+
+  const updateNetworkDataField = (field, value) => {
+    handleNestedChange("networkData", field, value);
+  };
+
   const onSubmit = (e) => {
     e.preventDefault();
 
     const finalInmobiliariaId =
       values?.inmobiliariaId || inmobiliariaId || activeInmobiliariaId;
+
+    const normalizedSharing = {
+      ...DEFAULT_SHARING,
+      ...(values?.sharing || {}),
+      enabled: Boolean(sharingValues.enabled),
+      allowColleagueContact: Boolean(sharingValues.allowColleagueContact),
+      showExactAddressToColleagues: Boolean(
+        sharingValues.showExactAddressToColleagues,
+      ),
+      showOwnerDataToColleagues: Boolean(
+        sharingValues.showOwnerDataToColleagues,
+      ),
+    };
+
+    const normalizedNetworkData = {
+      ...DEFAULT_NETWORK_DATA,
+      ...(values?.networkData || {}),
+    };
 
     handleSubmit({
       ...values,
@@ -78,6 +135,10 @@ const InmuebleForm = ({
       // Publicación en portal público
       publicarEnPortal: Boolean(values?.publicarEnPortal),
       noIndex: Boolean(values?.noIndex),
+
+      // Red de colegas
+      sharing: normalizedSharing,
+      networkData: normalizedNetworkData,
     });
   };
 
@@ -349,8 +410,8 @@ const InmuebleForm = ({
       </div>
 
       {/* =========================
-    Publicación
-   ========================= */}
+          Publicación
+         ========================= */}
       <div className="card mb-4">
         <div className="card-header fw-semibold">Publicación</div>
         <div className="card-body row g-3 align-items-end">
@@ -415,11 +476,310 @@ const InmuebleForm = ({
           {values?.noIndex && (
             <div className="col-12">
               <div className="alert alert-warning small mb-0">
-                Esta publicación puede verse si está publicada en el portal, pero no
-                será incluida en el sitemap y la ficha pública enviará la indicación
-                <strong> noindex</strong> a los buscadores.
+                Esta publicación puede verse si está publicada en el portal,
+                pero no será incluida en el sitemap y la ficha pública enviará
+                la indicación <strong>noindex</strong> a los buscadores.
               </div>
             </div>
+          )}
+        </div>
+      </div>
+
+      {/* =========================
+          Red de colegas
+         ========================= */}
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">
+          Red de colegas
+        </div>
+
+        <div className="card-body">
+          <div className="form-check form-switch mb-3">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              id="sharingEnabled"
+              checked={sharingEnabled}
+              onChange={(e) =>
+                updateSharingField("enabled", e.target.checked)
+              }
+            />
+
+            <label className="form-check-label" htmlFor="sharingEnabled">
+              Compartir este inmueble con colegas
+            </label>
+          </div>
+
+          <p className="text-muted small mb-0">
+            Al compartirlo, otras inmobiliarias habilitadas en ONO Prop podrán
+            ver información comercial adicional que no se muestra al público
+            general.
+          </p>
+
+          {sharingEnabled && (
+            <>
+              <hr />
+
+              <div className="alert alert-info small">
+                Esta información está pensada para la red interna de colegas.
+                No debe mostrarse en la ficha pública del inmueble.
+              </div>
+
+              <div className="row g-3">
+                <div className="col-md-4">
+                  <label className="form-label">
+                    Alcance de colaboración
+                  </label>
+
+                  <select
+                    className="form-select"
+                    value={sharingValues.mode || "all_colleagues"}
+                    onChange={(e) =>
+                      updateSharingField("mode", e.target.value)
+                    }
+                  >
+                    <option value="all_colleagues">
+                      Todos los colegas habilitados
+                    </option>
+                    <option value="selected_agencies" disabled>
+                      Inmobiliarias seleccionadas próximamente
+                    </option>
+                  </select>
+
+                  <div className="form-text">
+                    En esta primera versión se comparte con colegas habilitados
+                    de la red.
+                  </div>
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">
+                    Comisión / colaboración ofrecida
+                  </label>
+
+                  <input
+                    className="form-control"
+                    value={networkDataValues.commissionShare || ""}
+                    placeholder="Ej: 50% de honorarios / 1% / a convenir"
+                    onChange={(e) =>
+                      updateNetworkDataField(
+                        "commissionShare",
+                        e.target.value,
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">
+                    Precio interno / margen negociable
+                  </label>
+
+                  <input
+                    className="form-control"
+                    value={networkDataValues.internalPrice || ""}
+                    placeholder="Ej: escucha ofertas / margen 5%"
+                    onChange={(e) =>
+                      updateNetworkDataField("internalPrice", e.target.value)
+                    }
+                  />
+                </div>
+
+                <div className="col-md-4">
+                  <label className="form-label">
+                    Estado de documentación
+                  </label>
+
+                  <select
+                    className="form-select"
+                    value={networkDataValues.documentationStatus || ""}
+                    onChange={(e) =>
+                      updateNetworkDataField(
+                        "documentationStatus",
+                        e.target.value,
+                      )
+                    }
+                  >
+                    <option value="">Sin especificar</option>
+                    <option value="completa">Completa</option>
+                    <option value="en_revision">En revisión</option>
+                    <option value="pendiente">Pendiente</option>
+                    <option value="no_disponible">No disponible</option>
+                  </select>
+                </div>
+
+                <div className="col-md-8">
+                  <label className="form-label">
+                    Dirección exacta para colegas
+                  </label>
+
+                  <input
+                    className="form-control"
+                    value={networkDataValues.exactAddress || ""}
+                    placeholder="Calle, número, piso, unidad, referencias internas"
+                    onChange={(e) =>
+                      updateNetworkDataField("exactAddress", e.target.value)
+                    }
+                    disabled={!sharingValues.showExactAddressToColleagues}
+                  />
+
+                  {!sharingValues.showExactAddressToColleagues && (
+                    <div className="form-text">
+                      Activá “Mostrar dirección exacta a colegas” para usar este
+                      campo.
+                    </div>
+                  )}
+                </div>
+
+                <div className="col-md-4">
+                  <div className="form-check mt-md-4">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="showExactAddressToColleagues"
+                      checked={Boolean(
+                        sharingValues.showExactAddressToColleagues,
+                      )}
+                      onChange={(e) =>
+                        updateSharingField(
+                          "showExactAddressToColleagues",
+                          e.target.checked,
+                        )
+                      }
+                    />
+
+                    <label
+                      className="form-check-label"
+                      htmlFor="showExactAddressToColleagues"
+                    >
+                      Mostrar dirección exacta a colegas
+                    </label>
+                  </div>
+                </div>
+
+                <div className="col-md-4">
+                  <div className="form-check mt-md-4">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="allowColleagueContact"
+                      checked={Boolean(sharingValues.allowColleagueContact)}
+                      onChange={(e) =>
+                        updateSharingField(
+                          "allowColleagueContact",
+                          e.target.checked,
+                        )
+                      }
+                    />
+
+                    <label
+                      className="form-check-label"
+                      htmlFor="allowColleagueContact"
+                    >
+                      Permitir contacto de colegas
+                    </label>
+                  </div>
+                </div>
+
+                <div className="col-md-4">
+                  <div className="form-check mt-md-4">
+                    <input
+                      className="form-check-input"
+                      type="checkbox"
+                      id="showOwnerDataToColleagues"
+                      checked={Boolean(
+                        sharingValues.showOwnerDataToColleagues,
+                      )}
+                      onChange={(e) =>
+                        updateSharingField(
+                          "showOwnerDataToColleagues",
+                          e.target.checked,
+                        )
+                      }
+                    />
+
+                    <label
+                      className="form-check-label"
+                      htmlFor="showOwnerDataToColleagues"
+                    >
+                      Mostrar datos del propietario
+                    </label>
+                  </div>
+                </div>
+
+                {sharingValues.showOwnerDataToColleagues && (
+                  <>
+                    <div className="col-md-6">
+                      <label className="form-label">
+                        Nombre del propietario
+                      </label>
+
+                      <input
+                        className="form-control"
+                        value={networkDataValues.ownerName || ""}
+                        placeholder="Uso interno / colegas autorizados"
+                        onChange={(e) =>
+                          updateNetworkDataField("ownerName", e.target.value)
+                        }
+                      />
+                    </div>
+
+                    <div className="col-md-6">
+                      <label className="form-label">
+                        Teléfono del propietario
+                      </label>
+
+                      <input
+                        className="form-control"
+                        value={networkDataValues.ownerPhone || ""}
+                        placeholder="Uso interno / colegas autorizados"
+                        onChange={(e) =>
+                          updateNetworkDataField("ownerPhone", e.target.value)
+                        }
+                      />
+                    </div>
+                  </>
+                )}
+
+                <div className="col-12">
+                  <label className="form-label">
+                    Instrucciones para visitas
+                  </label>
+
+                  <textarea
+                    className="form-control"
+                    rows={3}
+                    value={networkDataValues.visitInstructions || ""}
+                    placeholder="Ej: coordinar con 24 hs, llaves en oficina, solo visitas por la tarde..."
+                    onChange={(e) =>
+                      updateNetworkDataField(
+                        "visitInstructions",
+                        e.target.value,
+                      )
+                    }
+                  />
+                </div>
+
+                <div className="col-12">
+                  <label className="form-label">
+                    Observaciones para colegas
+                  </label>
+
+                  <textarea
+                    className="form-control"
+                    rows={4}
+                    value={networkDataValues.notesForColleagues || ""}
+                    placeholder="Información comercial no visible al público: situación del propietario, urgencia, condiciones de negociación, restricciones, etc."
+                    onChange={(e) =>
+                      updateNetworkDataField(
+                        "notesForColleagues",
+                        e.target.value,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            </>
           )}
         </div>
       </div>

@@ -420,6 +420,16 @@ const Navbar = () => {
                               <li>
                                 <Link
                                   className="dropdown-item"
+                                  to="/admin/red/inmuebles-compartidos"
+                                  onClick={closeMenus}
+                                >
+                                  Red de colegas
+                                </Link>
+                              </li>
+
+                              <li>
+                                <Link
+                                  className="dropdown-item"
                                   to="/admin/inmuebles/nuevo"
                                   onClick={closeMenus}
                                 >

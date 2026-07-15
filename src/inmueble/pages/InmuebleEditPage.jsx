@@ -11,6 +11,25 @@ import { canEditInmueble } from "../helpers/permissions";
    Valores iniciales
    ========================= */
 
+const DEFAULT_SHARING = {
+  enabled: false,
+  mode: "all_colleagues",
+  allowColleagueContact: true,
+  showExactAddressToColleagues: false,
+  showOwnerDataToColleagues: false,
+};
+
+const DEFAULT_NETWORK_DATA = {
+  exactAddress: "",
+  commissionShare: "",
+  internalPrice: "",
+  documentationStatus: "",
+  visitInstructions: "",
+  notesForColleagues: "",
+  ownerName: "",
+  ownerPhone: "",
+};
+
 const EMPTY_VALUES = {
   titulo: "",
   descripcion: "",
@@ -50,6 +69,58 @@ const EMPTY_VALUES = {
 
   sharedWith: {},
   deleted: false,
+
+  // 🤝 Red de colegas
+  sharing: DEFAULT_SHARING,
+  networkData: DEFAULT_NETWORK_DATA,
+};
+
+/* =========================
+   Normalización Red de colegas
+   ========================= */
+
+const normalizeSharing = (value = {}) => {
+  return {
+    ...DEFAULT_SHARING,
+    ...value,
+    enabled: Boolean(value.enabled),
+    mode: value.mode || "all_colleagues",
+    allowColleagueContact:
+      value.allowColleagueContact === undefined
+        ? true
+        : Boolean(value.allowColleagueContact),
+    showExactAddressToColleagues: Boolean(
+      value.showExactAddressToColleagues,
+    ),
+    showOwnerDataToColleagues: Boolean(value.showOwnerDataToColleagues),
+  };
+};
+
+const normalizeNetworkData = ({ sharing, networkData }) => {
+  const data = {
+    ...DEFAULT_NETWORK_DATA,
+    ...(networkData || {}),
+  };
+
+  return {
+    ...data,
+
+    exactAddress: sharing.showExactAddressToColleagues
+      ? data.exactAddress || ""
+      : "",
+
+    ownerName: sharing.showOwnerDataToColleagues ? data.ownerName || "" : "",
+
+    ownerPhone: sharing.showOwnerDataToColleagues ? data.ownerPhone || "" : "",
+  };
+};
+
+const removeProtectedFieldsFromPublicData = (formValues = {}) => {
+  const publicData = { ...formValues };
+
+  delete publicData.networkData;
+
+  return publicData;
 };
 
 const InmuebleEditPage = () => {
@@ -103,6 +174,12 @@ const InmuebleEditPage = () => {
           data.ownerInmobiliariaId ||
           activeInmobiliariaId;
 
+        const normalizedSharing = normalizeSharing(data.sharing || {});
+        const normalizedNetworkData = normalizeNetworkData({
+          sharing: normalizedSharing,
+          networkData: data.networkData || {},
+        });
+
         const formattedValues = {
           ...EMPTY_VALUES,
           ...data,
@@ -136,6 +213,9 @@ const InmuebleEditPage = () => {
           destacado: Boolean(data.destacado),
           publicarEnPortal: Boolean(data.publicarEnPortal),
           noIndex: Boolean(data.noIndex),
+
+          sharing: normalizedSharing,
+          networkData: normalizedNetworkData,
         };
 
         setInmueble({
@@ -146,6 +226,7 @@ const InmuebleEditPage = () => {
           destacado: Boolean(data.destacado),
           publicarEnPortal: Boolean(data.publicarEnPortal),
           noIndex: Boolean(data.noIndex),
+          sharing: normalizedSharing,
         });
 
         setValues(formattedValues);
@@ -297,8 +378,16 @@ const InmuebleEditPage = () => {
         return;
       }
 
+      const normalizedSharing = normalizeSharing(formValues?.sharing);
+      const normalizedNetworkData = normalizeNetworkData({
+        sharing: normalizedSharing,
+        networkData: formValues?.networkData,
+      });
+
+      const publicFormValues = removeProtectedFieldsFromPublicData(formValues);
+
       const updatedInmueble = {
-        ...formValues,
+        ...publicFormValues,
 
         // 🔒 Campos de dominio que no deben cambiar desde este formulario
         ownerId: inmueble.ownerId,
@@ -322,9 +411,14 @@ const InmuebleEditPage = () => {
         destacado: Boolean(formValues?.destacado),
         publicarEnPortal: Boolean(formValues?.publicarEnPortal),
         noIndex: Boolean(formValues?.noIndex),
+
+        // Red de colegas: datos no sensibles para consulta/query
+        sharing: normalizedSharing,
       };
 
-      await updateInmueble(currentInmobiliariaId, id, updatedInmueble);
+      await updateInmueble(currentInmobiliariaId, id, updatedInmueble, {
+        networkData: normalizedSharing.enabled ? normalizedNetworkData : null,
+      });
 
       console.log("✅ Inmueble actualizado:", id);
 

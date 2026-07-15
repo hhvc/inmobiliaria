@@ -55,6 +55,7 @@ import InmueblePortalPage from "./inmueble/pages/InmueblePortalPage";
 import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
 import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
 import InmuebleMarketingKitPage from "./inmueble/pages/InmuebleMarketingKitPage";
+import InmuebleNetworkPage from "./inmueble/pages/InmuebleNetworkPage";
 
 function App() {
   useEffect(() => {
@@ -232,6 +233,17 @@ function App() {
                         <InmobiliariaInternalPermissionGuard permission="canViewConsultas">
                           <InmuebleConsultasPage />
                         </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/red/inmuebles-compartidos"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmuebleNetworkPage />
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>
                   }
