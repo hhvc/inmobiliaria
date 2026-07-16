@@ -921,3 +921,102 @@ export const getNetworkSharedInmuebles = async ({
     lastDoc: null,
   };
 };
+
+/**
+ * Obtener un inmueble compartido específico para la ficha detalle
+ * de Red de colegas.
+ */
+export const getNetworkSharedInmuebleById = async (
+  inmobiliariaId,
+  inmuebleId,
+) => {
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos");
+  }
+
+  const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    return null;
+  }
+
+  const data = snap.data();
+
+  const isShared =
+    data.deleted === false &&
+    data.estado === "activo" &&
+    data.sharing?.enabled === true &&
+    data.sharing?.mode === "all_colleagues";
+
+  if (!isShared) {
+    return null;
+  }
+
+  let networkData = {};
+
+  try {
+    networkData =
+      (await getInmuebleNetworkData(inmobiliariaId, inmuebleId)) || {};
+  } catch (error) {
+    console.warn(
+      "No se pudo cargar networkData del inmueble compartido:",
+      error,
+    );
+  }
+
+  return {
+    id: snap.id,
+    inmobiliariaId,
+    ...data,
+    networkData,
+  };
+};
+
+/* =========================================================
+   SOLICITUDES DE COLABORACIÓN
+   ========================================================= */
+
+const networkRequestsCollection = () =>
+  collection(db, "inmueble_network_requests");
+
+export const createNetworkCollaborationRequest = async ({
+  inmueble,
+  requesterInmobiliariaId,
+  mensaje = "",
+}) => {
+  if (!inmueble?.id || !inmueble?.inmobiliariaId) {
+    throw new Error("Inmueble inválido");
+  }
+
+  if (!requesterInmobiliariaId) {
+    throw new Error("No se pudo determinar la inmobiliaria solicitante");
+  }
+
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Tenés que iniciar sesión para solicitar colaboración");
+  }
+
+  if (requesterInmobiliariaId === inmueble.inmobiliariaId) {
+    throw new Error("No podés solicitar colaboración sobre un inmueble propio");
+  }
+
+  const payload = {
+    inmuebleId: inmueble.id,
+    inmuebleTitulo: inmueble.titulo || "",
+    ownerInmobiliariaId: inmueble.inmobiliariaId,
+    requesterInmobiliariaId,
+    requesterUserId: currentUser.uid,
+    requesterUserEmail: currentUser.email || "",
+    mensaje: mensaje?.trim() || "",
+    estado: "pendiente",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  const docRef = await addDoc(networkRequestsCollection(), payload);
+
+  return docRef.id;
+};

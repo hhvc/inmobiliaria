@@ -56,6 +56,7 @@ import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
 import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
 import InmuebleMarketingKitPage from "./inmueble/pages/InmuebleMarketingKitPage";
 import InmuebleNetworkPage from "./inmueble/pages/InmuebleNetworkPage";
+import InmuebleNetworkDetailPage from "./inmueble/pages/InmuebleNetworkDetailPage";
 
 function App() {
   useEffect(() => {
@@ -244,6 +245,17 @@ function App() {
                     <ProtectedRoute role="admin">
                       <InmobiliariaModuleGuard moduleId="inmuebles">
                         <InmuebleNetworkPage />
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/red/inmuebles-compartidos/:inmobiliariaId/:inmuebleId"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmuebleNetworkDetailPage />
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>
                   }
