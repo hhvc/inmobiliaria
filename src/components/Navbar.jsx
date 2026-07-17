@@ -430,6 +430,16 @@ const Navbar = () => {
                               <li>
                                 <Link
                                   className="dropdown-item"
+                                  to="/admin/red/solicitudes"
+                                  onClick={closeMenus}
+                                >
+                                  Solicitudes de colaboración
+                                </Link>
+                              </li>
+
+                              <li>
+                                <Link
+                                  className="dropdown-item"
                                   to="/admin/inmuebles/nuevo"
                                   onClick={closeMenus}
                                 >

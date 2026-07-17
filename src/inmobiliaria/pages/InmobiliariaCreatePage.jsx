@@ -1,11 +1,55 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+
 import InmobiliariaForm from "../components/InmobiliariaForm";
 import {
   createInmobiliaria,
   updateInmobiliaria,
 } from "../services/inmobiliaria.service";
 import { uploadInmobiliariaImagesSimplified } from "../helpers/uploadInmobiliariaImages";
+
+const normalizeText = (value = "") => value.toString().trim();
+
+const normalizeCuit = (value = "") =>
+  value
+    .toString()
+    .trim()
+    .replace(/\D/g, "");
+
+const buildInitialVerificationData = (formData = {}) => {
+  const cuit = normalizeCuit(formData.cuit);
+  const razonSocial = normalizeText(formData.razonSocial);
+
+  return {
+    estado: "pendiente_documentacion",
+    estadoLabel: "Pendiente de documentación para validar",
+
+    tipoPersona: formData.verificacion?.tipoPersona || "no_informado",
+
+    cuit,
+    razonSocial,
+
+    requiereDocumentacion: true,
+    documentacionCompleta: false,
+
+    submittedAt: null,
+    reviewedAt: null,
+    reviewedBy: null,
+
+    observaciones:
+      "La inmobiliaria fue creada y puede operar, pero aún debe presentar documentación para validar su identidad y situación fiscal.",
+  };
+};
+
+const buildInitialVerificationDocuments = () => {
+  return {
+    constanciaArca: null,
+    dniTitular: null,
+    estatutoContratoSocial: null,
+    dniApoderado: null,
+    poderApoderado: null,
+  };
+};
 
 export default function InmobiliariaCreatePage() {
   const navigate = useNavigate();
@@ -21,12 +65,23 @@ export default function InmobiliariaCreatePage() {
       console.log("Datos del formulario:", formData);
       console.log("Imágenes recibidas:", images);
 
+      const now = new Date().toISOString();
+
       const inmobiliariaData = {
-        nombre: formData.nombre,
-        razonSocial: formData.razonSocial,
-        cuit: formData.cuit,
-        slug: formData.slug,
-        activa: formData.activa,
+        nombre: normalizeText(formData.nombre),
+        razonSocial: normalizeText(formData.razonSocial),
+        cuit: normalizeCuit(formData.cuit),
+        slug: normalizeText(formData.slug),
+
+        /*
+          La inmobiliaria queda funcional.
+          La verificación documental corre por separado.
+        */
+        activa: formData.activa ?? true,
+
+        verificacion: buildInitialVerificationData(formData),
+        documentacionVerificacion: buildInitialVerificationDocuments(),
+
         configuracion: {
           operacionesPermitidas:
             formData.configuracion?.operacionesPermitidas || [],
@@ -38,16 +93,17 @@ export default function InmobiliariaCreatePage() {
             whatsapp: formData.configuracion?.contacto?.whatsapp || "",
           },
         },
+
         branding: {},
-        createdAt: formData.createdAt || new Date().toISOString(),
-        updatedAt: formData.updatedAt || new Date().toISOString(),
+
+        createdAt: formData.createdAt || now,
+        updatedAt: formData.updatedAt || now,
       };
 
       const inmobiliariaId = await createInmobiliaria(inmobiliariaData);
 
       let branding = {};
 
-      // Usar encadenamiento opcional para evitar errores
       const imagesToUpload = {
         logo: images?.logo?.file || null,
         backgrounds: {
@@ -66,7 +122,7 @@ export default function InmobiliariaCreatePage() {
       if (hasImages) {
         branding = await uploadInmobiliariaImagesSimplified(
           inmobiliariaId,
-          imagesToUpload
+          imagesToUpload,
         );
       }
 
@@ -77,7 +133,10 @@ export default function InmobiliariaCreatePage() {
         });
       }
 
-      alert("✅ Inmobiliaria creada correctamente");
+      alert(
+        "✅ Inmobiliaria creada correctamente. Queda operativa, pero pendiente de documentación para validar.",
+      );
+
       navigate("/admin/inmobiliarias");
     } catch (err) {
       console.error("Error creando inmobiliaria:", err);
@@ -95,17 +154,26 @@ export default function InmobiliariaCreatePage() {
     <div className="container py-4">
       <h3 className="mb-4">🏢 Nueva Inmobiliaria</h3>
 
+      <div className="alert alert-info">
+        <strong>Alta operativa con verificación posterior.</strong> La
+        inmobiliaria podrá operar y cargar inmuebles, pero figurará como{" "}
+        <strong>pendiente de documentación para validar</strong> hasta que se
+        presente y revise la documentación correspondiente.
+      </div>
+
       {error && (
         <div
           className="alert alert-danger alert-dismissible fade show"
           role="alert"
         >
           {error}
+
           <button
             type="button"
             className="btn-close"
             onClick={() => setError(null)}
-          ></button>
+            aria-label="Cerrar"
+          />
         </div>
       )}
 

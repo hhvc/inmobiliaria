@@ -974,11 +974,90 @@ export const getNetworkSharedInmuebleById = async (
 };
 
 /* =========================================================
-   SOLICITUDES DE COLABORACIÓN
+   SOLICITUDES DE COLABORACIÓN - RED DE COLEGAS
    ========================================================= */
 
 const networkRequestsCollection = () =>
   collection(db, "inmueble_network_requests");
+
+const NETWORK_REQUEST_STATUSES = [
+  "pendiente",
+  "aceptada",
+  "rechazada",
+  "cerrada",
+];
+
+const chunkArray = (items = [], size = 10) => {
+  const chunks = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+};
+
+const normalizeFirestoreDate = (value) => {
+  if (!value) return null;
+
+  if (typeof value.toDate === "function") {
+    return value.toDate();
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const mapNetworkCollaborationRequest = (docSnap) => {
+  if (!docSnap?.exists?.()) return null;
+
+  const data = docSnap.data();
+
+  return {
+    id: docSnap.id,
+    ...data,
+    createdAt: normalizeFirestoreDate(data.createdAt),
+    updatedAt: normalizeFirestoreDate(data.updatedAt),
+  };
+};
+
+const getCurrentUserDataForNetworkRequests = async () => {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  const userRef = doc(db, "users", currentUser.uid);
+  const userSnap = await getDoc(userRef);
+
+  if (!userSnap.exists()) {
+    throw new Error("No se encontró el perfil del usuario");
+  }
+
+  const userData = userSnap.data();
+
+  const isRootUser =
+    userData.role === "root" ||
+    userData.primaryRole === "root" ||
+    (Array.isArray(userData.roles) && userData.roles.includes("root"));
+
+  const inmobiliariaIds = Array.isArray(userData.inmobiliarias)
+    ? userData.inmobiliarias.filter(Boolean)
+    : [];
+
+  return {
+    currentUser,
+    userData,
+    isRootUser,
+    inmobiliariaIds,
+  };
+};
 
 export const createNetworkCollaborationRequest = async ({
   inmueble,
@@ -1019,4 +1098,100 @@ export const createNetworkCollaborationRequest = async ({
   const docRef = await addDoc(networkRequestsCollection(), payload);
 
   return docRef.id;
+};
+
+export const getNetworkCollaborationRequests = async ({
+  view = "received",
+  estado = "pendiente",
+} = {}) => {
+  const { isRootUser, inmobiliariaIds } =
+    await getCurrentUserDataForNetworkRequests();
+
+  let docs = [];
+
+  if (isRootUser) {
+    const snap = await getDocs(networkRequestsCollection());
+    docs = snap.docs;
+  } else {
+    if (inmobiliariaIds.length === 0) return [];
+
+    const field =
+      view === "sent" ? "requesterInmobiliariaId" : "ownerInmobiliariaId";
+
+    const chunks = chunkArray(inmobiliariaIds, 10);
+
+    const snapshots = await Promise.all(
+      chunks.map((chunk) => {
+        const q = query(
+          networkRequestsCollection(),
+          where(field, "in", chunk),
+        );
+
+        return getDocs(q);
+      }),
+    );
+
+    docs = snapshots.flatMap((snap) => snap.docs);
+  }
+
+  return docs
+    .map((docSnap) => mapNetworkCollaborationRequest(docSnap))
+    .filter(Boolean)
+    .filter((request) => {
+      if (!estado) return true;
+
+      return request.estado === estado;
+    })
+    .filter((request) => {
+      if (isRootUser) return true;
+
+      if (view === "sent") {
+        return inmobiliariaIds.includes(request.requesterInmobiliariaId);
+      }
+
+      return inmobiliariaIds.includes(request.ownerInmobiliariaId);
+    })
+    .sort((a, b) => {
+      const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+      const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+
+      return dateB - dateA;
+    });
+};
+
+export const updateNetworkCollaborationRequestStatus = async (
+  requestId,
+  { estado } = {},
+) => {
+  if (!requestId) {
+    throw new Error("ID de solicitud requerido");
+  }
+
+  if (!NETWORK_REQUEST_STATUSES.includes(estado)) {
+    throw new Error("Estado de solicitud inválido");
+  }
+
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  const requestRef = doc(db, "inmueble_network_requests", requestId);
+  const requestSnap = await getDoc(requestRef);
+
+  if (!requestSnap.exists()) {
+    throw new Error("Solicitud no encontrada");
+  }
+
+  const requestData = requestSnap.data();
+
+  if (requestData.estado === estado) {
+    return;
+  }
+
+  await updateDoc(requestRef, {
+    estado,
+    updatedAt: serverTimestamp(),
+  });
 };

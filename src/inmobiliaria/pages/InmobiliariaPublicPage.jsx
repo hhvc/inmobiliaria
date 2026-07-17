@@ -16,6 +16,64 @@ const INITIAL_FILTERS = {
 
 const DEFAULT_SEO_IMAGE = "/assets/img/Logo.png";
 
+const VERIFICATION_STATUS_CONFIG = {
+  pendiente_documentacion: {
+    label: "Pendiente de documentación para validar",
+    cardLabel: "Perfil activo · Pendiente de documentación",
+    alertClass: "alert-warning",
+    title: "Inmobiliaria pendiente de documentación",
+    description:
+      "Esta inmobiliaria se encuentra activa en ONO Prop y puede operar, pero todavía debe presentar documentación legal y fiscal para completar su validación.",
+  },
+  pendiente_revision: {
+    label: "Documentación en revisión",
+    cardLabel: "Perfil activo · Documentación en revisión",
+    alertClass: "alert-info",
+    title: "Documentación en revisión",
+    description:
+      "Esta inmobiliaria ya presentó documentación y se encuentra en proceso de revisión por parte del equipo de ONO Prop.",
+  },
+  verificada: {
+    label: "Inmobiliaria verificada",
+    cardLabel: "Perfil comercial verificado",
+    alertClass: "alert-success",
+    title: "",
+    description: "",
+  },
+  observada: {
+    label: "Documentación observada",
+    cardLabel: "Perfil activo · Documentación observada",
+    alertClass: "alert-warning",
+    title: "Documentación observada",
+    description:
+      "La documentación presentada por esta inmobiliaria requiere correcciones o información adicional para completar la validación.",
+  },
+  rechazada: {
+    label: "Verificación rechazada",
+    cardLabel: "Perfil no verificado",
+    alertClass: "alert-danger",
+    title: "Inmobiliaria no verificada",
+    description:
+      "Esta inmobiliaria no cuenta actualmente con validación aprobada en ONO Prop.",
+  },
+};
+
+const getVerificationStatus = (inmobiliaria) => {
+  const estado =
+    inmobiliaria?.verificacion?.estado || "pendiente_documentacion";
+
+  const config =
+    VERIFICATION_STATUS_CONFIG[estado] ||
+    VERIFICATION_STATUS_CONFIG.pendiente_documentacion;
+
+  return {
+    estado,
+    ...config,
+    label: inmobiliaria?.verificacion?.estadoLabel || config.label,
+    showPublicAlert: estado !== "verificada",
+  };
+};
+
 const formatPrice = (inmueble) => {
   if (!inmueble?.precio) return "Consultar";
 
@@ -141,7 +199,7 @@ const getFeaturedInmuebles = (inmuebles) => {
 
 const buildSeoDescription = ({ inmobiliaria, contacto }) => {
   if (!inmobiliaria) {
-    return "Sitio público de inmobiliaria en LaDoctaProp.";
+    return "Sitio público de inmobiliaria en ONO Prop.";
   }
 
   return [
@@ -286,7 +344,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
   const seoTitle = useMemo(() => {
     return inmobiliaria?.nombre
       ? `${inmobiliaria.nombre} | Propiedades publicadas`
-      : "Inmobiliaria | LaDoctaProp";
+      : "Inmobiliaria | ONO Prop";
   }, [inmobiliaria]);
 
   const seoDescription = useMemo(() => {
@@ -323,6 +381,10 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
 
   const shouldNoIndexInmobiliaria =
     inmobiliaria?.noIndex === true || inmobiliaria?.seo?.noIndex === true;
+
+  const verificationStatus = useMemo(() => {
+    return getVerificationStatus(inmobiliaria);
+  }, [inmobiliaria]);
 
   const operacionesPermitidas =
     inmobiliaria?.configuracion?.operacionesPermitidas || [];
@@ -389,7 +451,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     return (
       <main className="portal-home">
         <SEO
-          title="Cargando inmobiliaria | LaDoctaProp"
+          title="Cargando inmobiliaria | ONO Prop"
           description="Cargando sitio público de inmobiliaria."
           image={DEFAULT_SEO_IMAGE}
           url={seoUrl}
@@ -407,7 +469,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     return (
       <main className="portal-home">
         <SEO
-          title="Inmobiliaria no disponible | LaDoctaProp"
+          title="Inmobiliaria no disponible | ONO Prop"
           description="La inmobiliaria solicitada no existe o no se encuentra disponible."
           image={DEFAULT_SEO_IMAGE}
           url={seoUrl}
@@ -435,10 +497,35 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
         image={seoImage}
         url={seoUrl}
         type="website"
-        siteName={inmobiliaria?.nombre || "LaDoctaProp"}
+        siteName={inmobiliaria?.nombre || "ONO Prop"}
         jsonLd={inmobiliariaJsonLd}
         noIndex={shouldNoIndexInmobiliaria}
       />
+
+      {verificationStatus.showPublicAlert && (
+        <section className="pt-4">
+          <div className="container">
+            <div
+              className={`alert ${verificationStatus.alertClass} border shadow-sm mb-0`}
+              role="alert"
+            >
+              <div className="d-flex flex-column flex-md-row gap-2 justify-content-between">
+                <div>
+                  <strong>{verificationStatus.title}</strong>
+
+                  <p className="mb-0 mt-1">
+                    {verificationStatus.description}
+                  </p>
+                </div>
+
+                <span className="badge text-bg-light align-self-start">
+                  {verificationStatus.label}
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* =========================
           Hero sitio inmobiliaria
@@ -532,7 +619,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                       <div>
                         <div className="fw-bold">{inmobiliaria.nombre}</div>
                         <div className="small text-muted">
-                          Perfil comercial activo
+                          {verificationStatus.cardLabel}
                         </div>
                       </div>
                     </div>

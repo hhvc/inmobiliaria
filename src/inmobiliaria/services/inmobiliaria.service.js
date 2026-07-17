@@ -10,6 +10,9 @@ import {
   query,
   where,
   serverTimestamp,
+  setDoc,
+  arrayUnion,
+  writeBatch,
 } from "firebase/firestore";
 
 import { db, auth } from "../../firebase/config";
@@ -21,8 +24,31 @@ import { setActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobi
 const COLLECTION_NAME = "inmobiliarias";
 const inmobiliariasRef = collection(db, COLLECTION_NAME);
 
+const DEFAULT_SELF_SERVICE_MODULES = [
+  "inmuebles",
+  "consultas",
+  "dominios",
+  "branding",
+  "usuarios",
+];
+
+const DEFAULT_VERIFICATION_STATUS = {
+  estado: "pendiente_documentacion",
+  estadoLabel: "Pendiente de documentación para validar",
+  tipoPersona: "no_informado",
+  cuit: "",
+  razonSocial: "",
+  requiereDocumentacion: true,
+  documentacionCompleta: false,
+  submittedAt: null,
+  reviewedAt: null,
+  reviewedBy: null,
+  observaciones:
+    "La inmobiliaria puede operar, pero debe presentar documentación para validar su identidad y situación fiscal.",
+};
+
 /**
- * 🔹 helper interno
+ * 🔹 helpers internos
  */
 const normalizeTimestamp = (value) => {
   if (!value) return null;
@@ -42,6 +68,14 @@ const normalizeTimestamp = (value) => {
   return isNaN(parsed.getTime()) ? null : parsed;
 };
 
+const normalizeText = (value = "") => value.toString().trim();
+
+const normalizeCuit = (value = "") =>
+  value
+    .toString()
+    .trim()
+    .replace(/\D/g, "");
+
 const normalizeSlug = (value = "") => {
   return value.toString().trim().toLowerCase();
 };
@@ -59,13 +93,35 @@ const normalizeDomainList = (domains = []) => {
   if (!Array.isArray(domains)) return [];
 
   return Array.from(
-    new Set(
-      domains
-        .map(normalizeDomain)
-        .filter(Boolean),
-    ),
+    new Set(domains.map(normalizeDomain).filter(Boolean)),
   );
 };
+
+const buildAdminList = (admins = [], currentUserId) => {
+  const safeAdmins = Array.isArray(admins) ? admins : [];
+
+  return Array.from(new Set([...safeAdmins, currentUserId].filter(Boolean)));
+};
+
+const buildDefaultVerificationData = (data = {}) => {
+  const cuit = normalizeCuit(data.cuit);
+  const razonSocial = normalizeText(data.razonSocial);
+
+  return {
+    ...DEFAULT_VERIFICATION_STATUS,
+    tipoPersona: data.verificacion?.tipoPersona || "no_informado",
+    cuit,
+    razonSocial,
+  };
+};
+
+const buildEmptyVerificationDocuments = () => ({
+  constanciaArca: null,
+  dniTitular: null,
+  estatutoContratoSocial: null,
+  dniApoderado: null,
+  poderApoderado: null,
+});
 
 const mapInmobiliariaData = (docSnap) => {
   if (!docSnap?.exists?.()) return null;
@@ -78,9 +134,14 @@ const mapInmobiliariaData = (docSnap) => {
     nombre: data.nombre || "",
     slug: data.slug || "",
     razonSocial: data.razonSocial || "",
+    cuit: data.cuit || "",
     branding: data.branding || {},
     configuracion: data.configuracion || {},
     dominiosPublicos: data.dominiosPublicos || [],
+    modulosSuscriptos: data.modulosSuscriptos || [],
+    verificacion: data.verificacion || buildDefaultVerificationData(data),
+    documentacionVerificacion:
+      data.documentacionVerificacion || buildEmptyVerificationDocuments(),
     createdAt: normalizeTimestamp(data.createdAt),
     updatedAt: normalizeTimestamp(data.updatedAt),
   };
@@ -109,8 +170,8 @@ export async function getPublicInmobiliariaByDomain(hostname) {
 }
 
 /**
- * 🏢 Crear inmobiliaria con nueva estructura
- * 👉 y dejarla como inmobiliaria activa
+ * 🏢 Crear inmobiliaria con estructura extendida
+ * 👉 Compatible con alta admin/root y alta autogestionada
  */
 export async function createInmobiliaria(data) {
   const currentUser = auth.currentUser;
@@ -119,23 +180,43 @@ export async function createInmobiliaria(data) {
     throw new Error("Usuario no autenticado");
   }
 
+  const nombre = normalizeText(data.nombre);
+  const slug = normalizeSlug(data.slug);
+  const cuit = normalizeCuit(data.cuit);
+
   // Validar datos requeridos
-  if (!data.nombre || !data.slug || !data.cuit) {
+  if (!nombre || !slug || !cuit) {
     throw new Error("Faltan campos requeridos: nombre, slug o cuit");
   }
 
   const payload = {
     // Información básica
-    nombre: data.nombre.trim(),
-    razonSocial: data.razonSocial?.trim() || "",
-    cuit: data.cuit.trim(),
-    slug: normalizeSlug(data.slug),
+    nombre,
+    razonSocial: normalizeText(data.razonSocial),
+    cuit,
+    slug,
     activa: data.activa !== undefined ? data.activa : true,
     dominiosPublicos: normalizeDomainList(data.dominiosPublicos),
 
+    // Módulos
+    modulosSuscriptos: Array.isArray(data.modulosSuscriptos)
+      ? data.modulosSuscriptos
+      : [],
+
+    // Verificación documental
+    verificacion: data.verificacion || buildDefaultVerificationData(data),
+    documentacionVerificacion:
+      data.documentacionVerificacion || buildEmptyVerificationDocuments(),
+
+    // SEO / visibilidad
+    noIndex: data.noIndex === true,
+    seo: data.seo || {},
+
     // Configuración
     configuracion: {
-      operacionesPermitidas: data.configuracion?.operacionesPermitidas || [],
+      ...(data.configuracion || {}),
+      operacionesPermitidas:
+        data.configuracion?.operacionesPermitidas || [],
       tiposInmueblePermitidos:
         data.configuracion?.tiposInmueblePermitidos || [],
       contacto: {
@@ -149,8 +230,9 @@ export async function createInmobiliaria(data) {
     branding: data.branding || {},
 
     // Seguridad / auditoría
-    admins: [currentUser.uid],
-    createdBy: currentUser.uid,
+    admins: buildAdminList(data.admins, currentUser.uid),
+    createdBy: data.createdBy || currentUser.uid,
+    createdByEmail: data.createdByEmail || currentUser.email || "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -158,7 +240,7 @@ export async function createInmobiliaria(data) {
   try {
     const docRef = await addDoc(inmobiliariasRef, payload);
 
-    // ✅ Setear inmobiliaria activa
+    // ✅ Setear inmobiliaria activa en helper local
     setActiveInmobiliariaId(docRef.id);
 
     console.log(`✅ Inmobiliaria creada y activada: ${docRef.id}`);
@@ -167,6 +249,75 @@ export async function createInmobiliaria(data) {
     console.error("❌ Error al crear inmobiliaria:", error);
     throw new Error(`No se pudo crear la inmobiliaria: ${error.message}`);
   }
+}
+
+/**
+ * 🏢 Alta autogestionada de inmobiliaria
+ * - Crea inmobiliaria activa
+ * - La deja pendiente_documentacion
+ * - Vincula al usuario actual como admin de esa inmobiliaria
+ */
+export async function createSelfRegisteredInmobiliaria(formData = {}) {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Tenés que iniciar sesión para dar de alta una inmobiliaria");
+  }
+
+  const userRef = doc(db, "users", currentUser.uid);
+  const userSnap = await getDoc(userRef);
+  const existingUserData = userSnap.exists() ? userSnap.data() : {};
+  const existingRole = existingUserData.role || "";
+
+  const inmobiliariaData = {
+    ...formData,
+    activa: true,
+    modulosSuscriptos: DEFAULT_SELF_SERVICE_MODULES,
+    createdBy: currentUser.uid,
+    createdByEmail: currentUser.email || "",
+    verificacion: buildDefaultVerificationData(formData),
+    documentacionVerificacion: buildEmptyVerificationDocuments(),
+    configuracion: {
+      ...(formData.configuracion || {}),
+      contacto: {
+        email:
+          formData.configuracion?.contacto?.email?.trim() ||
+          currentUser.email ||
+          "",
+        telefono: formData.configuracion?.contacto?.telefono?.trim() || "",
+        whatsapp: formData.configuracion?.contacto?.whatsapp?.trim() || "",
+      },
+    },
+  };
+
+  const inmobiliariaId = await createInmobiliaria(inmobiliariaData);
+
+  const roleToWrite = existingRole === "root" ? "root" : "admin";
+
+  await setDoc(
+    userRef,
+    {
+      uid: currentUser.uid,
+      email: currentUser.email || "",
+      displayName: currentUser.displayName || "",
+      role: roleToWrite,
+      roles: arrayUnion("admin"),
+      inmobiliarias: arrayUnion(inmobiliariaId),
+      activeInmobiliariaId: inmobiliariaId,
+      updatedAt: serverTimestamp(),
+      ...(userSnap.exists() ? {} : { createdAt: serverTimestamp() }),
+    },
+    { merge: true },
+  );
+
+  await updateDoc(userRef, {
+    [`inmobiliariaRoles.${inmobiliariaId}`]: "admin",
+    updatedAt: serverTimestamp(),
+  });
+
+  setActiveInmobiliariaId(inmobiliariaId);
+
+  return inmobiliariaId;
 }
 
 /**
@@ -213,12 +364,30 @@ export async function updateInmobiliaria(id, data) {
     updatedBy: currentUser.uid,
   };
 
+  if (data.nombre !== undefined) {
+    updateData.nombre = normalizeText(data.nombre);
+  }
+
+  if (data.razonSocial !== undefined) {
+    updateData.razonSocial = normalizeText(data.razonSocial);
+  }
+
+  if (data.cuit !== undefined) {
+    updateData.cuit = normalizeCuit(data.cuit);
+  }
+
   if (data.slug !== undefined) {
     updateData.slug = normalizeSlug(data.slug);
   }
 
   if (data.dominiosPublicos !== undefined) {
     updateData.dominiosPublicos = normalizeDomainList(data.dominiosPublicos);
+  }
+
+  if (data.modulosSuscriptos !== undefined) {
+    updateData.modulosSuscriptos = Array.isArray(data.modulosSuscriptos)
+      ? data.modulosSuscriptos
+      : [];
   }
 
   /**
@@ -232,6 +401,29 @@ export async function updateInmobiliaria(id, data) {
         ...inmobiliariaData.configuracion?.contacto,
         ...data.configuracion?.contacto,
       },
+    };
+  }
+
+  /**
+   * 🧠 Merge de verificación
+   */
+  if (data.verificacion && inmobiliariaData.verificacion) {
+    updateData.verificacion = {
+      ...inmobiliariaData.verificacion,
+      ...data.verificacion,
+    };
+  }
+
+  /**
+   * 🧠 Merge de documentación de verificación
+   */
+  if (
+    data.documentacionVerificacion &&
+    inmobiliariaData.documentacionVerificacion
+  ) {
+    updateData.documentacionVerificacion = {
+      ...inmobiliariaData.documentacionVerificacion,
+      ...data.documentacionVerificacion,
     };
   }
 
@@ -282,7 +474,9 @@ export async function getPublicInmobiliariaById(id) {
     nombre: data.nombre || "",
     slug: data.slug || "",
     razonSocial: data.razonSocial || "",
+    cuit: data.cuit || "",
     branding: data.branding || {},
+    verificacion: data.verificacion || buildDefaultVerificationData(data),
     configuracion: {
       ...data.configuracion,
       contacto: {
@@ -626,4 +820,403 @@ export async function assertInmobiliariaActiva(id) {
   }
 
   return true;
+}
+
+/* =========================================================
+   SOLICITUDES DE VINCULACIÓN A INMOBILIARIA
+   ========================================================= */
+
+const inmobiliariaLinkRequestsRef = collection(
+  db,
+  "inmobiliaria_user_link_requests",
+);
+
+export async function getActiveInmobiliariasForLinkRequest() {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Tenés que iniciar sesión para buscar inmobiliarias");
+  }
+
+  const q = query(
+    inmobiliariasRef,
+    where("activa", "==", true),
+    limit(100),
+  );
+
+  const snapshot = await getDocs(q);
+
+  return snapshot.docs
+    .map((docSnap) => mapInmobiliariaData(docSnap))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+}
+
+export async function createInmobiliariaLinkRequest({
+  inmobiliaria,
+  requestedRole = "admin",
+  mensaje = "",
+}) {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Tenés que iniciar sesión para solicitar vinculación");
+  }
+
+  if (!inmobiliaria?.id) {
+    throw new Error("Tenés que seleccionar una inmobiliaria");
+  }
+
+  const payload = {
+    inmobiliariaId: inmobiliaria.id,
+    inmobiliariaNombre: inmobiliaria.nombre || "",
+    requesterUserId: currentUser.uid,
+    requesterUserEmail: currentUser.email || "",
+    requesterDisplayName: currentUser.displayName || "",
+    requestedRole,
+    mensaje: mensaje?.trim() || "",
+    estado: "pendiente",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  const docRef = await addDoc(inmobiliariaLinkRequestsRef, payload);
+
+  return docRef.id;
+}
+
+/**
+ * 📎 Actualizar documentación de validación de una inmobiliaria
+ */
+export async function updateInmobiliariaVerificationData(
+  inmobiliariaId,
+  {
+    verificacion = {},
+    documentacionVerificacion = {},
+  } = {},
+) {
+  if (!inmobiliariaId) {
+    throw new Error("ID de inmobiliaria requerido");
+  }
+
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  await updateInmobiliaria(inmobiliariaId, {
+    verificacion: {
+      ...verificacion,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser.uid,
+    },
+    documentacionVerificacion,
+  });
+}
+
+/* =========================================================
+   REVISIÓN ROOT DE VERIFICACIÓN DE INMOBILIARIAS
+   ========================================================= */
+
+const VERIFICATION_LABELS = {
+  pendiente_documentacion: "Pendiente de documentación para validar",
+  pendiente_revision: "Documentación en revisión",
+  verificada: "Inmobiliaria verificada",
+  observada: "Documentación observada",
+  rechazada: "Verificación rechazada",
+};
+
+export async function getInmobiliariasForVerificationReview() {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  const inmobiliarias = await getAllInmobiliarias();
+
+  return inmobiliarias
+    .filter((inmobiliaria) => {
+      const estado =
+        inmobiliaria.verificacion?.estado || "pendiente_documentacion";
+
+      return [
+        "pendiente_documentacion",
+        "pendiente_revision",
+        "observada",
+        "rechazada",
+        "verificada",
+      ].includes(estado);
+    })
+    .sort((a, b) => {
+      const estadoA = a.verificacion?.estado || "pendiente_documentacion";
+      const estadoB = b.verificacion?.estado || "pendiente_documentacion";
+
+      const order = {
+        pendiente_revision: 1,
+        observada: 2,
+        pendiente_documentacion: 3,
+        rechazada: 4,
+        verificada: 5,
+      };
+
+      return (order[estadoA] || 99) - (order[estadoB] || 99);
+    });
+}
+
+export async function updateInmobiliariaVerificationReview(
+  inmobiliariaId,
+  {
+    estado,
+    observaciones = "",
+  } = {},
+) {
+  if (!inmobiliariaId) {
+    throw new Error("ID de inmobiliaria requerido");
+  }
+
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  const allowedEstados = ["verificada", "observada", "rechazada"];
+
+  if (!allowedEstados.includes(estado)) {
+    throw new Error("Estado de verificación inválido");
+  }
+
+  const current = await getInmobiliariaById(inmobiliariaId);
+
+  if (!current) {
+    throw new Error("Inmobiliaria no encontrada");
+  }
+
+  const now = new Date().toISOString();
+
+  const nextVerification = {
+    ...(current.verificacion || {}),
+    estado,
+    estadoLabel: VERIFICATION_LABELS[estado] || estado,
+    reviewedAt: now,
+    reviewedBy: currentUser.uid,
+    reviewNote: observaciones?.trim() || "",
+    updatedAt: now,
+    updatedBy: currentUser.uid,
+  };
+
+  if (estado === "verificada") {
+    nextVerification.documentacionCompleta = true;
+    nextVerification.documentacionAprobada = true;
+    nextVerification.requiereDocumentacion = false;
+  }
+
+  if (estado === "observada") {
+    nextVerification.documentacionAprobada = false;
+    nextVerification.requiereDocumentacion = true;
+    nextVerification.observaciones =
+      observaciones?.trim() ||
+      "La documentación fue observada. Se requiere información adicional o correcciones.";
+  }
+
+  if (estado === "rechazada") {
+    nextVerification.documentacionAprobada = false;
+    nextVerification.requiereDocumentacion = true;
+    nextVerification.observaciones =
+      observaciones?.trim() ||
+      "La verificación fue rechazada por el equipo de ONO Prop.";
+  }
+
+  await updateInmobiliaria(inmobiliariaId, {
+    verificacion: nextVerification,
+  });
+}
+
+/* =========================================================
+   REVISIÓN DE SOLICITUDES DE VINCULACIÓN
+   ========================================================= */
+
+const LINK_REQUEST_STATUSES = [
+  "pendiente",
+  "aceptada",
+  "rechazada",
+  "cancelada",
+];
+
+const chunkArray = (items = [], size = 10) => {
+  const chunks = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+
+  return chunks;
+};
+
+const mapInmobiliariaLinkRequest = (docSnap) => {
+  if (!docSnap?.exists?.()) return null;
+
+  const data = docSnap.data();
+
+  return {
+    id: docSnap.id,
+    ...data,
+    createdAt: normalizeTimestamp(data.createdAt),
+    updatedAt: normalizeTimestamp(data.updatedAt),
+    reviewedAt: normalizeTimestamp(data.reviewedAt),
+  };
+};
+
+export async function getInmobiliariaLinkRequestsForAdmin({
+  estado = "pendiente",
+} = {}) {
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  const userRef = doc(db, "users", currentUser.uid);
+  const userSnap = await getDoc(userRef);
+
+  if (!userSnap.exists()) {
+    throw new Error("No se encontró el perfil del usuario");
+  }
+
+  const userData = userSnap.data();
+  const isRootUser =
+    userData.role === "root" ||
+    userData.primaryRole === "root" ||
+    (Array.isArray(userData.roles) && userData.roles.includes("root"));
+
+  let docs = [];
+
+  if (isRootUser) {
+    const snap = await getDocs(inmobiliariaLinkRequestsRef);
+    docs = snap.docs;
+  } else {
+    const inmoIds = Array.isArray(userData.inmobiliarias)
+      ? userData.inmobiliarias.filter(Boolean)
+      : [];
+
+    if (inmoIds.length === 0) return [];
+
+    const chunks = chunkArray(inmoIds, 10);
+
+    const snapshots = await Promise.all(
+      chunks.map((chunk) => {
+        const q = query(
+          inmobiliariaLinkRequestsRef,
+          where("inmobiliariaId", "in", chunk),
+        );
+
+        return getDocs(q);
+      }),
+    );
+
+    docs = snapshots.flatMap((snap) => snap.docs);
+  }
+
+  return docs
+    .map((docSnap) => mapInmobiliariaLinkRequest(docSnap))
+    .filter(Boolean)
+    .filter((request) => {
+      if (!estado) return true;
+      return request.estado === estado;
+    })
+    .sort((a, b) => {
+      const dateA = a.createdAt instanceof Date ? a.createdAt.getTime() : 0;
+      const dateB = b.createdAt instanceof Date ? b.createdAt.getTime() : 0;
+
+      return dateB - dateA;
+    });
+}
+
+export async function reviewInmobiliariaLinkRequest(
+  requestId,
+  {
+    estado,
+    reviewNote = "",
+  } = {},
+) {
+  if (!requestId) {
+    throw new Error("ID de solicitud requerido");
+  }
+
+  if (!LINK_REQUEST_STATUSES.includes(estado)) {
+    throw new Error("Estado de solicitud inválido");
+  }
+
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.uid) {
+    throw new Error("Usuario no autenticado");
+  }
+
+  const requestRef = doc(db, "inmobiliaria_user_link_requests", requestId);
+  const requestSnap = await getDoc(requestRef);
+
+  if (!requestSnap.exists()) {
+    throw new Error("Solicitud no encontrada");
+  }
+
+  const requestData = requestSnap.data();
+
+  if (requestData.estado !== "pendiente") {
+    throw new Error("La solicitud ya fue revisada");
+  }
+
+  const batch = writeBatch(db);
+
+  batch.update(requestRef, {
+    estado,
+    reviewedAt: serverTimestamp(),
+    reviewedBy: currentUser.uid,
+    reviewNote: reviewNote?.trim() || "",
+    updatedAt: serverTimestamp(),
+  });
+
+  if (estado === "aceptada") {
+    const requesterUserId = requestData.requesterUserId;
+    const inmobiliariaId = requestData.inmobiliariaId;
+    const requestedRole = requestData.requestedRole || "admin";
+
+    if (!requesterUserId || !inmobiliariaId) {
+      throw new Error("La solicitud no tiene usuario o inmobiliaria válidos");
+    }
+
+    const requesterUserRef = doc(db, "users", requesterUserId);
+    const requesterUserSnap = await getDoc(requesterUserRef);
+
+    if (!requesterUserSnap.exists()) {
+      throw new Error("El usuario solicitante no tiene perfil creado");
+    }
+
+    const requesterUserData = requesterUserSnap.data();
+    const currentRole = requesterUserData.role || "";
+    const roleToWrite = currentRole === "root" ? "root" : "admin";
+
+    batch.update(requesterUserRef, {
+      role: roleToWrite,
+      roles: arrayUnion("admin"),
+      inmobiliarias: arrayUnion(inmobiliariaId),
+      activeInmobiliariaId:
+        requesterUserData.activeInmobiliariaId || inmobiliariaId,
+      [`inmobiliariaRoles.${inmobiliariaId}`]: requestedRole,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (requestedRole === "admin") {
+      const inmobiliariaRef = doc(db, COLLECTION_NAME, inmobiliariaId);
+
+      batch.update(inmobiliariaRef, {
+        admins: arrayUnion(requesterUserId),
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.uid,
+      });
+    }
+  }
+
+  await batch.commit();
 }

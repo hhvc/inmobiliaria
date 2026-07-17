@@ -9,6 +9,57 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    function hasUserDoc() {
+      return isSignedIn()
+        && firestore.exists(
+          /databases/(default)/documents/users/$(request.auth.uid)
+        );
+    }
+
+    function userDoc() {
+      return firestore.get(
+        /databases/(default)/documents/users/$(request.auth.uid)
+      );
+    }
+
+    function userHasRole(roleName) {
+      return hasUserDoc()
+        && (
+          (
+            userDoc().data.keys().hasAny(["role"])
+            && userDoc().data.role == roleName
+          )
+          ||
+          (
+            userDoc().data.keys().hasAny(["primaryRole"])
+            && userDoc().data.primaryRole == roleName
+          )
+          ||
+          (
+            userDoc().data.keys().hasAny(["roles"])
+            && userDoc().data.roles is list
+            && roleName in userDoc().data.roles
+          )
+        );
+    }
+
+    function isRoot() {
+      return userHasRole("root");
+    }
+
+    function userInmobiliarias() {
+      return hasUserDoc()
+        && userDoc().data.keys().hasAny(["inmobiliarias"])
+        && userDoc().data.inmobiliarias is list
+        ? userDoc().data.inmobiliarias
+        : [];
+    }
+
+    function belongsToUserInmobiliaria(inmobiliariaId) {
+      return isSignedIn()
+        && inmobiliariaId in userInmobiliarias();
+    }
+
     function isImage() {
       return request.resource != null
         && request.resource.contentType.matches('image/.*');
@@ -19,22 +70,117 @@ service firebase.storage {
         && request.resource.size < 10 * 1024 * 1024;
     }
 
-    /* ================= Inmobiliarias =================
-       Branding público:
-       /inmobiliarias/{inmobiliariaId}/...
+    function isValidVerificationFile() {
+      return request.resource != null
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+          '^(application/pdf|image/jpeg|image/png)$'
+        );
+    }
+
+    /* ================= Inmobiliarias - documentación privada =================
+       Documentación de validación:
+       /inmobiliarias/{inmobiliariaId}/verificacion/{userId}/{fileName}
+
+       Estos archivos NO son públicos.
     */
 
-    match /inmobiliarias/{inmobiliariaId}/{allPaths=**} {
+    match /inmobiliarias/{inmobiliariaId}/verificacion/{userId}/{fileName} {
 
-      // Logos y fondos son públicos
+      allow read: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
+
+      allow create, update: if
+        isSignedIn()
+        && request.auth.uid == userId
+        && belongsToUserInmobiliaria(inmobiliariaId)
+        && isValidVerificationFile();
+
+      allow delete: if
+        isRoot()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && belongsToUserInmobiliaria(inmobiliariaId)
+        );
+    }
+
+    /* ================= Inmobiliarias - branding público =================
+       Logos y fondos públicos.
+
+       Rutas esperadas:
+       /inmobiliarias/{inmobiliariaId}/branding/...
+       /inmobiliarias/{inmobiliariaId}/logo/...
+       /inmobiliarias/{inmobiliariaId}/backgrounds/...
+       /inmobiliarias/{inmobiliariaId}/{fileName}
+    */
+
+    match /inmobiliarias/{inmobiliariaId}/branding/{allPaths=**} {
+
       allow read: if true;
 
-      // Por ahora permitimos escritura a usuarios logueados.
-      // Los permisos finos reales los controla Firestore en los docs.
-      allow write: if
+      allow create, update: if
         isSignedIn()
+        && belongsToUserInmobiliaria(inmobiliariaId)
         && isImage()
         && isValidImageSize();
+
+      allow delete: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
+    }
+
+    match /inmobiliarias/{inmobiliariaId}/logo/{allPaths=**} {
+
+      allow read: if true;
+
+      allow create, update: if
+        isSignedIn()
+        && belongsToUserInmobiliaria(inmobiliariaId)
+        && isImage()
+        && isValidImageSize();
+
+      allow delete: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
+    }
+
+    match /inmobiliarias/{inmobiliariaId}/backgrounds/{allPaths=**} {
+
+      allow read: if true;
+
+      allow create, update: if
+        isSignedIn()
+        && belongsToUserInmobiliaria(inmobiliariaId)
+        && isImage()
+        && isValidImageSize();
+
+      allow delete: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
+    }
+
+    /*
+      Compatibilidad con archivos públicos de branding subidos directo en:
+      /inmobiliarias/{inmobiliariaId}/{fileName}
+
+      Importante: esto NO alcanza a /verificacion/... porque solo matchea
+      un segmento final.
+    */
+    match /inmobiliarias/{inmobiliariaId}/{fileName} {
+
+      allow read: if true;
+
+      allow create, update: if
+        isSignedIn()
+        && belongsToUserInmobiliaria(inmobiliariaId)
+        && isImage()
+        && isValidImageSize();
+
+      allow delete: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
     }
 
     /* ================= Inmuebles =================
@@ -48,16 +194,17 @@ service firebase.storage {
       allow read: if true;
 
       // Subida / reemplazo:
-      // permitimos a usuarios logueados subir imágenes válidas.
+      // Solo usuarios vinculados a esa inmobiliaria.
       // La asociación final queda controlada por Firestore al actualizar el array images.
       allow create, update: if
         isSignedIn()
+        && belongsToUserInmobiliaria(inmobiliariaId)
         && isImage()
         && isValidImageSize();
 
-      // Borrado:
-      // por ahora también logueados, porque tus helpers eliminan imágenes desde admin.
-      allow delete: if isSignedIn();
+      allow delete: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
     }
 
     /* ================= Fallback ================= */

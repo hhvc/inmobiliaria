@@ -368,6 +368,16 @@ const InmuebleNetworkPage = () => {
                                                         </div>
                                                     )}
                                                 </div>
+
+                                                <div className="d-flex justify-content-end mt-4">
+                                                    <Link
+                                                        to={`/admin/red/inmuebles-compartidos/${inmueble.inmobiliariaId}/${inmueble.id}`}
+                                                        className="btn btn-primary"
+                                                    >
+                                                        Ver detalle
+                                                    </Link>
+                                                </div>
+
                                             </div>
                                         </div>
                                     </div>

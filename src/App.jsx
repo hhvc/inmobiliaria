@@ -33,6 +33,12 @@ import AdminCabanas from "./cabanas/AdminCabanas";
 import CabanaForm from "./cabanas/CabanaForm";
 
 // Inmobiliarias
+import InmobiliariasLandingPage from "./inmobiliaria/pages/InmobiliariasLandingPage";
+import InmobiliariaSelfRegistrationPage from "./inmobiliaria/pages/InmobiliariaSelfRegistrationPage";
+import InmobiliariaLinkRequestPage from "./inmobiliaria/pages/InmobiliariaLinkRequestPage";
+import InmobiliariaVerificationDocumentsPage from "./inmobiliaria/pages/InmobiliariaVerificationDocumentsPage";
+import InmobiliariasVerificationReviewPage from "./inmobiliaria/pages/InmobiliariasVerificationReviewPage";
+import InmobiliariaLinkRequestsAdminPage from "./inmobiliaria/pages/InmobiliariaLinkRequestsAdminPage";
 import InmobiliariaInternalPermissionGuard from "./inmobiliaria/components/InmobiliariaInternalPermissionGuard";
 import InmobiliariaDashboardPage from "./inmobiliaria/pages/InmobiliariaDashboardPage";
 import InmobiliariaListPage from "./inmobiliaria/pages/InmobiliariaListPage";
@@ -57,6 +63,7 @@ import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
 import InmuebleMarketingKitPage from "./inmueble/pages/InmuebleMarketingKitPage";
 import InmuebleNetworkPage from "./inmueble/pages/InmuebleNetworkPage";
 import InmuebleNetworkDetailPage from "./inmueble/pages/InmuebleNetworkDetailPage";
+import InmuebleNetworkRequestsPage from "./inmueble/pages/InmuebleNetworkRequestsPage";
 
 function App() {
   useEffect(() => {
@@ -94,6 +101,15 @@ function App() {
                   Portal público inmobiliario
                  ========================= */}
 
+                <Route path="/inmobiliarias" element={<InmobiliariasLandingPage />} />
+                <Route
+                  path="/inmobiliarias/alta"
+                  element={<InmobiliariaSelfRegistrationPage />}
+                />
+                <Route
+                  path="/inmobiliarias/vincular"
+                  element={<InmobiliariaLinkRequestPage />}
+                />
                 <Route path="/inmuebles" element={<InmueblePortalPage />} />
                 <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
 
@@ -167,6 +183,24 @@ function App() {
                   }
                 />
 
+                <Route
+                  path="/admin/inmobiliaria/documentacion"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaVerificationDocumentsPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmobiliaria/vinculaciones"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaLinkRequestsAdminPage />
+                    </ProtectedRoute>
+                  }
+                />
+
                 {/* =========================
                   Admin ROOT - Inmobiliarias
                  ========================= */}
@@ -196,6 +230,15 @@ function App() {
                       <InmobiliariaModuleGuard moduleId="branding">
                         <InmobiliariaEditPage />
                       </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmobiliarias/verificacion"
+                  element={
+                    <ProtectedRoute role="root">
+                      <InmobiliariasVerificationReviewPage />
                     </ProtectedRoute>
                   }
                 />
@@ -245,6 +288,17 @@ function App() {
                     <ProtectedRoute role="admin">
                       <InmobiliariaModuleGuard moduleId="inmuebles">
                         <InmuebleNetworkPage />
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/red/solicitudes"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmuebleNetworkRequestsPage />
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>
                   }

@@ -36,6 +36,18 @@ service cloud.firestore {
         );
     }
 
+    function inmobiliariaPath(inmoId) {
+  return /databases/$(database)/documents/inmobiliarias/$(inmoId);
+}
+
+function isSelfCreatedInmobiliaria(inmoId) {
+  return isSignedIn()
+    && exists(inmobiliariaPath(inmoId))
+    && get(inmobiliariaPath(inmoId)).data.createdBy == request.auth.uid
+    && get(inmobiliariaPath(inmoId)).data.admins is list
+    && request.auth.uid in get(inmobiliariaPath(inmoId)).data.admins;
+}
+
     function userRole() {
       return isSignedIn()
         && userDoc().data.keys().hasAny(["role"])
@@ -268,6 +280,108 @@ service cloud.firestore {
             .hasOnly(userDoc().data.inmobiliarias);
       }
 
+      function existingUserRoles() {
+  return resource.data.keys().hasAny(["roles"])
+    && resource.data.roles is list
+    ? resource.data.roles
+    : [];
+}
+
+function requestedUserRoles() {
+  return request.resource.data.keys().hasAny(["roles"])
+    && request.resource.data.roles is list
+    ? request.resource.data.roles
+    : [];
+}
+
+function selfCanCompleteInmobiliariaRegistration() {
+  return isSignedIn()
+    && request.auth.uid == userId
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "uid",
+        "email",
+        "displayName",
+        "role",
+        "roles",
+        "inmobiliarias",
+        "activeInmobiliariaId",
+        "inmobiliariaRoles",
+        "updatedAt",
+        "createdAt"
+      ])
+    && request.resource.data.activeInmobiliariaId is string
+    && isSelfCreatedInmobiliaria(request.resource.data.activeInmobiliariaId)
+    && requestedUserInmobiliarias()
+      .hasOnly(existingUserInmobiliarias() + [
+        request.resource.data.activeInmobiliariaId
+      ])
+    && existingUserInmobiliarias()
+      .hasOnly(requestedUserInmobiliarias())
+    && requestedUserRoles()
+      .hasOnly(existingUserRoles() + ["admin"])
+    && requestedUserRoles()
+      .hasAll(existingUserRoles() + ["admin"])
+    && (
+      resource.data.keys().hasAny(["role"])
+      && resource.data.role == "root"
+        ? request.resource.data.role == "root"
+        : request.resource.data.role == "admin"
+    )
+    && (
+      !request.resource.data.keys().hasAny(["inmobiliariaRoles"])
+      || requestedUserInmobiliariaRoles()
+        .diff(existingUserInmobiliariaRoles())
+        .affectedKeys()
+        .size() == 0
+      || (
+        requestedUserInmobiliariaRoles()
+          .diff(existingUserInmobiliariaRoles())
+          .affectedKeys()
+          .hasOnly([request.resource.data.activeInmobiliariaId])
+        && request.resource.data.inmobiliariaRoles[
+          request.resource.data.activeInmobiliariaId
+        ] == "admin"
+      )
+    );
+}
+
+function adminCanApproveUserInmobiliariaLink() {
+  return isSignedIn()
+    && isAdmin()
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "role",
+        "roles",
+        "inmobiliarias",
+        "activeInmobiliariaId",
+        "inmobiliariaRoles",
+        "updatedAt"
+      ])
+    && requestedUserInmobiliarias()
+      .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
+    && existingUserInmobiliarias()
+      .hasOnly(requestedUserInmobiliarias())
+    && requestedUserRoles()
+      .hasOnly(existingUserRoles() + ["admin"])
+    && requestedUserRoles()
+      .hasAll(existingUserRoles())
+    && (
+      resource.data.keys().hasAny(["role"])
+      && resource.data.role == "root"
+        ? request.resource.data.role == "root"
+        : request.resource.data.role == "admin"
+    )
+    && requestedUserInmobiliariaRoles()
+      .diff(existingUserInmobiliariaRoles())
+      .affectedKeys()
+      .hasOnly(userDoc().data.inmobiliarias);
+}
+
       allow get: if
         isSignedIn()
         && (
@@ -288,9 +402,11 @@ service cloud.firestore {
         && request.auth.uid == userId
         && !exists(/databases/$(database)/documents/users/$(userId));
 
-      allow update: if
-        isRoot()
-        || adminCanOnlyChangeOwnInmobiliariaLinks();
+allow update: if
+  isRoot()
+  || adminCanOnlyChangeOwnInmobiliariaLinks()
+  || selfCanCompleteInmobiliariaRegistration()
+  || adminCanApproveUserInmobiliariaLink();
 
       allow delete: if isRoot();
     }
@@ -301,12 +417,157 @@ service cloud.firestore {
 
     match /inmobiliarias/{inmoId} {
 
+      function validSelfServiceModules() {
+  return request.resource.data.modulosSuscriptos is list
+    && request.resource.data.modulosSuscriptos.hasOnly([
+      "inmuebles",
+      "consultas",
+      "dominios",
+      "branding",
+      "usuarios"
+    ])
+    && request.resource.data.modulosSuscriptos.hasAll([
+      "inmuebles",
+      "consultas",
+      "dominios",
+      "branding",
+      "usuarios"
+    ]);
+}
+
+function validPendingVerificationData() {
+  return request.resource.data.verificacion is map
+    && request.resource.data.verificacion.estado == "pendiente_documentacion"
+    && request.resource.data.verificacion.requiereDocumentacion == true
+    && request.resource.data.verificacion.documentacionCompleta == false;
+}
+
+function canCreateSelfRegisteredInmobiliaria() {
+  return isSignedIn()
+    && request.resource.data.keys().hasOnly([
+      "nombre",
+      "razonSocial",
+      "cuit",
+      "slug",
+      "activa",
+      "dominiosPublicos",
+      "modulosSuscriptos",
+      "verificacion",
+      "documentacionVerificacion",
+      "noIndex",
+      "seo",
+      "configuracion",
+      "branding",
+      "admins",
+      "createdBy",
+      "createdByEmail",
+      "createdAt",
+      "updatedAt"
+    ])
+    && request.resource.data.nombre is string
+    && request.resource.data.nombre.size() >= 2
+    && request.resource.data.slug is string
+    && request.resource.data.slug.size() >= 2
+    && request.resource.data.cuit is string
+    && request.resource.data.cuit.size() >= 7
+    && request.resource.data.activa == true
+    && request.resource.data.admins is list
+    && request.resource.data.admins.hasOnly([request.auth.uid])
+    && request.auth.uid in request.resource.data.admins
+    && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.createdByEmail is string
+    && request.resource.data.dominiosPublicos is list
+    && request.resource.data.configuracion is map
+    && request.resource.data.branding is map
+    && request.resource.data.documentacionVerificacion is map
+    && validSelfServiceModules()
+    && validPendingVerificationData();
+}
+
+function adminCanUpdateOwnInmobiliaria(inmoId) {
+  return isSignedIn()
+    && adminHasInmobiliaria(inmoId)
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "nombre",
+        "razonSocial",
+        "cuit",
+        "slug",
+        "activa",
+        "dominiosPublicos",
+        "configuracion",
+        "branding",
+        "noIndex",
+        "seo",
+        "updatedAt",
+        "updatedBy"
+      ])
+    && request.resource.data.updatedBy == request.auth.uid;
+}
+
+function adminCanUpdateVerificationDocumentation(inmoId) {
+  return isSignedIn()
+    && adminHasInmobiliaria(inmoId)
+    && resource.data.verificacion.estado in [
+      "pendiente_documentacion",
+      "pendiente_revision",
+      "observada"
+    ]
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "verificacion",
+        "documentacionVerificacion",
+        "updatedAt",
+        "updatedBy"
+      ])
+    && request.resource.data.updatedBy == request.auth.uid
+    && request.resource.data.verificacion is map
+    && request.resource.data.verificacion.estado in [
+      "pendiente_documentacion",
+      "pendiente_revision"
+    ]
+    && request.resource.data.verificacion.requiereDocumentacion == true
+    && request.resource.data.verificacion.documentacionCompleta is bool
+    && request.resource.data.documentacionVerificacion is map;
+}
+
+function adminCanAddInmobiliariaAdmin(inmoId) {
+  return isSignedIn()
+    && adminHasInmobiliaria(inmoId)
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "admins",
+        "updatedAt",
+        "updatedBy"
+      ])
+    && request.resource.data.updatedBy == request.auth.uid
+    && request.resource.data.admins is list
+    && resource.data.admins is list
+    && resource.data.admins.hasOnly(request.resource.data.admins);
+}
+
       allow read: if
         isRoot()
         || adminHasInmobiliaria(inmoId)
         || isPublicInmobiliaria(resource);
 
-      allow write: if isRoot();
+allow create: if
+  isRoot()
+  || canCreateSelfRegisteredInmobiliaria();
+
+allow update: if
+  isRoot()
+  || adminCanUpdateOwnInmobiliaria(inmoId)
+  || adminCanUpdateVerificationDocumentation(inmoId)
+  || adminCanAddInmobiliariaAdmin(inmoId);
+
+allow delete: if isRoot();
 
       /* ============================
          SUBCOLECCIÓN INMUEBLES
@@ -455,6 +716,127 @@ service cloud.firestore {
 
       allow delete: if isRoot();
     }
+
+    /* ============================
+   SOLICITUDES RED DE COLEGAS
+   ============================ */
+
+match /inmueble_network_requests/{requestId} {
+
+  allow create: if
+    isSignedIn()
+    && request.resource.data.keys().hasOnly([
+      "inmuebleId",
+      "inmuebleTitulo",
+      "ownerInmobiliariaId",
+      "requesterInmobiliariaId",
+      "requesterUserId",
+      "requesterUserEmail",
+      "mensaje",
+      "estado",
+      "createdAt",
+      "updatedAt"
+    ])
+    && request.resource.data.inmuebleId is string
+    && request.resource.data.ownerInmobiliariaId is string
+    && request.resource.data.requesterInmobiliariaId is string
+    && request.resource.data.requesterUserId == request.auth.uid
+    && request.resource.data.ownerInmobiliariaId != request.resource.data.requesterInmobiliariaId
+    && request.resource.data.estado == "pendiente"
+    && belongsToUserInmobiliaria(request.resource.data.requesterInmobiliariaId);
+
+  allow read: if
+    isRoot()
+    || adminHasInmobiliaria(resource.data.ownerInmobiliariaId)
+    || adminHasInmobiliaria(resource.data.requesterInmobiliariaId)
+    || resource.data.requesterUserId == request.auth.uid;
+
+  allow update: if
+    isSignedIn()
+    && (
+      isRoot()
+      || adminHasInmobiliaria(resource.data.ownerInmobiliariaId)
+    )
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "estado",
+        "updatedAt"
+      ])
+    && request.resource.data.estado in [
+      "pendiente",
+      "aceptada",
+      "rechazada",
+      "cerrada"
+    ];
+
+  allow delete: if isRoot();
+}
+
+/* ============================
+   SOLICITUDES DE VINCULACIÓN A INMOBILIARIA
+   ============================ */
+
+match /inmobiliaria_user_link_requests/{requestId} {
+
+  allow create: if
+    isSignedIn()
+    && request.resource.data.keys().hasOnly([
+      "inmobiliariaId",
+      "inmobiliariaNombre",
+      "requesterUserId",
+      "requesterUserEmail",
+      "requesterDisplayName",
+      "requestedRole",
+      "mensaje",
+      "estado",
+      "createdAt",
+      "updatedAt"
+    ])
+    && request.resource.data.inmobiliariaId is string
+    && request.resource.data.inmobiliariaId.size() > 0
+    && request.resource.data.inmobiliariaNombre is string
+    && request.resource.data.requesterUserId == request.auth.uid
+    && request.resource.data.requesterUserEmail is string
+    && request.resource.data.requestedRole in [
+      "admin",
+      "editor",
+      "viewer"
+    ]
+    && request.resource.data.estado == "pendiente"
+    && exists(/databases/$(database)/documents/inmobiliarias/$(request.resource.data.inmobiliariaId));
+
+  allow read: if
+    isRoot()
+    || resource.data.requesterUserId == request.auth.uid
+    || adminHasInmobiliaria(resource.data.inmobiliariaId);
+
+  allow update: if
+    isRoot()
+    || (
+      adminHasInmobiliaria(resource.data.inmobiliariaId)
+      && request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasOnly([
+          "estado",
+          "updatedAt",
+          "reviewedAt",
+          "reviewedBy",
+          "reviewNote"
+        ])
+      && request.resource.data.estado in [
+        "pendiente",
+        "aceptada",
+        "rechazada",
+        "cancelada"
+      ]
+      && request.resource.data.reviewedBy == request.auth.uid
+    );
+
+  allow delete: if isRoot();
+}
 
     /* ============================
        TESTIMONIALS
