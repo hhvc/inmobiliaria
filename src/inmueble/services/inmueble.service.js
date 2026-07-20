@@ -419,11 +419,66 @@ export const createInmueble = async (
     }
 
     console.log("✅ Inmueble creado:", docRef.id);
-    return docRef.id;
+
+    return {
+      id: docRef.id,
+      inmuebleId: docRef.id,
+      slug,
+      inmobiliariaId,
+      editPath: `/admin/inmuebles/${docRef.id}/editar?inmobiliariaId=${encodeURIComponent(
+        inmobiliariaId,
+      )}`,
+      previewPath: `/admin/inmuebles/${docRef.id}/preview?inmobiliariaId=${encodeURIComponent(
+        inmobiliariaId,
+      )}`,
+      publicPath: `/inmueble/${slug}`,
+    };
   } catch (error) {
     console.error("❌ Error en createInmueble:", error);
     throw error;
   }
+};
+
+export const updateInmuebleImages = async (
+  inmobiliariaId,
+  inmuebleId,
+  images = [],
+) => {
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos para actualizar imágenes del inmueble");
+  }
+
+  const normalizedImages = Array.isArray(images)
+    ? images
+      .map((image, index) => ({
+        id: image.id || `${index}`,
+        url: image.url || "",
+        storagePath: image.storagePath || "",
+        order: Number.isFinite(Number(image.order))
+          ? Number(image.order)
+          : index,
+        filename: image.filename || image.name || "",
+        name: image.name || image.filename || "",
+        size: Number.isFinite(Number(image.size)) ? Number(image.size) : 0,
+        type: image.type || image.contentType || "",
+        contentType: image.contentType || image.type || "",
+        createdAt: image.createdAt || new Date().toISOString(),
+        copiedFrom: image.copiedFrom || "",
+      }))
+      .filter((image) => image.url && image.storagePath)
+      .sort((a, b) => a.order - b.order)
+    : [];
+
+  await assertInmobiliariaActiva(inmobiliariaId);
+
+  const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
+
+  await updateDoc(ref, {
+    images: normalizedImages,
+    updatedAt: serverTimestamp(),
+  });
+
+  return normalizedImages;
 };
 
 /* =========================================================

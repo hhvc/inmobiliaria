@@ -48,13 +48,6 @@ function isSelfCreatedInmobiliaria(inmoId) {
     && request.auth.uid in get(inmobiliariaPath(inmoId)).data.admins;
 }
 
-    function userRole() {
-      return isSignedIn()
-        && userDoc().data.keys().hasAny(["role"])
-        ? userDoc().data.role
-        : null;
-    }
-
     function isRoot() {
       return userHasRole("root");
     }
@@ -258,27 +251,38 @@ function isSelfCreatedInmobiliaria(inmoId) {
           : {};
       }
 
-      function adminCanOnlyChangeOwnInmobiliariaLinks() {
-        return isAdmin()
-          && userDoc().data.keys().hasAny(["inmobiliarias"])
-          && userDoc().data.inmobiliarias is list
-          && request.resource.data
-            .diff(resource.data)
-            .affectedKeys()
-            .hasOnly([
-              "inmobiliarias",
-              "inmobiliariaRoles",
-              "updatedAt"
-            ])
-          && requestedUserInmobiliarias()
-            .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
-          && existingUserInmobiliarias()
-            .hasOnly(requestedUserInmobiliarias() + userDoc().data.inmobiliarias)
-          && requestedUserInmobiliariaRoles()
-            .diff(existingUserInmobiliariaRoles())
-            .affectedKeys()
-            .hasOnly(userDoc().data.inmobiliarias);
-      }
+function adminCanOnlyChangeOwnInmobiliariaLinks() {
+  return isAdmin()
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "inmobiliarias",
+        "inmobiliariaRoles",
+        "updatedAt"
+      ])
+    && requestedUserInmobiliarias()
+      .hasOnly(existingUserInmobiliarias().concat(userInmobiliarias()))
+    && existingUserInmobiliarias()
+      .hasOnly(requestedUserInmobiliarias().concat(userInmobiliarias()))
+    && requestedUserInmobiliariaRoles()
+      .diff(existingUserInmobiliariaRoles())
+      .affectedKeys()
+      .hasOnly(userInmobiliarias());
+}
+
+      function selfCanChangeActiveInmobiliaria() {
+  return isSignedIn()
+    && request.auth.uid == userId
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "activeInmobiliariaId",
+        "updatedAt"
+      ])
+    && request.resource.data.activeInmobiliariaId in existingUserInmobiliarias();
+}
 
       function existingUserRoles() {
   return resource.data.keys().hasAny(["roles"])
@@ -315,15 +319,17 @@ function selfCanCompleteInmobiliariaRegistration() {
     && request.resource.data.activeInmobiliariaId is string
     && isSelfCreatedInmobiliaria(request.resource.data.activeInmobiliariaId)
     && requestedUserInmobiliarias()
-      .hasOnly(existingUserInmobiliarias() + [
-        request.resource.data.activeInmobiliariaId
-      ])
+      .hasOnly(
+        existingUserInmobiliarias().concat([
+          request.resource.data.activeInmobiliariaId
+        ])
+      )
     && existingUserInmobiliarias()
       .hasOnly(requestedUserInmobiliarias())
     && requestedUserRoles()
-      .hasOnly(existingUserRoles() + ["admin"])
+      .hasOnly(existingUserRoles().concat(["admin"]))
     && requestedUserRoles()
-      .hasAll(existingUserRoles() + ["admin"])
+      .hasAll(existingUserRoles().concat(["admin"]))
     && (
       resource.data.keys().hasAny(["role"])
       && resource.data.role == "root"
@@ -363,11 +369,11 @@ function adminCanApproveUserInmobiliariaLink() {
         "updatedAt"
       ])
     && requestedUserInmobiliarias()
-      .hasOnly(existingUserInmobiliarias() + userDoc().data.inmobiliarias)
+      .hasOnly(existingUserInmobiliarias().concat(userInmobiliarias()))
     && existingUserInmobiliarias()
       .hasOnly(requestedUserInmobiliarias())
     && requestedUserRoles()
-      .hasOnly(existingUserRoles() + ["admin"])
+      .hasOnly(existingUserRoles().concat(["admin"]))
     && requestedUserRoles()
       .hasAll(existingUserRoles())
     && (
@@ -379,7 +385,7 @@ function adminCanApproveUserInmobiliariaLink() {
     && requestedUserInmobiliariaRoles()
       .diff(existingUserInmobiliariaRoles())
       .affectedKeys()
-      .hasOnly(userDoc().data.inmobiliarias);
+      .hasOnly(userInmobiliarias());
 }
 
       allow get: if
@@ -406,7 +412,8 @@ allow update: if
   isRoot()
   || adminCanOnlyChangeOwnInmobiliariaLinks()
   || selfCanCompleteInmobiliariaRegistration()
-  || adminCanApproveUserInmobiliariaLink();
+  || adminCanApproveUserInmobiliariaLink()
+  || selfCanChangeActiveInmobiliaria();
 
       allow delete: if isRoot();
     }
@@ -849,6 +856,530 @@ match /inmobiliaria_user_link_requests/{requestId} {
       allow create: if isSignedIn();
 
       allow update, delete: if isAdmin() || isRoot();
+    }
+
+/* ============================
+   SOLICITUDES DE PUBLICACIÓN PARTICULAR
+   ============================ */
+
+match /particular_publication_requests/{requestId} {
+
+  function validPublicationTarget() {
+    return (
+      request.resource.data.targetType == "onoprop"
+      && request.resource.data.targetInmobiliariaId == ""
+      && request.resource.data.targetInmobiliariaNombre == "ONO Prop"
+      && request.resource.data.assignedInmobiliariaId == ""
+      && request.resource.data.assignedInmobiliariaNombre == ""
+      && request.resource.data.assignedBy == ""
+      && request.resource.data.validationOwner == "onoprop"
+      && request.resource.data.publicationMode == "particular"
+    )
+    ||
+    (
+      request.resource.data.targetType == "inmobiliaria"
+      && request.resource.data.targetInmobiliariaId is string
+      && request.resource.data.targetInmobiliariaId.size() > 0
+      && request.resource.data.targetInmobiliariaNombre is string
+      && request.resource.data.targetInmobiliariaNombre.size() >= 2
+      && request.resource.data.assignedInmobiliariaId == request.resource.data.targetInmobiliariaId
+      && request.resource.data.assignedInmobiliariaNombre == request.resource.data.targetInmobiliariaNombre
+      && request.resource.data.assignedBy == request.auth.uid
+      && request.resource.data.validationOwner == "inmobiliaria"
+      && request.resource.data.publicationMode == "inmobiliaria"
+      && exists(/databases/$(database)/documents/inmobiliarias/$(request.resource.data.targetInmobiliariaId))
+    );
+  }
+
+  function particularRequestUpdateAllowedFields() {
+    return [
+      "estado",
+      "internalNote",
+      "reviewedAt",
+      "reviewedBy",
+      "updatedAt",
+
+      "activityLog",
+
+      "convertedInmuebleId",
+      "convertedInmobiliariaId",
+      "convertedTitle",
+      "convertedSlug",
+      "convertedEditPath",
+      "convertedPreviewPath",
+      "convertedPublicPath",
+      "convertedPublicVisible",
+      "convertedPublicStatus",
+      "convertedPublishedAt",
+      "convertedVisibilityUpdatedAt",
+      "convertedVisibilityUpdatedBy",
+
+      "conversionLockStatus",
+      "conversionStartedAt",
+      "conversionStartedBy",
+      "conversionCompletedAt",
+      "conversionError",
+      "conversionFailedAt",
+      "conversionFailedBy",
+
+      "approvalMode",
+      "particularPublicationId",
+      "particularPublicationPath",
+      "particularPublicationStatus",
+      "particularPublicationApprovedAt",
+      "particularPublicationApprovedBy",
+
+      "convertedAt",
+      "convertedBy"
+    ];
+  }
+
+  function particularRequestChangedKeys() {
+    return request.resource.data
+      .diff(resource.data)
+      .affectedKeys();
+  }
+
+  function validParticularRequestStatusUpdate() {
+    return request.resource.data.estado in [
+      "nuevo",
+      "en_revision",
+      "contactado",
+      "derivado",
+      "cerrado",
+      "descartado"
+    ];
+  }
+
+  function validParticularRequestUpdateActor() {
+    return (
+      !particularRequestChangedKeys().hasAny([
+        "estado",
+        "internalNote",
+        "reviewedAt",
+        "reviewedBy"
+      ])
+      || request.resource.data.reviewedBy == request.auth.uid
+    )
+    && (
+      !particularRequestChangedKeys().hasAny([
+        "conversionLockStatus",
+        "conversionStartedAt",
+        "conversionStartedBy"
+      ])
+      || request.resource.data.conversionStartedBy == request.auth.uid
+      || request.resource.data.convertedBy == request.auth.uid
+      || request.resource.data.conversionFailedBy == request.auth.uid
+    )
+    && (
+      !particularRequestChangedKeys().hasAny([
+        "conversionError",
+        "conversionFailedAt",
+        "conversionFailedBy"
+      ])
+      || request.resource.data.conversionFailedBy == request.auth.uid
+      || request.resource.data.conversionStartedBy == request.auth.uid
+    )
+    && (
+      !particularRequestChangedKeys().hasAny([
+        "convertedInmuebleId",
+        "convertedInmobiliariaId",
+        "convertedTitle",
+        "convertedSlug",
+        "convertedEditPath",
+        "convertedPreviewPath",
+        "convertedPublicPath",
+        "conversionCompletedAt",
+        "convertedAt",
+        "convertedBy"
+      ])
+      || request.resource.data.convertedBy == request.auth.uid
+      || request.resource.data.convertedVisibilityUpdatedBy == request.auth.uid
+    )
+    && (
+      !particularRequestChangedKeys().hasAny([
+        "convertedPublicVisible",
+        "convertedPublicStatus",
+        "convertedPublishedAt",
+        "convertedVisibilityUpdatedAt",
+        "convertedVisibilityUpdatedBy"
+      ])
+      || request.resource.data.convertedVisibilityUpdatedBy == request.auth.uid
+    )
+    && (
+      !particularRequestChangedKeys().hasAny([
+        "approvalMode",
+        "particularPublicationId",
+        "particularPublicationPath",
+        "particularPublicationStatus",
+        "particularPublicationApprovedAt",
+        "particularPublicationApprovedBy"
+      ])
+      || request.resource.data.particularPublicationApprovedBy == request.auth.uid
+      || request.resource.data.reviewedBy == request.auth.uid
+    );
+  }
+
+  function validParticularRequestUpdateTypes() {
+    return (
+      !particularRequestChangedKeys().hasAny(["internalNote"])
+      || request.resource.data.internalNote is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["conversionError"])
+      || request.resource.data.conversionError is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedInmuebleId"])
+      || request.resource.data.convertedInmuebleId is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedInmobiliariaId"])
+      || request.resource.data.convertedInmobiliariaId is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedTitle"])
+      || request.resource.data.convertedTitle is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedSlug"])
+      || request.resource.data.convertedSlug is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedEditPath"])
+      || request.resource.data.convertedEditPath is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedPreviewPath"])
+      || request.resource.data.convertedPreviewPath is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedPublicPath"])
+      || request.resource.data.convertedPublicPath is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedPublicVisible"])
+      || request.resource.data.convertedPublicVisible is bool
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedPublicStatus"])
+      || request.resource.data.convertedPublicStatus in [
+        "published",
+        "draft"
+      ]
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["conversionLockStatus"])
+      || request.resource.data.conversionLockStatus in [
+        "processing",
+        "converted",
+        "failed"
+      ]
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["convertedPublishedAt"])
+      || request.resource.data.convertedPublishedAt is timestamp
+      || request.resource.data.convertedPublishedAt == null
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["approvalMode"])
+      || request.resource.data.approvalMode in [
+        "particular_publication",
+        "inmobiliaria_conversion"
+      ]
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["particularPublicationId"])
+      || request.resource.data.particularPublicationId is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["particularPublicationPath"])
+      || request.resource.data.particularPublicationPath is string
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["particularPublicationStatus"])
+      || request.resource.data.particularPublicationStatus in [
+        "active",
+        "paused",
+        "deleted",
+        "sold",
+        "rented"
+      ]
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["particularPublicationApprovedAt"])
+      || request.resource.data.particularPublicationApprovedAt is timestamp
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["particularPublicationApprovedBy"])
+      || request.resource.data.particularPublicationApprovedBy == request.auth.uid
+    )
+    && (
+      !particularRequestChangedKeys().hasAny(["activityLog"])
+      || (
+        request.resource.data.activityLog is list
+        && request.resource.data.activityLog.size() <= 100
+      )
+    );
+  }
+
+  function validParticularPublicationApprovalScope() {
+    return !particularRequestChangedKeys().hasAny([
+        "approvalMode",
+        "particularPublicationId",
+        "particularPublicationPath",
+        "particularPublicationStatus",
+        "particularPublicationApprovedAt",
+        "particularPublicationApprovedBy"
+      ])
+      || isRoot();
+  }
+
+  function validConvertedInmobiliariaScope() {
+    return !particularRequestChangedKeys().hasAny(["convertedInmobiliariaId"])
+      || isRoot()
+      || request.resource.data.convertedInmobiliariaId == resource.data.targetInmobiliariaId;
+  }
+
+  function canManageParticularRequestUpdate() {
+    return isRoot()
+      || (
+        resource.data.targetType == "inmobiliaria"
+        && adminHasInmobiliaria(resource.data.targetInmobiliariaId)
+      );
+  }
+
+  allow create: if
+    isSignedIn()
+    && request.resource.data.keys().hasOnly([
+      "requesterUserId",
+      "requesterEmail",
+      "requesterDisplayName",
+
+      "activityLog",
+
+      "nombre",
+      "telefono",
+      "email",
+      "operacion",
+      "tipo",
+      "ubicacion",
+      "descripcion",
+      "precioEstimado",
+      "images",
+
+      "targetType",
+      "targetInmobiliariaId",
+      "targetInmobiliariaNombre",
+      "assignedInmobiliariaId",
+      "assignedInmobiliariaNombre",
+      "assignedAt",
+      "assignedBy",
+      "validationOwner",
+      "publicationMode",
+
+      "billingStatus",
+      "billingModel",
+
+      "estado",
+      "origen",
+      "createdAt",
+      "updatedAt"
+    ])
+    && request.resource.data.requesterUserId == request.auth.uid
+    && request.resource.data.requesterEmail is string
+    && request.resource.data.requesterDisplayName is string
+
+    && request.resource.data.nombre is string
+    && request.resource.data.nombre.size() >= 2
+
+    && request.resource.data.telefono is string
+    && request.resource.data.email is string
+    && (
+      request.resource.data.telefono.size() >= 6
+      || request.resource.data.email.size() >= 6
+    )
+
+    && request.resource.data.operacion in [
+      "venta",
+      "alquiler",
+      "alquiler_temporal",
+      "tasacion"
+    ]
+
+    && request.resource.data.tipo in [
+      "casa",
+      "departamento",
+      "terreno",
+      "local",
+      "oficina",
+      "cochera",
+      "campo",
+      "otro"
+    ]
+
+    && request.resource.data.ubicacion is string
+    && request.resource.data.ubicacion.size() >= 3
+
+    && request.resource.data.descripcion is string
+    && request.resource.data.descripcion.size() >= 20
+
+    && request.resource.data.precioEstimado is string
+
+    && request.resource.data.images is list
+    && request.resource.data.images.size() <= 10
+
+    && request.resource.data.activityLog is list
+    && request.resource.data.activityLog.size() <= 20
+
+    && request.resource.data.billingStatus == "free"
+    && request.resource.data.billingModel == "none"
+
+    && request.resource.data.estado == "nuevo"
+    && request.resource.data.origen == "portal_publicar"
+    && validPublicationTarget();
+
+  allow read: if
+    isRoot()
+    || (
+      isSignedIn()
+      && resource.data.requesterUserId == request.auth.uid
+    )
+    || (
+      resource.data.targetType == "inmobiliaria"
+      && adminHasInmobiliaria(resource.data.targetInmobiliariaId)
+    );
+
+  allow update: if
+    isSignedIn()
+    && canManageParticularRequestUpdate()
+    && particularRequestChangedKeys()
+      .hasOnly(particularRequestUpdateAllowedFields())
+    && validParticularRequestStatusUpdate()
+    && validParticularRequestUpdateActor()
+    && validParticularRequestUpdateTypes()
+    && validParticularPublicationApprovalScope()
+    && validConvertedInmobiliariaScope();
+
+  allow delete: if isRoot();
+}
+
+    /* ============================
+       PUBLICACIONES PARTICULARES APROBADAS
+       ============================ */
+
+    match /particular_publications/{publicationId} {
+
+      function isPublicApprovedParticularPublication() {
+        return resource.data.publicationType == "particular"
+          && resource.data.publicStatus == "active"
+          && resource.data.moderationStatus == "approved";
+      }
+
+      function isParticularPublicationOwner() {
+        return isSignedIn()
+          && resource.data.ownerUserId == request.auth.uid;
+      }
+
+      function validParticularPublicationCreate() {
+        return isRoot()
+          && request.resource.data.keys().hasOnly([
+            "ownerUserId",
+            "ownerEmail",
+            "ownerDisplayName",
+            "sourceRequestId",
+            "publicationType",
+            "titulo",
+            "operacion",
+            "tipo",
+            "ubicacion",
+            "descripcion",
+            "precioEstimado",
+            "images",
+            "contact",
+            "publicStatus",
+            "moderationStatus",
+            "moderationNote",
+            "pendingChanges",
+            "sourceTargetType",
+            "sourceValidationOwner",
+            "noIndex",
+            "activityLog",
+            "createdAt",
+            "updatedAt",
+            "approvedAt",
+            "approvedBy",
+            "statusUpdatedAt",
+            "statusUpdatedBy"
+          ])
+          && request.resource.data.ownerUserId is string
+          && request.resource.data.ownerUserId.size() > 0
+          && request.resource.data.sourceRequestId is string
+          && request.resource.data.sourceRequestId.size() > 0
+          && request.resource.data.publicationType == "particular"
+          && request.resource.data.titulo is string
+          && request.resource.data.titulo.size() >= 5
+          && request.resource.data.operacion is string
+          && request.resource.data.tipo is string
+          && request.resource.data.ubicacion is string
+          && request.resource.data.descripcion is string
+          && request.resource.data.descripcion.size() >= 20
+          && request.resource.data.images is list
+          && request.resource.data.images.size() <= 10
+          && request.resource.data.contact is map
+          && request.resource.data.publicStatus == "active"
+          && request.resource.data.moderationStatus == "approved"
+          && request.resource.data.activityLog is list
+          && request.resource.data.activityLog.size() <= 20
+          && request.resource.data.approvedBy == request.auth.uid
+          && request.resource.data.statusUpdatedBy == request.auth.uid;
+      }
+
+      function ownerCanUpdateParticularPublicationStatus() {
+        return isParticularPublicationOwner()
+          && resource.data.moderationStatus == "approved"
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "publicStatus",
+              "pausedAt",
+              "pausedBy",
+              "deletedAt",
+              "deletedBy",
+              "soldAt",
+              "soldBy",
+              "rentedAt",
+              "rentedBy",
+              "statusUpdatedAt",
+              "statusUpdatedBy",
+              "updatedAt",
+              "activityLog"
+            ])
+          && request.resource.data.publicStatus in [
+            "active",
+            "paused",
+            "deleted",
+            "sold",
+            "rented"
+          ]
+          && request.resource.data.statusUpdatedBy == request.auth.uid
+          && request.resource.data.activityLog is list
+          && request.resource.data.activityLog.size() <= 100;
+      }
+
+      allow read: if
+        isPublicApprovedParticularPublication()
+        || isRoot()
+        || isParticularPublicationOwner();
+
+      allow create: if validParticularPublicationCreate();
+
+      allow update: if
+        isRoot()
+        || ownerCanUpdateParticularPublicationStatus();
+
+      allow delete: if isRoot();
     }
 
     /* ============================

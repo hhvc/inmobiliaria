@@ -149,6 +149,10 @@ const Navbar = () => {
         to: "/inmobiliarias",
       },
       {
+        label: "Publicar",
+        to: "/publicar",
+      },
+      {
         label: "Contacto",
         to: "/#contact",
         hash: "#contact",
@@ -418,6 +422,16 @@ const Navbar = () => {
                           onClick={closeMenus}
                         >
                           Mi perfil
+                        </Link>
+                      </li>
+
+                      <li>
+                        <Link
+                          className="dropdown-item"
+                          to="/mis-publicaciones"
+                          onClick={closeMenus}
+                        >
+                          Mis publicaciones
                         </Link>
                       </li>
 

@@ -70,6 +70,12 @@ service firebase.storage {
         && request.resource.size < 10 * 1024 * 1024;
     }
 
+    function isValidParticularRequestImage() {
+      return request.resource != null
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     function isValidVerificationFile() {
       return request.resource != null
         && request.resource.size < 10 * 1024 * 1024
@@ -78,12 +84,7 @@ service firebase.storage {
         );
     }
 
-    /* ================= Inmobiliarias - documentación privada =================
-       Documentación de validación:
-       /inmobiliarias/{inmobiliariaId}/verificacion/{userId}/{fileName}
-
-       Estos archivos NO son públicos.
-    */
+    /* ================= Inmobiliarias - documentación privada ================= */
 
     match /inmobiliarias/{inmobiliariaId}/verificacion/{userId}/{fileName} {
 
@@ -106,15 +107,7 @@ service firebase.storage {
         );
     }
 
-    /* ================= Inmobiliarias - branding público =================
-       Logos y fondos públicos.
-
-       Rutas esperadas:
-       /inmobiliarias/{inmobiliariaId}/branding/...
-       /inmobiliarias/{inmobiliariaId}/logo/...
-       /inmobiliarias/{inmobiliariaId}/backgrounds/...
-       /inmobiliarias/{inmobiliariaId}/{fileName}
-    */
+    /* ================= Inmobiliarias - branding público ================= */
 
     match /inmobiliarias/{inmobiliariaId}/branding/{allPaths=**} {
 
@@ -161,13 +154,6 @@ service firebase.storage {
         || belongsToUserInmobiliaria(inmobiliariaId);
     }
 
-    /*
-      Compatibilidad con archivos públicos de branding subidos directo en:
-      /inmobiliarias/{inmobiliariaId}/{fileName}
-
-      Importante: esto NO alcanza a /verificacion/... porque solo matchea
-      un segmento final.
-    */
     match /inmobiliarias/{inmobiliariaId}/{fileName} {
 
       allow read: if true;
@@ -183,28 +169,48 @@ service firebase.storage {
         || belongsToUserInmobiliaria(inmobiliariaId);
     }
 
-    /* ================= Inmuebles =================
-       Imágenes de inmuebles:
-       /inmuebles/{inmobiliariaId}/{inmuebleId}/{fileName}
-    */
+    /* ================= Inmuebles ================= */
 
     match /inmuebles/{inmobiliariaId}/{inmuebleId}/{fileName} {
 
-      // Las imágenes de inmuebles son públicas
       allow read: if true;
 
-      // Subida / reemplazo:
-      // Solo usuarios vinculados a esa inmobiliaria.
-      // La asociación final queda controlada por Firestore al actualizar el array images.
       allow create, update: if
-        isSignedIn()
-        && belongsToUserInmobiliaria(inmobiliariaId)
-        && isImage()
-        && isValidImageSize();
+  isSignedIn()
+  && (
+    isRoot()
+    || belongsToUserInmobiliaria(inmobiliariaId)
+  )
+  && isImage()
+  && isValidImageSize();
 
       allow delete: if
         isRoot()
         || belongsToUserInmobiliaria(inmobiliariaId);
+    }
+
+    /* ================= Solicitudes particulares - imágenes privadas =================
+       Ruta:
+       /particular_publication_requests/{requestId}/{userId}/{fileName}
+    */
+
+    match /particular_publication_requests/{requestId}/{userId}/{fileName} {
+
+      allow read: if isSignedIn();
+
+      allow create: if
+        isSignedIn()
+        && request.auth.uid == userId
+        && isValidParticularRequestImage();
+
+      allow update: if false;
+
+      allow delete: if
+        isRoot()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+        );
     }
 
     /* ================= Fallback ================= */

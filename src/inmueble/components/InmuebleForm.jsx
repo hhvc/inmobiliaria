@@ -1,4 +1,6 @@
-import { useContext } from "react";
+import { useContext, useEffect, useMemo, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
+
 import {
   OPERACIONES_OPCIONES,
   TIPOS_INMUEBLE_OPCIONES,
@@ -6,6 +8,7 @@ import {
 
 import { INMUEBLE_ESTADOS_ARRAY } from "../../domain/inmueble/inmueble.constants";
 import { AuthContext } from "../../context/auth/AuthContext";
+import { db } from "../../firebase/config";
 
 import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
@@ -29,6 +32,42 @@ const DEFAULT_NETWORK_DATA = {
   ownerPhone: "",
 };
 
+const normalizeRole = (role = "") => {
+  const value = role.toString().trim().toLowerCase();
+
+  if (value === "user") return "usuario";
+
+  return value;
+};
+
+const userHasRole = (user, role) => {
+  if (!user) return false;
+
+  const normalizedRole = normalizeRole(role);
+
+  const roles = Array.isArray(user.roles)
+    ? user.roles.map((item) => normalizeRole(item))
+    : [];
+
+  const primaryRole = normalizeRole(user.primaryRole || user.role || "");
+
+  return roles.includes(normalizedRole) || primaryRole === normalizedRole;
+};
+
+const normalizeInmobiliariaDoc = (docSnap) => {
+  if (!docSnap?.exists?.()) return null;
+
+  const data = docSnap.data();
+
+  return {
+    id: docSnap.id,
+    nombre: data.nombre || data.razonSocial || docSnap.id,
+    razonSocial: data.razonSocial || "",
+    slug: data.slug || "",
+    activa: data.activa !== false,
+  };
+};
+
 const InmuebleForm = ({
   values = {},
   errors = {},
@@ -43,6 +82,9 @@ const InmuebleForm = ({
 }) => {
   const { user, activeInmobiliariaId } = useContext(AuthContext);
 
+  const [inmobiliariasById, setInmobiliariasById] = useState({});
+  const [loadingInmobiliarias, setLoadingInmobiliarias] = useState(false);
+
   const imageManager = useInmuebleImages(values?.images ?? []);
 
   const {
@@ -55,20 +97,73 @@ const InmuebleForm = ({
 
   const removeImage = imageManager.removeImage;
 
-  if (initialLoading) {
-    return <div className="text-center py-5">Cargando inmueble...</div>;
-  }
+  const rawUserInmobiliarias = user?.inmobiliarias;
 
-  const userInmobiliarias = Array.isArray(user?.inmobiliarias)
-    ? user.inmobiliarias
-    : [];
+  const userInmobiliarias = useMemo(() => {
+    return Array.isArray(rawUserInmobiliarias) ? rawUserInmobiliarias : [];
+  }, [rawUserInmobiliarias]);
 
   const selectedInmobiliariaId =
     values?.inmobiliariaId || inmobiliariaId || activeInmobiliariaId || "";
 
+  const selectorInmobiliariaIds = useMemo(() => {
+    return Array.from(
+      new Set([...userInmobiliarias, selectedInmobiliariaId].filter(Boolean)),
+    );
+  }, [selectedInmobiliariaId, userInmobiliarias]);
+
+  const selectorInmobiliariaIdsKey = selectorInmobiliariaIds.join("|");
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchInmobiliarias = async () => {
+      const ids = selectorInmobiliariaIdsKey.split("|").filter(Boolean);
+
+      if (ids.length === 0) {
+        setInmobiliariasById({});
+        return;
+      }
+
+      try {
+        setLoadingInmobiliarias(true);
+
+        const docs = await Promise.all(
+          ids.map(async (id) => {
+            const ref = doc(db, "inmobiliarias", id);
+            const snap = await getDoc(ref);
+
+            return normalizeInmobiliariaDoc(snap);
+          }),
+        );
+
+        if (!mounted) return;
+
+        const mapped = docs.filter(Boolean).reduce((acc, inmobiliaria) => {
+          acc[inmobiliaria.id] = inmobiliaria;
+          return acc;
+        }, {});
+
+        setInmobiliariasById(mapped);
+      } catch (error) {
+        console.error("Error cargando nombres de inmobiliarias:", error);
+      } finally {
+        if (mounted) {
+          setLoadingInmobiliarias(false);
+        }
+      }
+    };
+
+    fetchInmobiliarias();
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectorInmobiliariaIdsKey]);
+
   const puedeCambiarInmobiliaria =
-    userInmobiliarias.length > 1 &&
-    (user?.role === "root" || user?.role === "admin");
+    selectorInmobiliariaIds.length > 1 &&
+    (userHasRole(user, "root") || userHasRole(user, "admin"));
 
   const sharingValues = {
     ...DEFAULT_SHARING,
@@ -117,30 +212,27 @@ const InmuebleForm = ({
     handleSubmit({
       ...values,
 
-      // En creación todavía no subimos imágenes desde este formulario.
-      // En edición, images viene del hook.
       images: isEditMode ? images : values?.images || [],
 
-      // 🔑 Compatibilidad + dominio
       inmobiliariaId: finalInmobiliariaId,
       ownerInmobiliariaId: values?.ownerInmobiliariaId || finalInmobiliariaId,
 
-      // 🤝 Compartir / soft delete
       sharedWith: values?.sharedWith || {},
       deleted: values?.deleted ?? false,
 
-      // Estado seguro
       estado: values?.estado || "activo",
 
-      // Publicación en portal público
       publicarEnPortal: Boolean(values?.publicarEnPortal),
       noIndex: Boolean(values?.noIndex),
 
-      // Red de colegas
       sharing: normalizedSharing,
       networkData: normalizedNetworkData,
     });
   };
+
+  if (initialLoading) {
+    return <div className="text-center py-5">Cargando inmueble...</div>;
+  }
 
   return (
     <form onSubmit={onSubmit}>
@@ -161,12 +253,23 @@ const InmuebleForm = ({
                 Seleccionar inmobiliaria
               </option>
 
-              {userInmobiliarias.map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
+              {selectorInmobiliariaIds.map((id) => {
+                const inmobiliaria = inmobiliariasById[id];
+
+                return (
+                  <option key={id} value={id}>
+                    {inmobiliaria?.nombre || inmobiliaria?.razonSocial || id}
+                    {inmobiliaria?.slug ? ` /${inmobiliaria.slug}` : ""}
+                  </option>
+                );
+              })}
             </select>
+
+            {loadingInmobiliarias && (
+              <div className="form-text">
+                Cargando nombres de inmobiliarias...
+              </div>
+            )}
           </div>
         </div>
       ) : (
@@ -241,7 +344,8 @@ const InmuebleForm = ({
             <label className="form-label">Operación *</label>
             <select
               name="operacion"
-              className={`form-select ${errors.operacion ? "is-invalid" : ""}`}
+              className={`form-select ${errors.operacion ? "is-invalid" : ""
+                }`}
               value={values?.operacion || ""}
               onChange={handleChange}
             >
@@ -271,7 +375,8 @@ const InmuebleForm = ({
               <input
                 type="number"
                 name="precio"
-                className={`form-control ${errors.precio ? "is-invalid" : ""}`}
+                className={`form-control ${errors.precio ? "is-invalid" : ""
+                  }`}
                 value={values?.precio || ""}
                 onChange={handleChange}
               />
@@ -489,9 +594,7 @@ const InmuebleForm = ({
           Red de colegas
          ========================= */}
       <div className="card mb-4">
-        <div className="card-header fw-semibold">
-          Red de colegas
-        </div>
+        <div className="card-header fw-semibold">Red de colegas</div>
 
         <div className="card-body">
           <div className="form-check form-switch mb-3">
@@ -500,9 +603,7 @@ const InmuebleForm = ({
               type="checkbox"
               id="sharingEnabled"
               checked={sharingEnabled}
-              onChange={(e) =>
-                updateSharingField("enabled", e.target.checked)
-              }
+              onChange={(e) => updateSharingField("enabled", e.target.checked)}
             />
 
             <label className="form-check-label" htmlFor="sharingEnabled">
@@ -527,16 +628,12 @@ const InmuebleForm = ({
 
               <div className="row g-3">
                 <div className="col-md-4">
-                  <label className="form-label">
-                    Alcance de colaboración
-                  </label>
+                  <label className="form-label">Alcance de colaboración</label>
 
                   <select
                     className="form-select"
                     value={sharingValues.mode || "all_colleagues"}
-                    onChange={(e) =>
-                      updateSharingField("mode", e.target.value)
-                    }
+                    onChange={(e) => updateSharingField("mode", e.target.value)}
                   >
                     <option value="all_colleagues">
                       Todos los colegas habilitados
@@ -687,9 +784,7 @@ const InmuebleForm = ({
                       className="form-check-input"
                       type="checkbox"
                       id="showOwnerDataToColleagues"
-                      checked={Boolean(
-                        sharingValues.showOwnerDataToColleagues,
-                      )}
+                      checked={Boolean(sharingValues.showOwnerDataToColleagues)}
                       onChange={(e) =>
                         updateSharingField(
                           "showOwnerDataToColleagues",
@@ -742,9 +837,7 @@ const InmuebleForm = ({
                 )}
 
                 <div className="col-12">
-                  <label className="form-label">
-                    Instrucciones para visitas
-                  </label>
+                  <label className="form-label">Instrucciones para visitas</label>
 
                   <textarea
                     className="form-control"

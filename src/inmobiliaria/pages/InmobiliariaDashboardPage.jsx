@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import SEO from "../../components/SEO";
 import { useAuth } from "../../context/auth/useAuth";
 import {
     getAllInmobiliarias,
@@ -25,6 +26,16 @@ const MODULE_CARDS = [
         route: "/admin/inmuebles/consultas",
         cta: "Ver consultas",
         icon: "📩",
+    },
+    {
+        id: "solicitudes-particulares",
+        title: "Solicitudes particulares",
+        description:
+            "Revisar pedidos enviados por propietarios particulares a esta inmobiliaria.",
+        route: "/admin/inmobiliaria/solicitudes-particulares",
+        cta: "Ver solicitudes",
+        icon: "🧾",
+        requiredModules: ["consultas"],
     },
     {
         id: "dominios",
@@ -132,6 +143,18 @@ const getInitialInmobiliariaId = ({ user, inmobiliarias, isRoot }) => {
     return inmobiliarias[0]?.id || "";
 };
 
+const moduleIsAvailable = ({ module, subscribedModules, isRoot }) => {
+    if (isRoot) return true;
+
+    if (Array.isArray(module.requiredModules) && module.requiredModules.length) {
+        return module.requiredModules.some((moduleId) =>
+            subscribedModules.includes(moduleId),
+        );
+    }
+
+    return subscribedModules.includes(module.id);
+};
+
 const getModuleRoute = (module, inmobiliariaId, isRoot) => {
     if (module.rootOnlyRoute && !isRoot) return null;
 
@@ -224,6 +247,16 @@ const getOnboardingItems = (inmobiliaria) => {
             optional: true,
         },
         {
+            id: "particular-requests",
+            title: "Solicitudes de particulares",
+            description:
+                "Revisá pedidos enviados por propietarios que eligieron esta inmobiliaria.",
+            done: false,
+            route: "/admin/inmobiliaria/solicitudes-particulares",
+            cta: "Ver solicitudes",
+            optional: true,
+        },
+        {
             id: "domain",
             title: "Dominio propio",
             description: "Opcional: conectá un dominio propio para tu inmobiliaria.",
@@ -272,6 +305,9 @@ const InmobiliariaDashboardPage = () => {
 
     const { isRoot, isAdmin } = getRoleFlags(user);
 
+    const siteUrl =
+        import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
+
     const activeInmobiliaria = useMemo(() => {
         return (
             inmobiliarias.find((inmo) => inmo.id === activeInmobiliariaId) || null
@@ -286,10 +322,22 @@ const InmobiliariaDashboardPage = () => {
             : DEFAULT_MODULES;
     }, [activeInmobiliaria]);
 
-    const visibleModules = useMemo(() => {
-        if (isRoot) return MODULE_CARDS;
+    const canUseInmuebles = useMemo(() => {
+        return isRoot || subscribedModules.includes("inmuebles");
+    }, [isRoot, subscribedModules]);
 
-        return MODULE_CARDS.filter((module) => subscribedModules.includes(module.id));
+    const canUseConsultas = useMemo(() => {
+        return isRoot || subscribedModules.includes("consultas");
+    }, [isRoot, subscribedModules]);
+
+    const visibleModules = useMemo(() => {
+        return MODULE_CARDS.filter((module) =>
+            moduleIsAvailable({
+                module,
+                subscribedModules,
+                isRoot,
+            }),
+        );
     }, [isRoot, subscribedModules]);
 
     const verificationStatus = useMemo(() => {
@@ -360,6 +408,15 @@ const InmobiliariaDashboardPage = () => {
     if (!isRoot && !isAdmin) {
         return (
             <main className="container py-5">
+                <SEO
+                    title="Acceso restringido | ONO Prop"
+                    description="Sección disponible para usuarios administradores de inmobiliarias."
+                    url={`${siteUrl}/admin/inmobiliaria`}
+                    type="website"
+                    siteName="ONO Prop"
+                    noIndex
+                />
+
                 <div className="alert alert-warning">
                     Esta sección está disponible para usuarios administradores.
                 </div>
@@ -370,6 +427,15 @@ const InmobiliariaDashboardPage = () => {
     if (loading) {
         return (
             <main className="container py-5 text-center">
+                <SEO
+                    title="Panel de inmobiliaria | ONO Prop"
+                    description="Panel de administración de inmobiliarias en ONO Prop."
+                    url={`${siteUrl}/admin/inmobiliaria`}
+                    type="website"
+                    siteName="ONO Prop"
+                    noIndex
+                />
+
                 <div className="spinner-border" />
                 <p className="text-muted mt-3">Cargando panel de inmobiliaria...</p>
             </main>
@@ -378,6 +444,15 @@ const InmobiliariaDashboardPage = () => {
 
     return (
         <main className="container py-4">
+            <SEO
+                title="Panel de inmobiliaria | ONO Prop"
+                description="Panel de administración de inmobiliarias, inmuebles, consultas, solicitudes particulares y configuración comercial."
+                url={`${siteUrl}/admin/inmobiliaria`}
+                type="website"
+                siteName="ONO Prop"
+                noIndex
+            />
+
             <header className="mb-4">
                 <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
                     <div>
@@ -555,40 +630,59 @@ const InmobiliariaDashboardPage = () => {
                                         <h2 className="h5 mb-3">Operación diaria</h2>
 
                                         <div className="d-grid gap-2">
-                                            <Link
-                                                to="/admin/inmuebles/nuevo"
-                                                className="btn btn-primary"
-                                            >
-                                                Cargar inmueble
-                                            </Link>
+                                            {canUseInmuebles && (
+                                                <>
+                                                    <Link
+                                                        to="/admin/inmuebles/nuevo"
+                                                        className="btn btn-primary"
+                                                    >
+                                                        Cargar inmueble
+                                                    </Link>
 
-                                            <Link
-                                                to="/admin/inmuebles/listado"
-                                                className="btn btn-outline-primary"
-                                            >
-                                                Ver mis inmuebles
-                                            </Link>
+                                                    <Link
+                                                        to="/admin/inmuebles/listado"
+                                                        className="btn btn-outline-primary"
+                                                    >
+                                                        Ver mis inmuebles
+                                                    </Link>
+                                                </>
+                                            )}
 
-                                            <Link
-                                                to="/admin/inmuebles/consultas"
-                                                className="btn btn-outline-primary"
-                                            >
-                                                Ver consultas
-                                            </Link>
+                                            {canUseConsultas && (
+                                                <>
+                                                    <Link
+                                                        to="/admin/inmuebles/consultas"
+                                                        className="btn btn-outline-primary"
+                                                    >
+                                                        Ver consultas
+                                                    </Link>
 
-                                            <Link
-                                                to="/admin/red/inmuebles-compartidos"
-                                                className="btn btn-outline-secondary"
-                                            >
-                                                Red de colegas
-                                            </Link>
+                                                    <Link
+                                                        to="/admin/inmobiliaria/solicitudes-particulares"
+                                                        className="btn btn-outline-primary"
+                                                    >
+                                                        Solicitudes particulares
+                                                    </Link>
+                                                </>
+                                            )}
 
-                                            <Link
-                                                to="/admin/red/solicitudes"
-                                                className="btn btn-outline-secondary"
-                                            >
-                                                Solicitudes de colaboración
-                                            </Link>
+                                            {canUseInmuebles && (
+                                                <>
+                                                    <Link
+                                                        to="/admin/red/inmuebles-compartidos"
+                                                        className="btn btn-outline-secondary"
+                                                    >
+                                                        Red de colegas
+                                                    </Link>
+
+                                                    <Link
+                                                        to="/admin/red/solicitudes"
+                                                        className="btn btn-outline-secondary"
+                                                    >
+                                                        Solicitudes de colaboración
+                                                    </Link>
+                                                </>
+                                            )}
 
                                             <Link
                                                 to="/admin/inmobiliaria/vinculaciones"
@@ -598,10 +692,7 @@ const InmobiliariaDashboardPage = () => {
                                             </Link>
 
                                             {publicInmobiliariaUrl && (
-                                                <Link
-                                                    to={publicInmobiliariaUrl}
-                                                    className="btn btn-light"
-                                                >
+                                                <Link to={publicInmobiliariaUrl} className="btn btn-light">
                                                     Ver página pública
                                                 </Link>
                                             )}
@@ -628,15 +719,24 @@ const InmobiliariaDashboardPage = () => {
                                             Administración root
                                         </p>
 
-                                        <h2 className="h5 mb-1">Control general de la plataforma</h2>
+                                        <h2 className="h5 mb-1">
+                                            Control general de la plataforma
+                                        </h2>
 
                                         <p className="text-muted mb-0">
                                             Accesos de revisión, alta y administración general de
-                                            inmobiliarias.
+                                            inmobiliarias y solicitudes particulares.
                                         </p>
                                     </div>
 
                                     <div className="col-lg-4 d-grid gap-2">
+                                        <Link
+                                            to="/admin/publicaciones/particulares"
+                                            className="btn btn-primary"
+                                        >
+                                            Solicitudes particulares globales
+                                        </Link>
+
                                         <Link
                                             to="/admin/inmobiliarias/verificacion"
                                             className="btn btn-outline-primary"
@@ -658,12 +758,7 @@ const InmobiliariaDashboardPage = () => {
 
                     <section className="row g-4">
                         {visibleModules.map((module) => {
-                            const route = getModuleRoute(
-                                module,
-                                activeInmobiliariaId,
-                                isRoot,
-                            );
-
+                            const route = getModuleRoute(module, activeInmobiliariaId, isRoot);
                             const disabled = module.comingSoon || !route;
 
                             return (
@@ -676,12 +771,16 @@ const InmobiliariaDashboardPage = () => {
 
                                             <p className="text-muted">{module.description}</p>
 
-                                            {isRoot && !subscribedModules.includes(module.id) && (
-                                                <div className="alert alert-light border small py-2">
-                                                    No suscripto para esta inmobiliaria. Root puede
-                                                    acceder igual.
-                                                </div>
-                                            )}
+                                            {isRoot &&
+                                                !subscribedModules.includes(module.id) &&
+                                                !module.requiredModules?.some((moduleId) =>
+                                                    subscribedModules.includes(moduleId),
+                                                ) && (
+                                                    <div className="alert alert-light border small py-2">
+                                                        No suscripto para esta inmobiliaria. Root puede
+                                                        acceder igual.
+                                                    </div>
+                                                )}
 
                                             <div className="mt-auto d-grid">
                                                 {disabled ? (

@@ -32,9 +32,9 @@ const FEATURED_SEARCHES = [
     to: "/inmuebles?operacion=alquiler",
   },
   {
-    title: "Inmobiliarias verificables",
-    text: "Conocé quién publica y contactá de forma directa.",
-    to: "/inmuebles",
+    title: "Inmobiliarias de la plataforma",
+    text: "Conocé quién publica, explorá sus inmuebles y contactá de forma directa.",
+    to: "/inmobiliarias",
   },
 ];
 
@@ -50,19 +50,21 @@ const PORTAL_ADVANTAGES = [
     icon: "💬",
   },
   {
-    title: "Fichas compartibles",
-    text: "Cada inmueble tiene una página pública lista para enviar o guardar.",
-    icon: "🔗",
+    title: "Publicación asistida",
+    text: "Si sos particular, podés pedir revisión a ONO Prop o a una inmobiliaria.",
+    icon: "✅",
   },
 ];
 
 const AGENCY_ADVANTAGES = [
   "Publicar inmuebles en el portal",
+  "Recibir solicitudes de particulares",
   "Tener sitio propio de inmobiliaria",
   "Conectar dominio personalizado",
   "Gestionar consultas comerciales",
   "Compartir inmuebles con colegas",
   "Generar textos para redes y portales",
+  "Operar sin modelo de franquicia",
 ];
 
 const HomePage = () => {
@@ -126,8 +128,8 @@ const HomePage = () => {
   return (
     <main id="page-top" className="portal-home">
       <SEO
-        title="ONO Prop | Portal inmobiliario para comprar, alquilar y publicar inmuebles"
-        description="Buscá casas, departamentos, terrenos, locales y oficinas en ONO Prop. Publicá inmuebles como inmobiliaria, recibí consultas y compartí propiedades."
+        title="ONO Prop | Portal inmobiliario para buscar, publicar y gestionar inmuebles"
+        description="Buscá casas, departamentos, terrenos, locales y oficinas en ONO Prop. Publicá como particular o inmobiliaria, recibí consultas y compartí propiedades."
         url={siteUrl}
         type="website"
         siteName="ONO Prop"
@@ -153,8 +155,8 @@ const HomePage = () => {
 
               <p className="portal-hero-text mb-4">
                 ONO Prop reúne inmuebles publicados por inmobiliarias y permite
-                buscar, consultar y compartir propiedades desde una experiencia
-                simple, clara y orientada al contacto comercial.
+                buscar, consultar, compartir y solicitar publicaciones desde una
+                experiencia simple, clara y orientada al contacto comercial.
               </p>
 
               <form
@@ -166,6 +168,7 @@ const HomePage = () => {
                   <div className="row g-3 align-items-end">
                     <div className="col-12 col-lg-5">
                       <label className="form-label">Qué estás buscando</label>
+
                       <input
                         type="search"
                         name="search"
@@ -178,6 +181,7 @@ const HomePage = () => {
 
                     <div className="col-6 col-lg-3">
                       <label className="form-label">Operación</label>
+
                       <select
                         name="operacion"
                         className="form-select form-select-lg"
@@ -185,6 +189,7 @@ const HomePage = () => {
                         onChange={handleChange}
                       >
                         <option value="">Todas</option>
+
                         {OPERACIONES.map((operacion) => (
                           <option key={operacion.id} value={operacion.id}>
                             {operacion.label}
@@ -195,6 +200,7 @@ const HomePage = () => {
 
                     <div className="col-6 col-lg-2">
                       <label className="form-label">Tipo</label>
+
                       <select
                         name="tipo"
                         className="form-select form-select-lg"
@@ -202,6 +208,7 @@ const HomePage = () => {
                         onChange={handleChange}
                       >
                         <option value="">Todos</option>
+
                         {TIPOS_INMUEBLE.map((tipo) => (
                           <option key={tipo.id} value={tipo.id}>
                             {tipo.label}
@@ -224,8 +231,12 @@ const HomePage = () => {
                   Ver todos los inmuebles
                 </Link>
 
-                <Link to="/inmobiliarias" className="btn btn-primary">
-                  Publicar inmueble
+                <Link to="/publicar" className="btn btn-primary">
+                  Publicar propiedad
+                </Link>
+
+                <Link to="/inmobiliarias" className="btn btn-outline-primary">
+                  Soy inmobiliaria
                 </Link>
               </div>
             </div>
@@ -238,36 +249,30 @@ const HomePage = () => {
                   </p>
 
                   <h2 className="h3 mb-3">
-                    Publicaciones para inmobiliarias y, próximamente, para
-                    particulares.
+                    Publicaciones para particulares e inmobiliarias.
                   </h2>
 
                   <p className="text-muted">
-                    Las inmobiliarias cuentan con herramientas comerciales,
-                    sitio propio, dominio personalizado, consultas ordenadas y
-                    Red de colegas.
+                    Si sos propietario particular, podés solicitar que ONO Prop
+                    o una inmobiliaria activa revise los datos y coordine la
+                    publicación. Si sos inmobiliaria, podés operar con
+                    herramientas comerciales, sitio propio y red de colegas.
                   </p>
 
                   <div className="d-grid gap-2 mb-3">
-                    <Link to="/inmobiliarias" className="btn btn-primary">
-                      Publicar como inmobiliaria
+                    <Link to="/publicar" className="btn btn-primary">
+                      Publicar como particular
                     </Link>
 
-                    <button
-                      type="button"
-                      className="btn btn-outline-secondary"
-                      disabled
-                      title="Próximamente"
-                    >
-                      Publicar como particular · Próximamente
-                    </button>
+                    <Link to="/inmobiliarias" className="btn btn-outline-primary">
+                      Publicar como inmobiliaria
+                    </Link>
                   </div>
 
-                  <div className="alert alert-light border small mb-0">
-                    Si sos particular, vas a poder publicar directamente más
-                    adelante. Publicar mediante una inmobiliaria ofrece ventajas:
-                    gestión profesional, seguimiento de consultas, difusión,
-                    documentación comercial y colaboración con colegas.
+                  <div className="alert alert-info small mb-0">
+                    En esta etapa inicial, las solicitudes y publicaciones se
+                    gestionan sin cargo. La publicación queda pendiente hasta que
+                    ONO Prop o la inmobiliaria elegida revise y valide los datos.
                   </div>
                 </div>
               </div>
@@ -310,6 +315,7 @@ const HomePage = () => {
                     <div className="portal-feature-icon mx-auto">
                       {tipo.icon}
                     </div>
+
                     <h3 className="h6 mb-0 text-dark">{tipo.label}</h3>
                   </div>
                 </Link>
@@ -331,7 +337,7 @@ const HomePage = () => {
               </p>
 
               <h2 className="portal-section-title">
-                Un portal para comprar, alquilar y contactar.
+                Un portal para comprar, alquilar, publicar y contactar.
               </h2>
             </div>
           </div>
@@ -343,7 +349,9 @@ const HomePage = () => {
                   <div className="card border-0 shadow-sm h-100">
                     <div className="card-body p-4">
                       <h3 className="h5 text-dark">{item.title}</h3>
+
                       <p className="text-muted mb-4">{item.text}</p>
+
                       <span className="btn btn-outline-primary">
                         Explorar
                       </span>
@@ -368,19 +376,25 @@ const HomePage = () => {
               </p>
 
               <h2 className="portal-section-title">
-                Fichas claras, contacto directo y publicaciones compartibles.
+                Fichas claras, contacto directo y publicaciones asistidas.
               </h2>
 
               <p className="lead text-muted">
                 ONO Prop busca que cada publicación sea fácil de encontrar,
                 entender, consultar y compartir. La persona interesada puede
-                navegar el portal general o entrar al sitio de cada
-                inmobiliaria.
+                navegar el portal general, entrar al sitio de cada inmobiliaria
+                o solicitar la publicación de una propiedad propia.
               </p>
 
-              <Link to="/inmuebles" className="btn btn-primary">
-                Buscar inmuebles
-              </Link>
+              <div className="d-flex flex-wrap gap-2">
+                <Link to="/inmuebles" className="btn btn-primary">
+                  Buscar inmuebles
+                </Link>
+
+                <Link to="/publicar" className="btn btn-outline-primary">
+                  Publicar propiedad
+                </Link>
+              </div>
             </div>
 
             <div className="col-lg-7">
@@ -393,6 +407,7 @@ const HomePage = () => {
                       </div>
 
                       <h3 className="h5">{feature.title}</h3>
+
                       <p className="text-muted mb-0">{feature.text}</p>
                     </div>
                   </div>
@@ -421,9 +436,10 @@ const HomePage = () => {
 
                 <p className="text-muted mb-0">
                   ONO Prop permite publicar propiedades en el portal, generar
-                  fichas públicas y ordenar las consultas. Si sos inmobiliaria,
-                  además podés tener sitio propio, dominio y herramientas de
-                  colaboración.
+                  fichas públicas y ordenar las consultas. Como particular,
+                  podés pedir que ONO Prop o una inmobiliaria revise los datos.
+                  Como inmobiliaria, además accedés a sitio propio, dominio,
+                  usuarios internos, consultas y colaboración con colegas.
                 </p>
               </div>
 
@@ -433,23 +449,20 @@ const HomePage = () => {
                     <h3 className="h5 mb-3">Elegí cómo querés publicar</h3>
 
                     <div className="d-grid gap-2">
-                      <Link to="/inmobiliarias" className="btn btn-primary">
-                        Publicar como inmobiliaria
+                      <Link to="/publicar" className="btn btn-primary">
+                        Publicar como particular
                       </Link>
 
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary"
-                        disabled
-                      >
-                        Publicar como particular · Próximamente
-                      </button>
+                      <Link to="/inmobiliarias" className="btn btn-outline-primary">
+                        Publicar como inmobiliaria
+                      </Link>
                     </div>
 
                     <p className="text-muted small mt-3 mb-0">
-                      Publicar como inmobiliaria habilita funciones avanzadas:
-                      usuarios internos, sitio propio, consultas, Red de
-                      colegas, branding y dominio personalizado.
+                      El particular envía una solicitud y elige si quiere que la
+                      revise ONO Prop o una inmobiliaria de la plataforma. La
+                      inmobiliaria puede crear su perfil y operar con funciones
+                      avanzadas.
                     </p>
                   </div>
                 </div>
@@ -478,7 +491,8 @@ const HomePage = () => {
               <p className="lead text-muted">
                 ONO Prop ofrece herramientas operativas y comerciales para
                 inmobiliarias independientes: publicación, gestión de consultas,
-                sitios propios, branding, dominio y colaboración con colegas.
+                sitios propios, branding, dominio, solicitudes de particulares y
+                colaboración con colegas.
               </p>
 
               <div className="d-flex flex-wrap gap-2 mt-4">

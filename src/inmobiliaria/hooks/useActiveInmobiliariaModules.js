@@ -1,115 +1,202 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { doc, getDoc } from "firebase/firestore";
 
+import { db } from "../../firebase/config";
 import { useAuth } from "../../context/auth/useAuth";
-import {
-    getAllInmobiliarias,
-    getInmobiliariasByRole,
-} from "../services/inmobiliaria.service";
+
+const ACTIVE_INMOBILIARIA_EVENT = "onoprop:activeInmobiliariaChanged";
 
 const DEFAULT_MODULES = ["inmuebles", "consultas"];
 
-const getRoleFlags = (user) => {
-    const roles = user?.roles || [];
-    const primaryRole = user?.primaryRole || user?.role || "";
+const normalizeRole = (role = "") => {
+    const value = role.toString().trim().toLowerCase();
 
-    return {
-        isRoot:
-            primaryRole === "root" ||
-            user?.role === "root" ||
-            roles.includes("root"),
-        isAdmin:
-            primaryRole === "admin" ||
-            user?.role === "admin" ||
-            roles.includes("admin"),
-    };
+    if (value === "user") return "usuario";
+
+    return value;
 };
 
-const getStoredActiveInmobiliariaId = () => {
-    if (typeof window === "undefined") return null;
+const normalizeRoles = (roles = []) => {
+    const source = Array.isArray(roles) ? roles : [];
 
-    return (
-        window.localStorage.getItem("activeInmobiliariaId") ||
-        window.localStorage.getItem("inmobiliariaActivaId") ||
-        window.localStorage.getItem("activeInmobiliaria") ||
-        null
+    const normalized = source.map((role) => normalizeRole(role)).filter(Boolean);
+    const unique = Array.from(new Set(normalized));
+
+    return unique.length > 0 ? unique : ["usuario"];
+};
+
+const hasRole = (user, role) => {
+    if (!user) return false;
+
+    const normalizedRole = normalizeRole(role);
+
+    const roles = normalizeRoles(
+        Array.isArray(user.roles)
+            ? user.roles
+            : user.role
+                ? [user.role]
+                : [],
     );
+
+    const primaryRole = normalizeRole(user.primaryRole || user.role || "");
+
+    return roles.includes(normalizedRole) || primaryRole === normalizedRole;
+};
+
+const getUserInmobiliarias = (user) => {
+    return Array.isArray(user?.inmobiliarias) ? user.inmobiliarias : [];
+};
+
+const getStoredActiveInmobiliariaId = (user) => {
+    const inmobiliarias = getUserInmobiliarias(user);
+
+    const stored =
+        localStorage.getItem("activeInmobiliariaId") ||
+        localStorage.getItem("onoprop.activeInmobiliariaId") ||
+        "";
+
+    if (stored && inmobiliarias.includes(stored)) {
+        return stored;
+    }
+
+    return "";
+};
+
+const resolveActiveInmobiliariaId = (user) => {
+    const inmobiliarias = getUserInmobiliarias(user);
+
+    if (user?.activeInmobiliariaId && inmobiliarias.includes(user.activeInmobiliariaId)) {
+        return user.activeInmobiliariaId;
+    }
+
+    const stored = getStoredActiveInmobiliariaId(user);
+
+    if (stored) return stored;
+
+    return inmobiliarias[0] || "";
+};
+
+const normalizeInmobiliaria = (docSnap) => {
+    if (!docSnap?.exists?.()) return null;
+
+    const data = docSnap.data();
+
+    return {
+        id: docSnap.id,
+        ...data,
+        nombre: data.nombre || data.razonSocial || docSnap.id,
+        activa: data.activa !== false,
+        modulosSuscriptos: Array.isArray(data.modulosSuscriptos)
+            ? data.modulosSuscriptos
+            : DEFAULT_MODULES,
+    };
 };
 
 export const useActiveInmobiliariaModules = () => {
     const { user } = useAuth();
 
-    const [inmobiliarias, setInmobiliarias] = useState([]);
-    const [activeInmobiliariaId, setActiveInmobiliariaId] = useState("");
-    const [loading, setLoading] = useState(false);
+    const [activeInmobiliariaId, setActiveInmobiliariaId] = useState(() =>
+        resolveActiveInmobiliariaId(user),
+    );
 
-    const { isRoot, isAdmin } = getRoleFlags(user);
+    const [activeInmobiliaria, setActiveInmobiliaria] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    const isRoot = hasRole(user, "root");
+    const isAdmin = hasRole(user, "admin");
 
     useEffect(() => {
-        const loadInmobiliarias = async () => {
-            try {
-                if (!user?.uid || (!isRoot && !isAdmin)) {
-                    setInmobiliarias([]);
-                    setActiveInmobiliariaId("");
-                    return;
-                }
+        setActiveInmobiliariaId(resolveActiveInmobiliariaId(user));
+    }, [user]);
 
-                setLoading(true);
+    useEffect(() => {
+        const handleActiveChange = (event) => {
+            const nextId = event?.detail?.inmobiliariaId || "";
 
-                const data = isRoot
-                    ? await getAllInmobiliarias()
-                    : await getInmobiliariasByRole(user);
+            if (!nextId) return;
 
-                const storedId = getStoredActiveInmobiliariaId();
+            const inmobiliarias = getUserInmobiliarias(user);
 
-                const initialId =
-                    storedId && data.some((inmo) => inmo.id === storedId)
-                        ? storedId
-                        : data[0]?.id || "";
-
-                setInmobiliarias(data);
-                setActiveInmobiliariaId(initialId);
-            } catch (error) {
-                console.warn("No se pudieron cargar módulos de inmobiliaria:", error);
-                setInmobiliarias([]);
-                setActiveInmobiliariaId("");
-            } finally {
-                setLoading(false);
+            if (inmobiliarias.includes(nextId) || isRoot) {
+                setActiveInmobiliariaId(nextId);
             }
         };
 
-        loadInmobiliarias();
-    }, [isAdmin, isRoot, user]);
+        window.addEventListener(ACTIVE_INMOBILIARIA_EVENT, handleActiveChange);
 
-    const activeInmobiliaria = useMemo(() => {
-        return inmobiliarias.find((inmo) => inmo.id === activeInmobiliariaId) || null;
-    }, [activeInmobiliariaId, inmobiliarias]);
+        return () => {
+            window.removeEventListener(ACTIVE_INMOBILIARIA_EVENT, handleActiveChange);
+        };
+    }, [isRoot, user]);
 
-    const modules = useMemo(() => {
-        if (isRoot) {
-            return ["inmuebles", "consultas", "dominios", "branding", "usuarios", "reportes"];
-        }
+    useEffect(() => {
+        let mounted = true;
 
-        if (!activeInmobiliaria) return DEFAULT_MODULES;
+        const fetchActiveInmobiliaria = async () => {
+            if (!activeInmobiliariaId) {
+                setActiveInmobiliaria(null);
+                return;
+            }
 
-        return Array.isArray(activeInmobiliaria.modulosSuscriptos)
+            try {
+                setLoading(true);
+                setError("");
+
+                const ref = doc(db, "inmobiliarias", activeInmobiliariaId);
+                const snap = await getDoc(ref);
+
+                if (!mounted) return;
+
+                setActiveInmobiliaria(normalizeInmobiliaria(snap));
+            } catch (err) {
+                console.error("Error cargando inmobiliaria activa:", err);
+
+                if (mounted) {
+                    setError(err.message || "No se pudo cargar la inmobiliaria activa.");
+                    setActiveInmobiliaria(null);
+                }
+            } finally {
+                if (mounted) {
+                    setLoading(false);
+                }
+            }
+        };
+
+        fetchActiveInmobiliaria();
+
+        return () => {
+            mounted = false;
+        };
+    }, [activeInmobiliariaId]);
+
+    const modulosSuscriptos = useMemo(() => {
+        return Array.isArray(activeInmobiliaria?.modulosSuscriptos)
             ? activeInmobiliaria.modulosSuscriptos
             : DEFAULT_MODULES;
-    }, [activeInmobiliaria, isRoot]);
+    }, [activeInmobiliaria]);
 
-    const hasModule = (moduleId) => {
-        if (isRoot) return true;
+    const hasModule = useCallback(
+        (moduleId) => {
+            if (isRoot) return true;
+            if (!moduleId) return true;
 
-        return modules.includes(moduleId);
-    };
+            return modulosSuscriptos.includes(moduleId);
+        },
+        [isRoot, modulosSuscriptos],
+    );
 
     return {
         loading,
-        isRoot,
-        isAdmin,
-        inmobiliarias,
+        error,
+
         activeInmobiliaria,
         activeInmobiliariaId,
-        modules,
+        modulosSuscriptos,
+
+        isRoot,
+        isAdmin,
+
         hasModule,
     };
 };

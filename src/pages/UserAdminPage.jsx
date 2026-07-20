@@ -1,16 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  arrayRemove,
+  arrayUnion,
   collection,
-  getDocs,
   doc,
-  updateDoc,
+  getDocs,
   serverTimestamp,
+  updateDoc,
+  writeBatch,
 } from "firebase/firestore";
 
 import { db } from "../firebase/config";
 import { useAuth } from "../context/auth/useAuth";
 
-const ALL_ROLES = ["user", "editor", "admin", "root"];
+const ALL_ROLES = ["usuario", "viewer", "editor", "admin", "root"];
+
+const ROLE_PRIORITY = ["root", "admin", "editor", "viewer", "usuario"];
 
 const SUBSCRIPTION_MODULES = [
   {
@@ -59,15 +64,45 @@ const normalizeTimestamp = (value) => {
   return Number.isFinite(date.getTime()) ? date : null;
 };
 
+const normalizeRole = (role = "") => {
+  const value = role.toString().trim();
+
+  if (!value) return "";
+
+  if (value === "user") return "usuario";
+
+  return value;
+};
+
+const normalizeRoles = (roles = []) => {
+  const source = Array.isArray(roles) ? roles : [];
+
+  const normalized = source
+    .map((role) => normalizeRole(role))
+    .filter(Boolean);
+
+  const unique = Array.from(new Set(normalized));
+
+  return unique.length > 0 ? unique : ["usuario"];
+};
+
+const getPrimaryRoleFromRoles = (roles = []) => {
+  const normalizedRoles = normalizeRoles(roles);
+
+  return (
+    ROLE_PRIORITY.find((role) => normalizedRoles.includes(role)) ||
+    normalizedRoles[0] ||
+    "usuario"
+  );
+};
+
 const getRoleFlags = (user) => {
-  const roles = user?.roles || [];
-  const primaryRole = user?.primaryRole || user?.role || "";
+  const roles = normalizeRoles(user?.roles || []);
+  const primaryRole = normalizeRole(user?.primaryRole || user?.role || "");
 
   return {
     isRoot:
-      primaryRole === "root" ||
-      user?.role === "root" ||
-      roles.includes("root"),
+      primaryRole === "root" || user?.role === "root" || roles.includes("root"),
     isAdmin:
       primaryRole === "admin" ||
       user?.role === "admin" ||
@@ -78,23 +113,43 @@ const getRoleFlags = (user) => {
 const mapUserDoc = (docSnap) => {
   const raw = docSnap.data();
 
-  const roles = Array.isArray(raw.roles)
-    ? raw.roles
-    : raw.role
-      ? [raw.role]
-      : ["user"];
+  const roles = normalizeRoles(
+    Array.isArray(raw.roles)
+      ? raw.roles
+      : raw.role
+        ? [raw.role]
+        : ["usuario"],
+  );
 
-  const primaryRole =
-    raw.primaryRole && roles.includes(raw.primaryRole)
-      ? raw.primaryRole
-      : roles[0] || "user";
+  const rawPrimaryRole = normalizeRole(raw.primaryRole || raw.role || "");
+  const primaryRole = roles.includes(rawPrimaryRole)
+    ? rawPrimaryRole
+    : getPrimaryRoleFromRoles(roles);
+
+  const inmobiliarias = Array.isArray(raw.inmobiliarias)
+    ? raw.inmobiliarias
+    : [];
+
+  const inmobiliariaRoles =
+    raw.inmobiliariaRoles && typeof raw.inmobiliariaRoles === "object"
+      ? raw.inmobiliariaRoles
+      : {};
+
+  const activeInmobiliariaId =
+    raw.activeInmobiliariaId && inmobiliarias.includes(raw.activeInmobiliariaId)
+      ? raw.activeInmobiliariaId
+      : inmobiliarias[0] || "";
 
   return {
     id: docSnap.id,
     ...raw,
     roles,
     primaryRole,
-    inmobiliarias: Array.isArray(raw.inmobiliarias) ? raw.inmobiliarias : [],
+    role: primaryRole,
+    inmobiliarias,
+    inmobiliariaRoles,
+    activeInmobiliariaId,
+    _originalInmobiliarias: inmobiliarias,
     createdAt: normalizeTimestamp(raw.createdAt),
     updatedAt: normalizeTimestamp(raw.updatedAt),
   };
@@ -109,6 +164,7 @@ const mapInmobiliariaDoc = (docSnap) => {
     nombre: raw.nombre || "Sin nombre",
     slug: raw.slug || "",
     activa: raw.activa !== false,
+    admins: Array.isArray(raw.admins) ? raw.admins : [],
     modulosSuscriptos: Array.isArray(raw.modulosSuscriptos)
       ? raw.modulosSuscriptos
       : DEFAULT_MODULES,
@@ -131,6 +187,41 @@ const getInmobiliariaLabel = (inmobiliaria) => {
   }
 
   return parts.join(" ");
+};
+
+const getNextActiveInmobiliariaId = ({
+  currentActiveId,
+  selectedInmobiliarias,
+}) => {
+  if (
+    currentActiveId &&
+    Array.isArray(selectedInmobiliarias) &&
+    selectedInmobiliarias.includes(currentActiveId)
+  ) {
+    return currentActiveId;
+  }
+
+  return selectedInmobiliarias[0] || "";
+};
+
+const buildInmobiliariaRoles = (user, selectedInmobiliarias = []) => {
+  const currentRoles =
+    user?.inmobiliariaRoles && typeof user.inmobiliariaRoles === "object"
+      ? user.inmobiliariaRoles
+      : {};
+
+  return selectedInmobiliarias.reduce((acc, inmobiliariaId) => {
+    acc[inmobiliariaId] = currentRoles[inmobiliariaId] || "admin";
+    return acc;
+  }, {});
+};
+
+const getAddedInmobiliarias = (previous = [], next = []) => {
+  return next.filter((id) => !previous.includes(id));
+};
+
+const getRemovedInmobiliarias = (previous = [], next = []) => {
+  return previous.filter((id) => !next.includes(id));
 };
 
 const UserAdminPage = () => {
@@ -242,29 +333,34 @@ const UserAdminPage = () => {
     );
   };
 
-  const toggleRole = (u, role) => {
-    const roles = u.roles.includes(role)
-      ? u.roles.filter((r) => r !== role)
-      : [...u.roles, role];
+  const toggleRole = (u, rawRole) => {
+    const role = normalizeRole(rawRole);
+    const currentRoles = normalizeRoles(u.roles);
 
-    const normalizedRoles = roles.length > 0 ? roles : ["user"];
+    const nextRoles = currentRoles.includes(role)
+      ? currentRoles.filter((r) => r !== role)
+      : [...currentRoles, role];
+
+    const normalizedRoles = normalizeRoles(nextRoles);
+    const primaryRole = getPrimaryRoleFromRoles(normalizedRoles);
 
     updateLocalUser(u.id, {
       roles: normalizedRoles,
-      primaryRole: normalizedRoles.includes(u.primaryRole)
-        ? u.primaryRole
-        : normalizedRoles[0],
+      primaryRole,
+      role: primaryRole,
     });
   };
 
-  const updatePrimaryRole = (u, primaryRole) => {
-    const roles = u.roles.includes(primaryRole)
-      ? u.roles
-      : [...u.roles, primaryRole];
+  const updatePrimaryRole = (u, rawPrimaryRole) => {
+    const primaryRole = normalizeRole(rawPrimaryRole);
+    const roles = normalizeRoles(
+      u.roles.includes(primaryRole) ? u.roles : [...u.roles, primaryRole],
+    );
 
     updateLocalUser(u.id, {
       roles,
       primaryRole,
+      role: primaryRole,
     });
   };
 
@@ -277,8 +373,30 @@ const UserAdminPage = () => {
       current.add(inmobiliariaId);
     }
 
+    const selectedInmobiliarias = Array.from(current);
+    const activeInmobiliariaId = getNextActiveInmobiliariaId({
+      currentActiveId: u.activeInmobiliariaId,
+      selectedInmobiliarias,
+    });
+
+    const inmobiliariaRoles = buildInmobiliariaRoles(
+      {
+        ...u,
+        inmobiliarias: selectedInmobiliarias,
+      },
+      selectedInmobiliarias,
+    );
+
     updateLocalUser(u.id, {
-      inmobiliarias: Array.from(current),
+      inmobiliarias: selectedInmobiliarias,
+      activeInmobiliariaId,
+      inmobiliariaRoles,
+    });
+  };
+
+  const updateActiveInmobiliaria = (u, activeInmobiliariaId) => {
+    updateLocalUser(u.id, {
+      activeInmobiliariaId,
     });
   };
 
@@ -302,20 +420,110 @@ const UserAdminPage = () => {
     setSuccessMessage(null);
 
     try {
-      const ref = doc(db, "users", u.id);
+      const selectedInmobiliarias = Array.isArray(u.inmobiliarias)
+        ? u.inmobiliarias
+        : [];
 
-      await updateDoc(ref, {
-        roles: u.roles,
-        primaryRole: u.primaryRole,
-        role: u.primaryRole,
-        inmobiliarias: u.inmobiliarias || [],
+      const roles = normalizeRoles(u.roles);
+      const primaryRole = getPrimaryRoleFromRoles(roles);
+
+      const activeInmobiliariaId = getNextActiveInmobiliariaId({
+        currentActiveId: u.activeInmobiliariaId,
+        selectedInmobiliarias,
+      });
+
+      const inmobiliariaRoles = buildInmobiliariaRoles(
+        {
+          ...u,
+          inmobiliarias: selectedInmobiliarias,
+        },
+        selectedInmobiliarias,
+      );
+
+      const previousInmobiliarias = Array.isArray(u._originalInmobiliarias)
+        ? u._originalInmobiliarias
+        : [];
+
+      const addedInmobiliarias = getAddedInmobiliarias(
+        previousInmobiliarias,
+        selectedInmobiliarias,
+      );
+
+      const removedInmobiliarias = getRemovedInmobiliarias(
+        previousInmobiliarias,
+        selectedInmobiliarias,
+      );
+
+      const batch = writeBatch(db);
+      const userRef = doc(db, "users", u.id);
+
+      batch.update(userRef, {
+        roles,
+        primaryRole,
+        role: primaryRole,
+        inmobiliarias: selectedInmobiliarias,
+        activeInmobiliariaId,
+        inmobiliariaRoles,
         updatedAt: serverTimestamp(),
       });
+
+      addedInmobiliarias.forEach((inmobiliariaId) => {
+        const inmobiliariaRef = doc(db, "inmobiliarias", inmobiliariaId);
+
+        batch.update(inmobiliariaRef, {
+          admins: arrayUnion(u.id),
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      removedInmobiliarias.forEach((inmobiliariaId) => {
+        const inmobiliariaRef = doc(db, "inmobiliarias", inmobiliariaId);
+
+        batch.update(inmobiliariaRef, {
+          admins: arrayRemove(u.id),
+          updatedAt: serverTimestamp(),
+        });
+      });
+
+      await batch.commit();
+
+      updateLocalUser(u.id, {
+        roles,
+        primaryRole,
+        role: primaryRole,
+        inmobiliarias: selectedInmobiliarias,
+        activeInmobiliariaId,
+        inmobiliariaRoles,
+        _originalInmobiliarias: selectedInmobiliarias,
+      });
+
+      setInmobiliarias((prev) =>
+        prev.map((inmobiliaria) => {
+          if (addedInmobiliarias.includes(inmobiliaria.id)) {
+            return {
+              ...inmobiliaria,
+              admins: Array.from(new Set([...(inmobiliaria.admins || []), u.id])),
+            };
+          }
+
+          if (removedInmobiliarias.includes(inmobiliaria.id)) {
+            return {
+              ...inmobiliaria,
+              admins: (inmobiliaria.admins || []).filter((id) => id !== u.id),
+            };
+          }
+
+          return inmobiliaria;
+        }),
+      );
 
       setSuccessMessage(`Usuario ${u.email || u.id} actualizado.`);
     } catch (err) {
       console.error(err);
-      setError("Error guardando cambios del usuario.");
+      setError(
+        err.message ||
+        "Error guardando cambios del usuario. Revisá permisos y reglas.",
+      );
     } finally {
       setSavingUserId(null);
     }
@@ -374,8 +582,8 @@ const UserAdminPage = () => {
             </p>
             <h1 className="h3 mb-1">Usuarios, roles y suscripciones</h1>
             <p className="text-muted mb-0">
-              Root administra todos los usuarios y define qué módulos tiene
-              habilitados cada cliente inmobiliario.
+              Root administra usuarios, roles globales, inmobiliarias asignadas
+              y módulos habilitados por cliente.
             </p>
           </div>
 
@@ -428,7 +636,8 @@ const UserAdminPage = () => {
             <div>
               <h2 className="h4 mb-1">Usuarios</h2>
               <p className="text-muted mb-0">
-                Asigná roles y vinculá usuarios a una o más inmobiliarias.
+                Asigná roles, vinculá usuarios a inmobiliarias y definí la
+                inmobiliaria activa inicial.
               </p>
             </div>
 
@@ -450,6 +659,7 @@ const UserAdminPage = () => {
                   <th>Rol principal</th>
                   <th>Roles</th>
                   <th>Inmobiliarias</th>
+                  <th>Activa</th>
                   <th className="text-end">Acciones</th>
                 </tr>
               </thead>
@@ -457,6 +667,7 @@ const UserAdminPage = () => {
               <tbody>
                 {filteredUsers.map((u) => {
                   const isSelf = u.id === currentUser?.uid;
+                  const selectedInmobiliarias = u.inmobiliarias || [];
 
                   return (
                     <tr key={u.id}>
@@ -464,6 +675,9 @@ const UserAdminPage = () => {
                         <div className="fw-semibold">{u.email || u.id}</div>
                         <div className="small text-muted">
                           {u.displayName || "Sin nombre"}
+                        </div>
+                        <div className="small text-muted mt-1">
+                          ID: {u.id}
                         </div>
                       </td>
 
@@ -488,7 +702,7 @@ const UserAdminPage = () => {
                         )}
                       </td>
 
-                      <td style={{ minWidth: 240 }}>
+                      <td style={{ minWidth: 260 }}>
                         <div className="d-flex flex-wrap gap-3">
                           {ALL_ROLES.map((role) => (
                             <div key={role} className="form-check">
@@ -496,7 +710,7 @@ const UserAdminPage = () => {
                                 id={`role-${u.id}-${role}`}
                                 className="form-check-input"
                                 type="checkbox"
-                                checked={u.roles.includes(role)}
+                                checked={normalizeRoles(u.roles).includes(role)}
                                 disabled={isSelf}
                                 onChange={() => toggleRole(u, role)}
                               />
@@ -522,7 +736,7 @@ const UserAdminPage = () => {
                                 id={`user-${u.id}-inmo-${inmobiliaria.id}`}
                                 className="form-check-input"
                                 type="checkbox"
-                                checked={(u.inmobiliarias || []).includes(
+                                checked={selectedInmobiliarias.includes(
                                   inmobiliaria.id,
                                 )}
                                 disabled={isSelf}
@@ -547,6 +761,34 @@ const UserAdminPage = () => {
                         </div>
                       </td>
 
+                      <td style={{ minWidth: 220 }}>
+                        <select
+                          className="form-select"
+                          value={u.activeInmobiliariaId || ""}
+                          disabled={isSelf || selectedInmobiliarias.length === 0}
+                          onChange={(e) =>
+                            updateActiveInmobiliaria(u, e.target.value)
+                          }
+                        >
+                          {selectedInmobiliarias.length === 0 && (
+                            <option value="">Sin inmobiliaria</option>
+                          )}
+
+                          {selectedInmobiliarias.map((inmobiliariaId) => (
+                            <option key={inmobiliariaId} value={inmobiliariaId}>
+                              {inmobiliariasById[inmobiliariaId]?.nombre ||
+                                inmobiliariaId}
+                            </option>
+                          ))}
+                        </select>
+
+                        {selectedInmobiliarias.length > 0 && (
+                          <div className="form-text">
+                            Se usa como inmobiliaria inicial del usuario.
+                          </div>
+                        )}
+                      </td>
+
                       <td className="text-end">
                         <button
                           type="button"
@@ -563,13 +805,20 @@ const UserAdminPage = () => {
 
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="text-center text-muted py-4">
+                    <td colSpan={6} className="text-center text-muted py-4">
                       No hay usuarios para mostrar.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+
+          <div className="alert alert-info small mt-3 mb-0">
+            Al guardar un usuario, se actualiza también{" "}
+            <strong>activeInmobiliariaId</strong>,{" "}
+            <strong>inmobiliariaRoles</strong> y el array{" "}
+            <strong>admins</strong> de las inmobiliarias agregadas o quitadas.
           </div>
         </div>
       </section>
@@ -580,8 +829,8 @@ const UserAdminPage = () => {
             <div>
               <h2 className="h4 mb-1">Suscripciones por inmobiliaria</h2>
               <p className="text-muted mb-0">
-                Estos módulos van a definir qué funcionalidades ve y puede usar
-                cada admin de inmobiliaria.
+                Estos módulos definen qué funcionalidades ve y puede usar cada
+                admin de inmobiliaria.
               </p>
             </div>
 
@@ -606,6 +855,9 @@ const UserAdminPage = () => {
                         {inmobiliaria.slug
                           ? `/inmobiliaria/${inmobiliaria.slug}`
                           : "Sin slug"}
+                      </div>
+                      <div className="small text-muted">
+                        Admins: {(inmobiliaria.admins || []).length}
                       </div>
                     </div>
 

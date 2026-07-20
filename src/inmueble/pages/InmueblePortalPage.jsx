@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
+import { getActiveParticularPublications } from "../../particular/services/particularPublicationListing.service";
 import { getPublicInmuebles } from "../services/inmueble.service";
 
 const INITIAL_FILTERS = {
     search: "",
+    sourceType: "",
     operacion: "",
     tipo: "",
     ciudad: "",
@@ -15,6 +17,11 @@ const INITIAL_FILTERS = {
     precioMax: "",
     sortBy: "destacados",
 };
+
+const SOURCE_TYPES = [
+    { value: "inmobiliaria", label: "Inmobiliarias" },
+    { value: "particular", label: "Particulares" },
+];
 
 const OPERACIONES = [
     { value: "venta", label: "Venta" },
@@ -57,10 +64,7 @@ const normalizeText = (value = "") => {
 };
 
 const normalizeSeoText = (value = "") => {
-    return value
-        .toString()
-        .replace(/\s+/g, " ")
-        .trim();
+    return value.toString().replace(/\s+/g, " ").trim();
 };
 
 const truncateText = (value = "", maxLength = 165) => {
@@ -74,13 +78,20 @@ const truncateText = (value = "", maxLength = 165) => {
 const toNumber = (value) => {
     if (value === null || value === undefined || value === "") return null;
 
-    const cleanValue = value.toString().replace(/\./g, "").replace(",", ".");
+    const cleanValue = value
+        .toString()
+        .replace(/[^\d,.-]/g, "")
+        .replace(/\./g, "")
+        .replace(",", ".");
+
     const number = Number(cleanValue);
 
     return Number.isFinite(number) ? number : null;
 };
 
 const formatPrice = (inmueble) => {
+    if (inmueble?.precioLabel) return inmueble.precioLabel;
+
     if (!inmueble?.precio) return "Consultar";
 
     const moneda = inmueble.moneda || "USD";
@@ -106,12 +117,14 @@ const getDireccionValue = (inmueble, key) => {
 };
 
 const buildAddress = (inmueble) => {
-    return [
+    const address = [
         getDireccionValue(inmueble, "barrio"),
         getDireccionValue(inmueble, "ciudad"),
     ]
         .filter(Boolean)
         .join(", ");
+
+    return address || inmueble?.ubicacion || "";
 };
 
 const getCoverImage = (inmueble) => {
@@ -143,6 +156,13 @@ const getActiveFilterBadges = (filters) => {
         badges.push({
             key: "search",
             label: `Búsqueda: ${filters.search}`,
+        });
+    }
+
+    if (filters.sourceType) {
+        badges.push({
+            key: "sourceType",
+            label: `Origen: ${getOptionLabel(SOURCE_TYPES, filters.sourceType)}`,
         });
     }
 
@@ -209,6 +229,7 @@ const getFiltersFromSearchParams = (searchParams) => {
     return {
         ...INITIAL_FILTERS,
         search: searchParams.get("search") || "",
+        sourceType: searchParams.get("sourceType") || "",
         operacion: searchParams.get("operacion") || "",
         tipo: searchParams.get("tipo") || "",
         ciudad: searchParams.get("ciudad") || "",
@@ -246,6 +267,8 @@ const matchesTextSearch = (inmueble, search) => {
         inmueble.descripcion,
         inmueble.tipo,
         inmueble.operacion,
+        inmueble.ubicacion,
+        inmueble.sourceLabel,
         getDireccionValue(inmueble, "calle"),
         getDireccionValue(inmueble, "barrio"),
         getDireccionValue(inmueble, "ciudad"),
@@ -259,6 +282,10 @@ const matchesTextSearch = (inmueble, search) => {
 
 const matchesFilters = (inmueble, filters) => {
     if (!matchesTextSearch(inmueble, filters.search)) return false;
+
+    if (filters.sourceType && inmueble.sourceType !== filters.sourceType) {
+        return false;
+    }
 
     if (filters.operacion && inmueble.operacion !== filters.operacion) {
         return false;
@@ -362,7 +389,11 @@ const sortInmuebles = (items, sortBy) => {
             );
         }
 
-        return Number(Boolean(b.destacado)) - Number(Boolean(a.destacado));
+        if (a.destacado !== b.destacado) {
+            return Number(Boolean(b.destacado)) - Number(Boolean(a.destacado));
+        }
+
+        return getDateValue(b.createdAt) - getDateValue(a.createdAt);
     });
 
     return sortedItems;
@@ -381,6 +412,10 @@ const buildPortalUrl = (searchParamsString = "") => {
 
 const buildSeoTitle = (filters) => {
     const parts = [];
+
+    if (filters.sourceType) {
+        parts.push(getOptionLabel(SOURCE_TYPES, filters.sourceType));
+    }
 
     if (filters.tipo) {
         parts.push(getOptionLabel(TIPOS, filters.tipo));
@@ -401,10 +436,10 @@ const buildSeoTitle = (filters) => {
     }
 
     if (parts.length === 0) {
-        return "Inmuebles publicados | LaDoctaProp";
+        return "Inmuebles publicados | ONO Prop";
     }
 
-    return `${parts.join(" ")} | LaDoctaProp`;
+    return `${parts.join(" ")} | ONO Prop`;
 };
 
 const buildSeoDescription = ({ filters, resultCount }) => {
@@ -412,11 +447,15 @@ const buildSeoDescription = ({ filters, resultCount }) => {
 
     if (resultCount > 0) {
         parts.push(
-            `${resultCount} ${resultCount === 1 ? "inmueble publicado" : "inmuebles publicados"
+            `${resultCount} ${resultCount === 1 ? "publicación inmobiliaria" : "publicaciones inmobiliarias"
             }`,
         );
     } else {
         parts.push("Buscador de inmuebles publicados");
+    }
+
+    if (filters.sourceType) {
+        parts.push(`origen ${getOptionLabel(SOURCE_TYPES, filters.sourceType)}`);
     }
 
     if (filters.operacion) {
@@ -453,20 +492,36 @@ const buildSeoDescription = ({ filters, resultCount }) => {
     const baseDescription =
         parts.length > 1
             ? parts.join(", ")
-            : "Filtrá propiedades por operación, tipo, ciudad, barrio, dormitorios y precio.";
+            : "Filtrá propiedades por operación, tipo, ciudad, barrio, dormitorios, precio y origen.";
 
     return truncateText(
-        `${baseDescription}. Consultá propiedades publicadas en LaDoctaProp y compartí búsquedas inmobiliarias.`,
+        `${baseDescription}. Consultá propiedades publicadas por inmobiliarias y particulares en ONO Prop.`,
     );
+};
+
+const buildPortalItemUrl = (inmueble) => {
+    const path =
+        inmueble?.publicPath ||
+        (inmueble?.slug || inmueble?.id
+            ? `/inmueble/${inmueble.slug || inmueble.id}`
+            : "");
+
+    if (!path) return "";
+
+    if (typeof window === "undefined") {
+        return path;
+    }
+
+    return `${window.location.origin}${path}`;
 };
 
 const buildItemListJsonLd = ({ filteredInmuebles, seoUrl }) => {
     return {
         "@context": "https://schema.org",
         "@type": "CollectionPage",
-        name: "Inmuebles publicados en LaDoctaProp",
+        name: "Inmuebles publicados en ONO Prop",
         description:
-            "Buscador público de inmuebles publicados en LaDoctaProp.",
+            "Buscador público de inmuebles publicados por inmobiliarias y particulares en ONO Prop.",
         url: seoUrl,
         mainEntity: {
             "@type": "ItemList",
@@ -485,6 +540,10 @@ const buildItemListJsonLd = ({ filteredInmuebles, seoUrl }) => {
                         image: coverImage?.url || undefined,
                         price: toNumber(inmueble.precio) || undefined,
                         priceCurrency: inmueble.moneda || "USD",
+                        seller: {
+                            "@type": "Organization",
+                            name: inmueble.sourceLabel || "ONO Prop",
+                        },
                         itemOffered: {
                             "@type": "Place",
                             name: inmueble.titulo || "Inmueble publicado",
@@ -497,16 +556,234 @@ const buildItemListJsonLd = ({ filteredInmuebles, seoUrl }) => {
     };
 };
 
-const buildPortalItemUrl = (inmueble) => {
-    const slugOrId = inmueble?.slug || inmueble?.id;
+const mapInmuebleToPortalItem = (inmueble) => {
+    const slugOrId = inmueble.slug || inmueble.id;
 
-    if (!slugOrId) return "";
+    const sourceLabel =
+        inmueble.inmobiliariaNombre ||
+        inmueble.inmobiliariaDisplayName ||
+        inmueble.agenciaNombre ||
+        inmueble.inmobiliaria?.nombre ||
+        "Inmobiliaria adherida";
 
-    if (typeof window === "undefined") {
-        return `/inmueble/${slugOrId}`;
+    return {
+        ...inmueble,
+        sourceType: "inmobiliaria",
+        sourceLabel,
+        sourceTypeLabel: "Inmobiliaria",
+        sourceBadgeClass: "text-bg-primary",
+        sourceLogoUrl:
+            inmueble.inmobiliariaLogoUrl ||
+            inmueble.agenciaLogoUrl ||
+            inmueble.inmobiliaria?.branding?.logo?.url ||
+            inmueble.inmobiliaria?.logoUrl ||
+            "",
+        inmobiliariaSlug:
+            inmueble.inmobiliariaSlug ||
+            inmueble.agenciaSlug ||
+            inmueble.inmobiliaria?.slug ||
+            "",
+        publicPath: slugOrId ? `/inmueble/${slugOrId}` : "",
+        precioLabel: "",
+        createdAt: inmueble.createdAt || inmueble.updatedAt || null,
+        destacado: Boolean(inmueble.destacado),
+    };
+};
+
+const mapParticularPublicationToPortalItem = (publication) => {
+    const direccion =
+        publication.direccion && typeof publication.direccion === "object"
+            ? publication.direccion
+            : {};
+
+    const ciudad =
+        publication.ciudad ||
+        direccion.ciudad ||
+        publication.localidad ||
+        "";
+
+    const barrio =
+        publication.barrio ||
+        direccion.barrio ||
+        "";
+
+    const precio =
+        publication.precio ||
+        publication.precioEstimado ||
+        "";
+
+    return {
+        id: publication.id,
+        sourceType: "particular",
+        sourceLabel: "Dueño particular",
+        sourceTypeLabel: "Particular",
+        sourceBadgeClass: "text-bg-dark",
+        sourceLogoUrl: "",
+        inmobiliariaSlug: "",
+        publicPath: `/particulares/${publication.id}`,
+
+        titulo:
+            publication.titulo ||
+            publication.ubicacion ||
+            "Publicación particular",
+
+        descripcion: publication.descripcion || "",
+        operacion: publication.operacion || "",
+        tipo: publication.tipo || "",
+
+        ubicacion:
+            publication.ubicacion ||
+            [barrio, ciudad].filter(Boolean).join(", ") ||
+            "Ubicación a consultar",
+
+        ciudad,
+        barrio,
+        direccion,
+
+        precio,
+        precioLabel: precio || "Consultar",
+        moneda: publication.moneda || "",
+
+        ambientes: publication.ambientes || "",
+        dormitorios: publication.dormitorios || "",
+        banos: publication.banos || publication.banios || "",
+        cocheras: publication.cocheras || "",
+
+        superficie:
+            publication.superficie && typeof publication.superficie === "object"
+                ? publication.superficie
+                : {
+                    total: publication.superficieTotal || "",
+                    cubierta: publication.superficieCubierta || "",
+                },
+
+        images: Array.isArray(publication.images) ? publication.images : [],
+
+        destacado: false,
+
+        createdAt:
+            publication.approvedAt ||
+            publication.createdAt ||
+            publication.updatedAt ||
+            null,
+
+        updatedAt: publication.updatedAt || null,
+
+        publicStatus: publication.publicStatus || "active",
+        moderationStatus: publication.moderationStatus || "approved",
+
+        raw: publication,
+    };
+};
+
+const getSourceDisplayName = (inmueble) => {
+    if (inmueble?.sourceType === "particular") {
+        return "Dueño particular";
     }
 
-    return `${window.location.origin}/inmueble/${slugOrId}`;
+    return (
+        inmueble?.sourceLabel ||
+        inmueble?.inmobiliariaNombre ||
+        inmueble?.agenciaNombre ||
+        inmueble?.inmobiliaria?.nombre ||
+        "Inmobiliaria adherida"
+    );
+};
+
+const getSourceTypeLabel = (inmueble) => {
+    if (inmueble?.sourceType === "particular") {
+        return "Particular";
+    }
+
+    return "Inmobiliaria";
+};
+
+const getSourceBadgeClass = (inmueble) => {
+    if (inmueble?.sourceType === "particular") {
+        return "text-bg-dark";
+    }
+
+    return "text-bg-primary";
+};
+
+const getSourceLogoUrl = (inmueble) => {
+    if (inmueble?.sourceType === "particular") {
+        return "";
+    }
+
+    return (
+        inmueble?.sourceLogoUrl ||
+        inmueble?.inmobiliariaLogoUrl ||
+        inmueble?.agenciaLogoUrl ||
+        inmueble?.inmobiliaria?.branding?.logo?.url ||
+        inmueble?.inmobiliaria?.logoUrl ||
+        ""
+    );
+};
+
+const getSourceInitial = (name = "") => {
+    const cleanName = name.toString().trim();
+
+    if (!cleanName) return "I";
+
+    return cleanName.slice(0, 1).toUpperCase();
+};
+
+const getPhotoCount = (inmueble) => {
+    if (!Array.isArray(inmueble?.images)) return 0;
+
+    return inmueble.images.filter((image) => image?.url).length;
+};
+
+const getShortDescription = (description = "", maxLength = 115) => {
+    const cleanDescription = description.toString().replace(/\s+/g, " ").trim();
+
+    if (cleanDescription.length <= maxLength) {
+        return cleanDescription;
+    }
+
+    return `${cleanDescription.slice(0, maxLength).trim()}...`;
+};
+
+const getFeatureItems = (inmueble) => {
+    const items = [];
+
+    if (inmueble?.ambientes) {
+        items.push({
+            key: "ambientes",
+            label: `${inmueble.ambientes} amb.`,
+        });
+    }
+
+    if (inmueble?.dormitorios) {
+        items.push({
+            key: "dormitorios",
+            label: `${inmueble.dormitorios} dorm.`,
+        });
+    }
+
+    if (inmueble?.banos) {
+        items.push({
+            key: "banos",
+            label: `${inmueble.banos} baños`,
+        });
+    }
+
+    if (inmueble?.superficie?.total) {
+        items.push({
+            key: "superficie",
+            label: `${formatNumber(inmueble.superficie.total)} m²`,
+        });
+    }
+
+    if (inmueble?.cocheras) {
+        items.push({
+            key: "cocheras",
+            label: `${inmueble.cocheras} coch.`,
+        });
+    }
+
+    return items;
 };
 
 const InmueblePortalPage = () => {
@@ -575,6 +852,16 @@ const InmueblePortalPage = () => {
         return inmuebles.filter((inmueble) => inmueble.destacado).length;
     }, [inmuebles]);
 
+    const inmobiliariasCount = useMemo(() => {
+        return inmuebles.filter((inmueble) => inmueble.sourceType === "inmobiliaria")
+            .length;
+    }, [inmuebles]);
+
+    const particularesCount = useMemo(() => {
+        return inmuebles.filter((inmueble) => inmueble.sourceType === "particular")
+            .length;
+    }, [inmuebles]);
+
     const seoUrl = useMemo(() => {
         return buildPortalUrl(searchParamsString);
     }, [searchParamsString]);
@@ -611,11 +898,31 @@ const InmueblePortalPage = () => {
                 setLoading(true);
                 setError(null);
 
-                const result = await getPublicInmuebles({
-                    pageSize: 100,
-                });
+                const [inmueblesResult, particularPublicationsResult] =
+                    await Promise.all([
+                        getPublicInmuebles({
+                            pageSize: 100,
+                        }),
+                        getActiveParticularPublications({
+                            pageSize: 100,
+                        }),
+                    ]);
 
-                setInmuebles(result?.data || []);
+                const inmobiliariaItems = (inmueblesResult?.data || []).map(
+                    mapInmuebleToPortalItem,
+                );
+
+                const particularPublications = Array.isArray(
+                    particularPublicationsResult,
+                )
+                    ? particularPublicationsResult
+                    : particularPublicationsResult?.data || [];
+
+                const particularItems = particularPublications.map(
+                    mapParticularPublicationToPortalItem,
+                );
+
+                setInmuebles([...inmobiliariaItems, ...particularItems]);
             } catch (err) {
                 console.error("Error cargando portal público de inmuebles:", err);
 
@@ -705,7 +1012,7 @@ const InmueblePortalPage = () => {
             }
 
             const message = [
-                "Te comparto esta búsqueda de inmuebles en LaDocTaProp:",
+                "Te comparto esta búsqueda de inmuebles en ONO Prop:",
                 currentUrl,
             ].join("\n");
 
@@ -732,7 +1039,7 @@ const InmueblePortalPage = () => {
                 image={seoImage}
                 url={seoUrl}
                 type="website"
-                siteName="LaDoctaProp"
+                siteName="ONO Prop"
                 jsonLd={portalJsonLd}
             />
 
@@ -748,8 +1055,8 @@ const InmueblePortalPage = () => {
 
                             <p className="lead text-muted mb-0">
                                 Filtrá propiedades por operación, tipo, ciudad, barrio,
-                                dormitorios y precio. Compartí búsquedas o entrá a la ficha para
-                                consultar directo.
+                                dormitorios, precio y origen. Encontrá publicaciones de
+                                inmobiliarias adheridas y propietarios particulares.
                             </p>
                         </div>
 
@@ -764,7 +1071,27 @@ const InmueblePortalPage = () => {
 
                                 <div className="col-6">
                                     <div className="portal-stat">
-                                        <div className="portal-stat-number">{destacadosCount}</div>
+                                        <div className="portal-stat-number">
+                                            {inmobiliariasCount}
+                                        </div>
+                                        <div className="small text-muted">Inmobiliarias</div>
+                                    </div>
+                                </div>
+
+                                <div className="col-6">
+                                    <div className="portal-stat">
+                                        <div className="portal-stat-number">
+                                            {particularesCount}
+                                        </div>
+                                        <div className="small text-muted">Particulares</div>
+                                    </div>
+                                </div>
+
+                                <div className="col-6">
+                                    <div className="portal-stat">
+                                        <div className="portal-stat-number">
+                                            {destacadosCount}
+                                        </div>
                                         <div className="small text-muted">Destacadas</div>
                                     </div>
                                 </div>
@@ -785,6 +1112,23 @@ const InmueblePortalPage = () => {
                                         value={filters.search}
                                         onChange={handleFilterChange}
                                     />
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Origen</label>
+                                    <select
+                                        name="sourceType"
+                                        className="form-select"
+                                        value={filters.sourceType}
+                                        onChange={handleFilterChange}
+                                    >
+                                        <option value="">Todos</option>
+                                        {SOURCE_TYPES.map((sourceType) => (
+                                            <option key={sourceType.value} value={sourceType.value}>
+                                                {sourceType.label}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
 
                                 <div className="col-6 col-lg-3 col-xl-2">
@@ -993,45 +1337,57 @@ const InmueblePortalPage = () => {
                             {filteredInmuebles.map((inmueble) => {
                                 const coverImage = getCoverImage(inmueble);
                                 const address = buildAddress(inmueble);
-                                const detalleUrl = `/inmueble/${inmueble.slug || inmueble.id}`;
+                                const detalleUrl =
+                                    inmueble.publicPath || `/inmueble/${inmueble.slug || inmueble.id}`;
+                                const sourceName = getSourceDisplayName(inmueble);
+                                const sourceTypeLabel = getSourceTypeLabel(inmueble);
+                                const sourceBadgeClass = getSourceBadgeClass(inmueble);
+                                const sourceLogoUrl = getSourceLogoUrl(inmueble);
+                                const photoCount = getPhotoCount(inmueble);
+                                const featureItems = getFeatureItems(inmueble);
+                                const shortDescription = getShortDescription(inmueble.descripcion);
 
                                 return (
                                     <article
                                         className="col-12 col-md-6 col-xl-4"
-                                        key={inmueble.id}
+                                        key={`${inmueble.sourceType || "inmobiliaria"}-${inmueble.id}`}
                                     >
-                                        <div className="card h-100 shadow-sm border-0 overflow-hidden">
-                                            <div className="position-relative">
-                                                {coverImage ? (
-                                                    <img
-                                                        src={coverImage.url}
-                                                        alt={inmueble.titulo}
-                                                        className="card-img-top"
-                                                        style={{
-                                                            height: 250,
-                                                            objectFit: "cover",
-                                                        }}
-                                                        loading="lazy"
-                                                    />
-                                                ) : (
-                                                    <div
-                                                        className="bg-light d-flex align-items-center justify-content-center text-muted"
-                                                        style={{ height: 250 }}
-                                                    >
-                                                        Sin imagen
-                                                    </div>
-                                                )}
+                                        <div className="card h-100 shadow-sm border-0 overflow-hidden portal-listing-card">
+                                            <div className="position-relative portal-listing-image-wrap">
+                                                <Link
+                                                    to={detalleUrl}
+                                                    className="text-decoration-none"
+                                                    onClick={saveCurrentSearchUrl}
+                                                    aria-label={`Ver ${inmueble.titulo || "publicación"}`}
+                                                >
+                                                    {coverImage ? (
+                                                        <img
+                                                            src={coverImage.url}
+                                                            alt={inmueble.titulo || "Inmueble publicado"}
+                                                            className="card-img-top portal-listing-image"
+                                                            loading="lazy"
+                                                        />
+                                                    ) : (
+                                                        <div className="portal-listing-image-empty">
+                                                            Sin imagen
+                                                        </div>
+                                                    )}
+                                                </Link>
 
                                                 <div className="position-absolute top-0 start-0 p-3 d-flex flex-wrap gap-2">
+                                                    <span className={`badge ${sourceBadgeClass}`}>
+                                                        {sourceTypeLabel}
+                                                    </span>
+
                                                     {inmueble.operacion && (
-                                                        <span className="badge text-bg-primary">
-                                                            {inmueble.operacion}
+                                                        <span className="badge text-bg-light text-dark border">
+                                                            {getOptionLabel(OPERACIONES, inmueble.operacion)}
                                                         </span>
                                                     )}
 
                                                     {inmueble.tipo && (
                                                         <span className="badge text-bg-dark">
-                                                            {inmueble.tipo}
+                                                            {getOptionLabel(TIPOS, inmueble.tipo)}
                                                         </span>
                                                     )}
                                                 </div>
@@ -1039,61 +1395,102 @@ const InmueblePortalPage = () => {
                                                 {inmueble.destacado && (
                                                     <div className="position-absolute top-0 end-0 p-3">
                                                         <span className="badge text-bg-warning">
-                                                            Destacado
+                                                            ★ Destacado
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {photoCount > 0 && (
+                                                    <div className="position-absolute bottom-0 end-0 p-3">
+                                                        <span className="badge text-bg-dark bg-opacity-75">
+                                                            {photoCount} foto{photoCount === 1 ? "" : "s"}
                                                         </span>
                                                     </div>
                                                 )}
                                             </div>
 
                                             <div className="card-body d-flex flex-column p-4">
-                                                <h2 className="h5 mb-2">{inmueble.titulo}</h2>
-
-                                                {address && (
-                                                    <p className="text-muted small mb-2">{address}</p>
-                                                )}
-
-                                                <div className="h4 mb-3">{formatPrice(inmueble)}</div>
-
-                                                <div className="row g-2 small text-muted mb-3">
-                                                    {inmueble.dormitorios && (
-                                                        <div className="col-6">
-                                                            {inmueble.dormitorios} dorm.
+                                                <div className="d-flex align-items-center gap-2 mb-3 pb-3 border-bottom">
+                                                    {sourceLogoUrl ? (
+                                                        <img
+                                                            src={sourceLogoUrl}
+                                                            alt={sourceName}
+                                                            className="portal-source-avatar"
+                                                            loading="lazy"
+                                                        />
+                                                    ) : (
+                                                        <div className="portal-source-avatar portal-source-avatar-fallback">
+                                                            {getSourceInitial(sourceName)}
                                                         </div>
                                                     )}
 
-                                                    {inmueble.banos && (
-                                                        <div className="col-6">{inmueble.banos} baños</div>
-                                                    )}
-
-                                                    {inmueble.superficie?.total && (
-                                                        <div className="col-6">
-                                                            {formatNumber(inmueble.superficie.total)} m²
+                                                    <div className="min-w-0">
+                                                        <div className="small text-muted lh-sm">Publicado por</div>
+                                                        <div className="fw-semibold small text-truncate">
+                                                            {sourceName}
                                                         </div>
-                                                    )}
-
-                                                    {inmueble.cocheras && (
-                                                        <div className="col-6">
-                                                            {inmueble.cocheras} coch.
-                                                        </div>
-                                                    )}
+                                                    </div>
                                                 </div>
 
-                                                {inmueble.descripcion && (
-                                                    <p className="text-muted small">
-                                                        {inmueble.descripcion.length > 120
-                                                            ? `${inmueble.descripcion.slice(0, 120)}...`
-                                                            : inmueble.descripcion}
+                                                <Link
+                                                    to={detalleUrl}
+                                                    className="text-decoration-none text-dark"
+                                                    onClick={saveCurrentSearchUrl}
+                                                >
+                                                    <h2 className="h5 mb-2 portal-listing-title">
+                                                        {inmueble.titulo || "Inmueble publicado"}
+                                                    </h2>
+                                                </Link>
+
+                                                {address && (
+                                                    <p className="text-muted small mb-2">
+                                                        📍 {address}
                                                     </p>
                                                 )}
 
-                                                <div className="mt-auto d-grid">
+                                                <div className="h4 mb-3 portal-listing-price">
+                                                    {formatPrice(inmueble)}
+                                                </div>
+
+                                                {featureItems.length > 0 && (
+                                                    <div className="d-flex flex-wrap gap-2 small text-muted mb-3">
+                                                        {featureItems.map((item) => (
+                                                            <span
+                                                                className="border rounded-pill px-2 py-1 bg-light"
+                                                                key={item.key}
+                                                            >
+                                                                {item.label}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {shortDescription && (
+                                                    <p className="text-muted small mb-4">
+                                                        {shortDescription}
+                                                    </p>
+                                                )}
+
+                                                <div className="mt-auto d-grid gap-2">
                                                     <Link
                                                         to={detalleUrl}
                                                         className="btn btn-primary"
                                                         onClick={saveCurrentSearchUrl}
                                                     >
-                                                        Ver inmueble
+                                                        {inmueble.sourceType === "particular"
+                                                            ? "Ver publicación"
+                                                            : "Ver inmueble"}
                                                     </Link>
+
+                                                    {inmueble.sourceType === "inmobiliaria" &&
+                                                        inmueble.inmobiliariaSlug && (
+                                                            <Link
+                                                                to={`/inmobiliaria/${inmueble.inmobiliariaSlug}`}
+                                                                className="btn btn-outline-secondary btn-sm"
+                                                            >
+                                                                Ver inmobiliaria
+                                                            </Link>
+                                                        )}
                                                 </div>
                                             </div>
                                         </div>

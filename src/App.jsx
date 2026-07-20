@@ -8,6 +8,12 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import PublicHomeRoute from "./pages/PublicHomeRoute";
 import ReservationPage from "./pages/ReservationPage";
 import UserProfilePage from "./pages/UserProfilePage";
+import LoginPage from "./pages/LoginPage";
+
+// Páginas para usuarios registrados particulares
+import ParticularPublicationRequestPage from "./particular/pages/ParticularPublicationRequestPage";
+import MyParticularPublicationRequestsPage from "./particular/pages/MyParticularPublicationRequestsPage";
+
 
 // Componentes generales
 import Navbar from "./components/Navbar";
@@ -26,6 +32,9 @@ import Calendar from "./components/admin/calendar/Calendar";
 import ReservationManagement from "./components/admin/ReservationManagement";
 import TestimonialManagement from "./components/admin/TestimonialManagement";
 import UserAdminPage from "./pages/UserAdminPage";
+
+import ParticularPublicationRequestsAdminPage from "./particular/pages/ParticularPublicationRequestsAdminPage";
+import ParticularPublicationPublicPage from "./particular/pages/ParticularPublicationPublicPage";
 
 // Cabañas - legado
 import CabanasList from "./cabanas/CabanasList";
@@ -50,6 +59,7 @@ import InmobiliariaModuleGuard from "./inmobiliaria/components/InmobiliariaModul
 import { DomainAgencyProvider } from "./inmobiliaria/context/DomainAgencyContext";
 import InmobiliariaBrandingPage from "./inmobiliaria/pages/InmobiliariaBrandingPage";
 import InmobiliariaUsersPage from "./inmobiliaria/pages/InmobiliariaUsersPage";
+import InmobiliariaParticularRequestsPage from "./particular/pages/InmobiliariaParticularRequestsPage";
 
 // Inmuebles
 import InmuebleAdminPage from "./inmueble/pages/InmuebleAdminPage";
@@ -96,6 +106,7 @@ function App() {
                 <Route path="/galeria" element={<DynamicGallery />} />
                 <Route path="/contacto" element={<Contact />} />
                 <Route path="/reservar" element={<ReservationPage />} />
+                <Route path="/login" element={<LoginPage />} />
 
                 {/* =========================
                   Portal público inmobiliario
@@ -127,6 +138,21 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <UserProfilePage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route path="/publicar" element={<ParticularPublicationRequestPage />} />
+                <Route
+                  path="/particulares/:id"
+                  element={<ParticularPublicationPublicPage />}
+                />
+
+                <Route
+                  path="/mis-publicaciones"
+                  element={
+                    <ProtectedRoute>
+                      <MyParticularPublicationRequestsPage />
                     </ProtectedRoute>
                   }
                 />
@@ -201,6 +227,17 @@ function App() {
                   }
                 />
 
+                <Route
+                  path="/admin/inmobiliaria/solicitudes-particulares"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="consultas">
+                        <InmobiliariaParticularRequestsPage />
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
                 {/* =========================
                   Admin ROOT - Inmobiliarias
                  ========================= */}
@@ -239,6 +276,15 @@ function App() {
                   element={
                     <ProtectedRoute role="root">
                       <InmobiliariasVerificationReviewPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/publicaciones/particulares"
+                  element={
+                    <ProtectedRoute role="root">
+                      <ParticularPublicationRequestsAdminPage />
                     </ProtectedRoute>
                   }
                 />

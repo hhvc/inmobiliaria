@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import InmuebleForm from "../components/InmuebleForm";
 import { getInmuebleById, updateInmueble } from "../services/inmueble.service";
 
 import { useAuth } from "../../context/auth/useAuth";
 import { canEditInmueble } from "../helpers/permissions";
+
+import { updateConvertedPublicationVisibility } from "../../particular/services/particularPublication.service";
 
 /* =========================
    Valores iniciales
@@ -70,13 +72,12 @@ const EMPTY_VALUES = {
   sharedWith: {},
   deleted: false,
 
-  // 🤝 Red de colegas
   sharing: DEFAULT_SHARING,
   networkData: DEFAULT_NETWORK_DATA,
 };
 
 /* =========================
-   Normalización Red de colegas
+   Helpers
    ========================= */
 
 const normalizeSharing = (value = {}) => {
@@ -123,11 +124,50 @@ const removeProtectedFieldsFromPublicData = (formValues = {}) => {
   return publicData;
 };
 
+const getInmuebleOriginInfo = ({ inmueble, fromParticularRequest, queryId }) => {
+  const sourceRequestId =
+    queryId || inmueble?.particularPublicationRequestId || "";
+
+  const isFromParticularRequest =
+    fromParticularRequest ||
+    inmueble?.sourceType === "particular_publication_request" ||
+    Boolean(sourceRequestId);
+
+  return {
+    isFromParticularRequest,
+    sourceRequestId,
+  };
+};
+
+const getInmueblePublicPath = (inmuebleData = {}) => {
+  if (!inmuebleData?.slug) return "";
+
+  return `/inmueble/${inmuebleData.slug}`;
+};
+
+const shouldShowConvertedPublicationToParticular = (inmuebleData = {}) => {
+  return (
+    inmuebleData.estado === "activo" &&
+    Boolean(inmuebleData.publicarEnPortal) &&
+    inmuebleData.deleted !== true
+  );
+};
+
 const InmuebleEditPage = () => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
   const { user, activeInmobiliariaId } = useAuth();
+
+  const queryInmobiliariaId = searchParams.get("inmobiliariaId") || "";
+  const fromParticularRequest =
+    searchParams.get("fromParticularRequest") === "1";
+  const queryParticularRequestId =
+    searchParams.get("particularRequestId") || "";
+
+  const resolvedInmobiliariaIdForLoad =
+    queryInmobiliariaId || activeInmobiliariaId || "";
 
   const [inmueble, setInmueble] = useState(null);
   const [values, setValues] = useState(EMPTY_VALUES);
@@ -137,11 +177,33 @@ const InmuebleEditPage = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
+  const originInfo = useMemo(() => {
+    return getInmuebleOriginInfo({
+      inmueble,
+      fromParticularRequest,
+      queryId: queryParticularRequestId,
+    });
+  }, [fromParticularRequest, inmueble, queryParticularRequestId]);
+
+  const currentInmobiliariaId =
+    inmueble?.inmobiliariaId ||
+    inmueble?.ownerInmobiliariaId ||
+    values?.inmobiliariaId ||
+    resolvedInmobiliariaIdForLoad;
+
+  const previewUrl = currentInmobiliariaId
+    ? `/admin/inmuebles/${id}/preview?inmobiliariaId=${encodeURIComponent(
+      currentInmobiliariaId,
+    )}`
+    : `/admin/inmuebles/${id}/preview`;
+
   /* =========================
      Cargar inmueble
      ========================= */
 
   useEffect(() => {
+    let mounted = true;
+
     const fetchInmueble = async () => {
       try {
         setInitialLoading(true);
@@ -155,11 +217,13 @@ const InmuebleEditPage = () => {
           throw new Error("No se pudo determinar el usuario");
         }
 
-        if (!activeInmobiliariaId) {
-          throw new Error("No hay inmobiliaria activa seleccionada");
+        if (!resolvedInmobiliariaIdForLoad) {
+          throw new Error("No hay inmobiliaria seleccionada para cargar el inmueble");
         }
 
-        const data = await getInmuebleById(activeInmobiliariaId, id);
+        const data = await getInmuebleById(resolvedInmobiliariaIdForLoad, id);
+
+        if (!mounted) return;
 
         if (!data) {
           throw new Error("El inmueble no existe");
@@ -172,7 +236,7 @@ const InmuebleEditPage = () => {
         const resolvedInmobiliariaId =
           data.inmobiliariaId ||
           data.ownerInmobiliariaId ||
-          activeInmobiliariaId;
+          resolvedInmobiliariaIdForLoad;
 
         const normalizedSharing = normalizeSharing(data.sharing || {});
         const normalizedNetworkData = normalizeNetworkData({
@@ -233,18 +297,26 @@ const InmuebleEditPage = () => {
       } catch (err) {
         console.error("Error cargando inmueble:", err);
 
-        if (err.code === "permission-denied") {
-          setError("Acceso denegado");
-        } else {
-          setError(err.message || "Error al cargar el inmueble");
+        if (mounted) {
+          if (err.code === "permission-denied") {
+            setError("Acceso denegado");
+          } else {
+            setError(err.message || "Error al cargar el inmueble");
+          }
         }
       } finally {
-        setInitialLoading(false);
+        if (mounted) {
+          setInitialLoading(false);
+        }
       }
     };
 
     fetchInmueble();
-  }, [id, user, activeInmobiliariaId]);
+
+    return () => {
+      mounted = false;
+    };
+  }, [id, resolvedInmobiliariaIdForLoad, user]);
 
   /* =========================
      Handlers de formulario
@@ -255,8 +327,6 @@ const InmuebleEditPage = () => {
 
     if (!name) return;
 
-    // En edición NO movemos documentos entre subcolecciones.
-    // Para cambiar de inmobiliaria habría que crear una operación específica.
     if (name === "inmobiliariaId") return;
 
     setValues((prev) => ({
@@ -358,12 +428,12 @@ const InmuebleEditPage = () => {
         throw new Error("No hay inmueble cargado");
       }
 
-      const currentInmobiliariaId =
+      const targetInmobiliariaId =
         inmueble.inmobiliariaId ||
         inmueble.ownerInmobiliariaId ||
-        activeInmobiliariaId;
+        resolvedInmobiliariaIdForLoad;
 
-      if (!currentInmobiliariaId) {
+      if (!targetInmobiliariaId) {
         throw new Error("No se pudo determinar la inmobiliaria del inmueble");
       }
 
@@ -389,13 +459,12 @@ const InmuebleEditPage = () => {
       const updatedInmueble = {
         ...publicFormValues,
 
-        // 🔒 Campos de dominio que no deben cambiar desde este formulario
         ownerId: inmueble.ownerId,
         createdBy: inmueble.createdBy || formValues.createdBy || null,
 
-        inmobiliariaId: currentInmobiliariaId,
+        inmobiliariaId: targetInmobiliariaId,
         ownerInmobiliariaId:
-          inmueble.ownerInmobiliariaId || currentInmobiliariaId,
+          inmueble.ownerInmobiliariaId || targetInmobiliariaId,
 
         images: Array.isArray(formValues.images) ? formValues.images : [],
 
@@ -406,19 +475,37 @@ const InmuebleEditPage = () => {
 
         deleted: inmueble.deleted ?? false,
 
-        // Publicación
         estado: formValues.estado || "activo",
         destacado: Boolean(formValues?.destacado),
         publicarEnPortal: Boolean(formValues?.publicarEnPortal),
         noIndex: Boolean(formValues?.noIndex),
 
-        // Red de colegas: datos no sensibles para consulta/query
         sharing: normalizedSharing,
       };
 
-      await updateInmueble(currentInmobiliariaId, id, updatedInmueble, {
+      await updateInmueble(targetInmobiliariaId, id, updatedInmueble, {
         networkData: normalizedSharing.enabled ? normalizedNetworkData : null,
       });
+
+      const sourceRequestId =
+        formValues.particularPublicationRequestId ||
+        inmueble.particularPublicationRequestId ||
+        "";
+
+      if (sourceRequestId) {
+        const publicPath = getInmueblePublicPath({
+          ...inmueble,
+          ...updatedInmueble,
+        });
+
+        await updateConvertedPublicationVisibility(sourceRequestId, {
+          inmuebleId: id,
+          inmobiliariaId: targetInmobiliariaId,
+          titulo: updatedInmueble.titulo,
+          publicPath,
+          visible: shouldShowConvertedPublicationToParticular(updatedInmueble),
+        });
+      }
 
       console.log("✅ Inmueble actualizado:", id);
 
@@ -470,7 +557,7 @@ const InmuebleEditPage = () => {
 
   return (
     <section className="container py-4">
-      <header className="mb-4 d-flex justify-content-between align-items-center">
+      <header className="mb-4 d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
         <div>
           <h1 className="h3 mb-1">Editar inmueble</h1>
           <p className="text-muted mb-0">
@@ -478,14 +565,65 @@ const InmuebleEditPage = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-outline-secondary"
-          onClick={() => navigate("/admin/inmuebles/listado")}
-        >
-          Volver
-        </button>
+        <div className="d-flex flex-wrap gap-2">
+          <Link to={previewUrl} className="btn btn-outline-primary">
+            Vista previa
+          </Link>
+
+          <button
+            type="button"
+            className="btn btn-outline-secondary"
+            onClick={() => navigate("/admin/inmuebles/listado")}
+          >
+            Volver
+          </button>
+        </div>
       </header>
+
+      {originInfo.isFromParticularRequest && (
+        <div className="alert alert-success border">
+          <div className="d-flex flex-column flex-lg-row justify-content-between gap-3">
+            <div>
+              <strong>Inmueble creado desde una solicitud particular.</strong>
+
+              <div className="small mt-1">
+                Revisá los datos precargados, las fotos copiadas, la ubicación,
+                el precio y la configuración de publicación antes de activarlo
+                en el portal.
+              </div>
+
+              <div className="small mt-1">
+                Solicitud original:{" "}
+                <strong>{originInfo.sourceRequestId || "sin ID visible"}</strong>
+                {" · "}
+                Fotos actuales en el inmueble:{" "}
+                <strong>{values.images?.length || 0}</strong>
+              </div>
+            </div>
+
+            <div className="d-flex flex-wrap gap-2 align-self-lg-center">
+              <Link
+                to="/admin/inmobiliaria/solicitudes-particulares"
+                className="btn btn-sm btn-outline-success"
+              >
+                Ver solicitudes
+              </Link>
+
+              <Link to={previewUrl} className="btn btn-sm btn-success">
+                Ver vista previa
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!values.publicarEnPortal && (
+        <div className="alert alert-warning small">
+          Esta publicación todavía no está visible en el portal público. Para
+          publicarla, activá <strong>Publicar en portal</strong> y guardá los
+          cambios.
+        </div>
+      )}
 
       <InmuebleForm
         key={inmueble.id || id}
