@@ -18,7 +18,10 @@ import {
 } from "firebase/firestore";
 
 import { validateInmuebleEstado } from "../../domain/inmueble/inmueble.validators";
-import { assertInmobiliariaActiva } from "../../inmobiliaria/services/inmobiliaria.service";
+import {
+  assertInmobiliariaActiva,
+  getInmobiliariaPublisherSnapshot,
+} from "../../inmobiliaria/services/inmobiliaria.service";
 import { getActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
 
 /* =========================================================
@@ -221,6 +224,44 @@ const resolvePublicListArgs = (
   };
 };
 
+const buildInmueblePublisherSnapshot = async (inmobiliariaId) => {
+  try {
+    return await getInmobiliariaPublisherSnapshot(inmobiliariaId);
+  } catch (error) {
+    console.warn(
+      "No se pudo generar snapshot de publisher para el inmueble:",
+      inmobiliariaId,
+      error,
+    );
+
+    return {
+      publisher: {
+        type: "inmobiliaria",
+        id: inmobiliariaId || "",
+        name: "Inmobiliaria adherida",
+        slug: "",
+        logoUrl: "",
+        verified: false,
+        profilePath: "",
+        contact: {
+          email: "",
+          telefono: "",
+          whatsapp: "",
+        },
+      },
+
+      inmobiliariaNombre: "Inmobiliaria adherida",
+      inmobiliariaSlug: "",
+      inmobiliariaLogoUrl: "",
+
+      sourceLabel: "Inmobiliaria adherida",
+      sourceLogoUrl: "",
+      sourceTypeLabel: "Inmobiliaria",
+      sourceBadgeClass: "text-bg-primary",
+    };
+  }
+};
+
 /* =========================================================
    Helpers Red de colegas
    ========================================================= */
@@ -358,6 +399,8 @@ export const createInmueble = async (
   try {
     await assertInmobiliariaActiva(inmobiliariaId);
 
+    const publisherSnapshot = await buildInmueblePublisherSnapshot(inmobiliariaId);
+
     const currentUser = auth.currentUser;
 
     const estadoValidado = validateInmuebleEstado(data.estado || "activo");
@@ -367,6 +410,7 @@ export const createInmueble = async (
 
     const docRef = await addDoc(inmueblesCollection(inmobiliariaId), {
       ...publicPayload,
+      ...publisherSnapshot,
 
       // 🔑 Dominio / compatibilidad
       inmobiliariaId,
@@ -777,6 +821,8 @@ export const updateInmueble = async (
   try {
     await assertInmobiliariaActiva(inmobiliariaId);
 
+    const publisherSnapshot = await buildInmueblePublisherSnapshot(inmobiliariaId);
+
     const payload = sanitizeUpdatePayload(data);
     const sharing = normalizeSharing(payload.sharing || {});
 
@@ -798,6 +844,8 @@ export const updateInmueble = async (
 
     await updateDoc(ref, {
       ...payload,
+      ...publisherSnapshot,
+
 
       // 🔑 Mantener coherencia con el path
       inmobiliariaId,

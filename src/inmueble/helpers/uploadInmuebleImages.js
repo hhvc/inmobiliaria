@@ -7,7 +7,66 @@ import {
 
 import { storage } from "../../firebase/config";
 
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+export const INMUEBLE_MAX_IMAGES = 50;
+
+export const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+
+export const MIN_IMAGE_WIDTH = 1200;
+export const MIN_IMAGE_HEIGHT = 675;
+
+export const MAX_IMAGE_WIDTH = 6000;
+export const MAX_IMAGE_HEIGHT = 6000;
+
+const PORTAL_READY_MAX_WIDTH = 1920;
+const PORTAL_READY_MAX_HEIGHT = 1920;
+
+const THUMBNAIL_MAX_WIDTH = 640;
+const THUMBNAIL_MAX_HEIGHT = 640;
+
+const OUTPUT_CONTENT_TYPE = "image/jpeg";
+const OUTPUT_EXTENSION = "jpg";
+const PORTAL_READY_QUALITY = 0.86;
+const THUMBNAIL_QUALITY = 0.78;
+
+export const ACCEPTED_IMAGE_MIME_TYPES = [
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+  "image/heic",
+  "image/heif",
+];
+
+export const ACCEPTED_IMAGE_EXTENSIONS = [
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "bmp",
+  "heic",
+  "heif",
+];
+
+export const ACCEPTED_IMAGE_INPUT = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "image/bmp",
+  "image/heic",
+  "image/heif",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".webp",
+  ".gif",
+  ".bmp",
+  ".heic",
+  ".heif",
+].join(",");
 
 const createImageId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
@@ -36,6 +95,16 @@ const getFileExtension = (fileName = "") => {
   return ext || "jpg";
 };
 
+const isAllowedImage = ({ type = "", name = "" } = {}) => {
+  const normalizedType = type.toLowerCase();
+  const extension = getFileExtension(name);
+
+  return (
+    ACCEPTED_IMAGE_MIME_TYPES.includes(normalizedType) ||
+    ACCEPTED_IMAGE_EXTENSIONS.includes(extension)
+  );
+};
+
 const ensureImageBlob = (blob, imageName = "imagen") => {
   if (!blob) {
     throw new Error(`No se pudo leer la imagen "${imageName}".`);
@@ -48,6 +117,278 @@ const ensureImageBlob = (blob, imageName = "imagen") => {
   if (blob.type && !blob.type.startsWith("image/")) {
     throw new Error(`El archivo "${imageName}" no es una imagen válida.`);
   }
+};
+
+const loadImageElement = (blob, imageName = "imagen") => {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(blob);
+    const image = new Image();
+
+    image.onload = () => {
+      resolve({
+        image,
+        objectUrl,
+        width: image.naturalWidth,
+        height: image.naturalHeight,
+      });
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(
+        new Error(
+          `No se pudo procesar la imagen "${imageName}". Si es HEIC/HEIF, convertí la foto a JPG/PNG/WEBP o agregamos conversión específica.`,
+        ),
+      );
+    };
+
+    image.src = objectUrl;
+  });
+};
+
+const validateImageDimensions = ({ width, height, imageName }) => {
+  if (!width || !height) {
+    throw new Error(`No se pudo detectar la resolución de "${imageName}".`);
+  }
+
+  if (width < MIN_IMAGE_WIDTH || height < MIN_IMAGE_HEIGHT) {
+    throw new Error(
+      `La imagen "${imageName}" mide ${width} x ${height}px. El mínimo requerido es ${MIN_IMAGE_WIDTH} x ${MIN_IMAGE_HEIGHT}px.`,
+    );
+  }
+
+  if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
+    throw new Error(
+      `La imagen "${imageName}" mide ${width} x ${height}px. El máximo permitido es ${MAX_IMAGE_WIDTH} x ${MAX_IMAGE_HEIGHT}px.`,
+    );
+  }
+};
+
+const getContainedSize = ({
+  width,
+  height,
+  maxWidth,
+  maxHeight,
+  minWidth = 0,
+  minHeight = 0,
+}) => {
+  const scale = Math.min(1, maxWidth / width, maxHeight / height);
+  const nextWidth = Math.round(width * scale);
+  const nextHeight = Math.round(height * scale);
+
+  if (
+    minWidth > 0 &&
+    minHeight > 0 &&
+    (nextWidth < minWidth || nextHeight < minHeight)
+  ) {
+    return {
+      width,
+      height,
+      resized: false,
+    };
+  }
+
+  return {
+    width: nextWidth,
+    height: nextHeight,
+    resized: nextWidth !== width || nextHeight !== height,
+  };
+};
+
+const drawImageToBlob = ({
+  image,
+  width,
+  height,
+  quality,
+  contentType = OUTPUT_CONTENT_TYPE,
+}) => {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      reject(new Error("No se pudo preparar la imagen para subir."));
+      return;
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error("No se pudo optimizar la imagen."));
+          return;
+        }
+
+        resolve(blob);
+      },
+      contentType,
+      quality,
+    );
+  });
+};
+
+const prepareImageForUpload = async ({ source, imageName }) => {
+  ensureImageBlob(source, imageName);
+
+  if (!isAllowedImage({ type: source.type, name: imageName })) {
+    throw new Error(
+      `Formato no permitido en "${imageName}". Usá JPG, JPEG, PNG, WEBP, GIF, BMP, HEIC o HEIF.`,
+    );
+  }
+
+  const loadedImage = await loadImageElement(source, imageName);
+
+  try {
+    validateImageDimensions({
+      width: loadedImage.width,
+      height: loadedImage.height,
+      imageName,
+    });
+
+    const portalReadySize = getContainedSize({
+      width: loadedImage.width,
+      height: loadedImage.height,
+      maxWidth: PORTAL_READY_MAX_WIDTH,
+      maxHeight: PORTAL_READY_MAX_HEIGHT,
+      minWidth: MIN_IMAGE_WIDTH,
+      minHeight: MIN_IMAGE_HEIGHT,
+    });
+
+    const thumbnailSize = getContainedSize({
+      width: loadedImage.width,
+      height: loadedImage.height,
+      maxWidth: THUMBNAIL_MAX_WIDTH,
+      maxHeight: THUMBNAIL_MAX_HEIGHT,
+    });
+
+    const portalBlob = await drawImageToBlob({
+      image: loadedImage.image,
+      width: portalReadySize.width,
+      height: portalReadySize.height,
+      quality: PORTAL_READY_QUALITY,
+    });
+
+    const thumbnailBlob = await drawImageToBlob({
+      image: loadedImage.image,
+      width: thumbnailSize.width,
+      height: thumbnailSize.height,
+      quality: THUMBNAIL_QUALITY,
+    });
+
+    return {
+      portalBlob,
+      thumbnailBlob,
+      sourceWidth: loadedImage.width,
+      sourceHeight: loadedImage.height,
+      width: portalReadySize.width,
+      height: portalReadySize.height,
+      thumbnailWidth: thumbnailSize.width,
+      thumbnailHeight: thumbnailSize.height,
+      portalReady: true,
+      qualityWarnings: [],
+    };
+  } finally {
+    URL.revokeObjectURL(loadedImage.objectUrl);
+  }
+};
+
+const uploadImageVersions = async ({
+  source,
+  originalName,
+  inmuebleId,
+  inmobiliariaId,
+  index = 0,
+  order = 0,
+  customMetadata = {},
+  extraImageData = {},
+}) => {
+  const imageId = createImageId();
+  const safeOriginalName = sanitizeFileName(originalName || "imagen.jpg");
+  const timestamp = Date.now();
+  const baseFileName = `${timestamp}-${index}-${imageId}`;
+
+  const storagePath = `inmuebles/${inmobiliariaId}/${inmuebleId}/${baseFileName}.${OUTPUT_EXTENSION}`;
+  const thumbnailPath = `inmuebles/${inmobiliariaId}/${inmuebleId}/${baseFileName}-thumb.${OUTPUT_EXTENSION}`;
+
+  const preparedImage = await prepareImageForUpload({
+    source,
+    imageName: originalName || safeOriginalName,
+  });
+
+  const imageRef = ref(storage, storagePath);
+  const thumbnailRef = ref(storage, thumbnailPath);
+
+  const sharedMetadata = {
+    originalName: safeOriginalName,
+    originalSizeBytes: String(source.size || 0),
+    originalType: source.type || "",
+    sourceWidth: String(preparedImage.sourceWidth || ""),
+    sourceHeight: String(preparedImage.sourceHeight || ""),
+    ...customMetadata,
+  };
+
+  await uploadBytes(imageRef, preparedImage.portalBlob, {
+    contentType: OUTPUT_CONTENT_TYPE,
+    customMetadata: {
+      ...sharedMetadata,
+      derivative: "portal-ready",
+    },
+  });
+
+  await uploadBytes(thumbnailRef, preparedImage.thumbnailBlob, {
+    contentType: OUTPUT_CONTENT_TYPE,
+    customMetadata: {
+      ...sharedMetadata,
+      derivative: "thumbnail",
+    },
+  });
+
+  const url = await getDownloadURL(imageRef);
+  const thumbnailUrl = await getDownloadURL(thumbnailRef);
+
+  return {
+    id: imageId,
+
+    url,
+    storagePath,
+
+    thumbnailUrl,
+    thumbnailPath,
+
+    order,
+    filename: originalName || safeOriginalName,
+    name: originalName || safeOriginalName,
+
+    size: preparedImage.portalBlob.size || 0,
+    type: OUTPUT_CONTENT_TYPE,
+    contentType: OUTPUT_CONTENT_TYPE,
+
+    width: preparedImage.width,
+    height: preparedImage.height,
+
+    thumbnailWidth: preparedImage.thumbnailWidth,
+    thumbnailHeight: preparedImage.thumbnailHeight,
+
+    portalReady: preparedImage.portalReady,
+    qualityWarnings: preparedImage.qualityWarnings,
+
+    source: {
+      originalWidth: preparedImage.sourceWidth,
+      originalHeight: preparedImage.sourceHeight,
+      originalSizeBytes: source.size || 0,
+      originalType: source.type || "",
+      originalName: originalName || safeOriginalName,
+    },
+
+    createdAt: new Date().toISOString(),
+
+    ...extraImageData,
+  };
 };
 
 const downloadSourceImageAsBlob = async (image) => {
@@ -79,8 +420,11 @@ const downloadSourceImageAsBlob = async (image) => {
 /**
  * Sube imágenes de un inmueble a Firebase Storage.
  *
- * Ruta:
- * /inmuebles/{inmobiliariaId}/{inmuebleId}/{timestamp-index.ext}
+ * Guarda:
+ * - imagen optimizada portal-ready
+ * - miniatura
+ *
+ * No conserva el archivo original pesado en V1.
  */
 export const uploadInmuebleImages = async ({
   files,
@@ -100,55 +444,42 @@ export const uploadInmuebleImages = async ({
   }
 
   const baseOrder = Number.isFinite(startOrder) ? startOrder : currentCount;
+  const uploadedImages = [];
 
-  const uploads = filesArray.map(async (file, index) => {
-    if (!file?.type?.startsWith("image/")) {
-      throw new Error("Solo se permiten archivos de imagen");
+  for (let index = 0; index < filesArray.length; index += 1) {
+    const file = filesArray[index];
+    const originalName = file?.name || `imagen-${index + 1}.jpg`;
+
+    if (!isAllowedImage({ type: file?.type, name: originalName })) {
+      throw new Error(
+        `Formato no permitido en "${originalName}". Usá JPG, JPEG, PNG, WEBP, GIF, BMP, HEIC o HEIF.`,
+      );
     }
 
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      throw new Error("Una de las imágenes supera el máximo permitido de 10 MB");
+      throw new Error(
+        `La imagen "${originalName}" supera el máximo permitido de 10 MB.`,
+      );
     }
 
-    const ext = getFileExtension(file.name);
-    const imageId = createImageId();
-    const fileName = `${Date.now()}-${index}-${imageId}.${ext}`;
-    const storagePath = `inmuebles/${inmobiliariaId}/${inmuebleId}/${fileName}`;
-
-    const storageRef = ref(storage, storagePath);
-
-    await uploadBytes(storageRef, file, {
-      contentType: file.type || "image/jpeg",
+    const uploadedImage = await uploadImageVersions({
+      source: file,
+      originalName,
+      inmuebleId,
+      inmobiliariaId,
+      index,
+      order: baseOrder + index,
     });
 
-    const url = await getDownloadURL(storageRef);
+    uploadedImages.push(uploadedImage);
+  }
 
-    return {
-      id: imageId,
-      url,
-      storagePath,
-      order: baseOrder + index,
-      filename: file.name || fileName,
-      name: file.name || fileName,
-      size: file.size || 0,
-      type: file.type || "image/jpeg",
-      contentType: file.type || "image/jpeg",
-      createdAt: new Date().toISOString(),
-    };
-  });
-
-  return Promise.all(uploads);
+  return uploadedImages;
 };
 
 /**
  * Copia imágenes cargadas en una solicitud particular hacia
  * la carpeta pública/operativa del inmueble.
- *
- * Origen:
- * /particular_publication_requests/{requestId}/{userId}/{fileName}
- *
- * Destino:
- * /inmuebles/{inmobiliariaId}/{inmuebleId}/{fileName}
  */
 export const copyPublicationRequestImagesToInmueble = async ({
   images = [],
@@ -179,45 +510,33 @@ export const copyPublicationRequestImagesToInmueble = async ({
     return [];
   }
 
-  const uploads = sourceImages.map(async (image, index) => {
-    const imageId = createImageId();
+  const uploadedImages = [];
+
+  for (let index = 0; index < sourceImages.length; index += 1) {
+    const image = sourceImages[index];
     const originalName =
       image.filename || image.name || `solicitud-${index + 1}.jpg`;
-    const safeName = sanitizeFileName(originalName);
-    const ext = getFileExtension(safeName);
-    const fileName = `${Date.now()}-${index}-${imageId}.${ext}`;
-    const storagePath = `inmuebles/${inmobiliariaId}/${inmuebleId}/${fileName}`;
 
     const blob = await downloadSourceImageAsBlob(image);
-    const contentType =
-      image.contentType || image.type || blob.type || "image/jpeg";
 
-    const destinationRef = ref(storage, storagePath);
-
-    await uploadBytes(destinationRef, blob, {
-      contentType,
+    const uploadedImage = await uploadImageVersions({
+      source: blob,
+      originalName,
+      inmuebleId,
+      inmobiliariaId,
+      index,
+      order: startOrder + index,
       customMetadata: {
         source: "particular_publication_request",
         sourceStoragePath: image.storagePath || "",
       },
+      extraImageData: {
+        copiedFrom: image.storagePath || image.url || "",
+      },
     });
 
-    const url = await getDownloadURL(destinationRef);
+    uploadedImages.push(uploadedImage);
+  }
 
-    return {
-      id: imageId,
-      url,
-      storagePath,
-      order: startOrder + index,
-      filename: originalName,
-      name: originalName,
-      size: blob.size || image.size || 0,
-      type: contentType,
-      contentType,
-      createdAt: new Date().toISOString(),
-      copiedFrom: image.storagePath || image.url || "",
-    };
-  });
-
-  return Promise.all(uploads);
+  return uploadedImages;
 };

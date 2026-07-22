@@ -2,8 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
+import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
 import { getActiveParticularPublications } from "../../particular/services/particularPublicationListing.service";
 import { getPublicInmuebles } from "../services/inmueble.service";
+import {
+    getBanos,
+    getCocherasCantidad,
+    getDormitorios,
+    getInmuebleAmenityBadges,
+    getInmuebleFeatureBadges,
+    getSuperficiePrincipal,
+    hasCochera,
+    inmuebleHasAmenity,
+} from "../utils/inmuebleDisplay.helpers";
 
 const INITIAL_FILTERS = {
     search: "",
@@ -13,8 +24,15 @@ const INITIAL_FILTERS = {
     ciudad: "",
     barrio: "",
     dormitoriosMin: "",
+    banosMin: "",
+    cocherasMin: "",
+    superficieMin: "",
     precioMin: "",
     precioMax: "",
+    piscina: "",
+    patio: "",
+    jardin: "",
+    aptoCredito: "",
     sortBy: "destacados",
 };
 
@@ -50,6 +68,13 @@ const SORT_OPTIONS = [
     { value: "precio_desc", label: "Precio mayor a menor" },
     { value: "dormitorios_desc", label: "Más dormitorios" },
     { value: "superficie_desc", label: "Mayor superficie" },
+];
+
+const AMENITY_FILTERS = [
+    { key: "piscina", label: "Piscina" },
+    { key: "patio", label: "Patio" },
+    { key: "jardin", label: "Jardín" },
+    { key: "aptoCredito", label: "Apto crédito" },
 ];
 
 const DEFAULT_SEO_IMAGE = "/assets/img/Logo.png";
@@ -102,14 +127,6 @@ const formatPrice = (inmueble) => {
     }
 
     return `${moneda} ${precio.toLocaleString("es-AR")}`;
-};
-
-const formatNumber = (value) => {
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) return value;
-
-    return number.toLocaleString("es-AR");
 };
 
 const getDireccionValue = (inmueble, key) => {
@@ -201,6 +218,27 @@ const getActiveFilterBadges = (filters) => {
         });
     }
 
+    if (filters.banosMin) {
+        badges.push({
+            key: "banosMin",
+            label: `Baños: ${filters.banosMin}+`,
+        });
+    }
+
+    if (filters.cocherasMin) {
+        badges.push({
+            key: "cocherasMin",
+            label: `Cocheras: ${filters.cocherasMin}+`,
+        });
+    }
+
+    if (filters.superficieMin) {
+        badges.push({
+            key: "superficieMin",
+            label: `Superficie mín.: ${filters.superficieMin} m²`,
+        });
+    }
+
     if (filters.precioMin) {
         badges.push({
             key: "precioMin",
@@ -214,6 +252,15 @@ const getActiveFilterBadges = (filters) => {
             label: `Precio máx.: ${filters.precioMax}`,
         });
     }
+
+    AMENITY_FILTERS.forEach((amenityFilter) => {
+        if (filters[amenityFilter.key] === "true") {
+            badges.push({
+                key: amenityFilter.key,
+                label: amenityFilter.label,
+            });
+        }
+    });
 
     if (filters.sortBy && filters.sortBy !== INITIAL_FILTERS.sortBy) {
         badges.push({
@@ -235,8 +282,15 @@ const getFiltersFromSearchParams = (searchParams) => {
         ciudad: searchParams.get("ciudad") || "",
         barrio: searchParams.get("barrio") || "",
         dormitoriosMin: searchParams.get("dormitoriosMin") || "",
+        banosMin: searchParams.get("banosMin") || "",
+        cocherasMin: searchParams.get("cocherasMin") || "",
+        superficieMin: searchParams.get("superficieMin") || "",
         precioMin: searchParams.get("precioMin") || "",
         precioMax: searchParams.get("precioMax") || "",
+        piscina: searchParams.get("piscina") || "",
+        patio: searchParams.get("patio") || "",
+        jardin: searchParams.get("jardin") || "",
+        aptoCredito: searchParams.get("aptoCredito") || "",
         sortBy: searchParams.get("sortBy") || INITIAL_FILTERS.sortBy,
     };
 };
@@ -262,6 +316,10 @@ const matchesTextSearch = (inmueble, search) => {
 
     if (!normalizedSearch) return true;
 
+    const amenityText = getInmuebleAmenityBadges(inmueble, 20)
+        .map((item) => item.label)
+        .join(" ");
+
     const searchableText = [
         inmueble.titulo,
         inmueble.descripcion,
@@ -269,6 +327,7 @@ const matchesTextSearch = (inmueble, search) => {
         inmueble.operacion,
         inmueble.ubicacion,
         inmueble.sourceLabel,
+        amenityText,
         getDireccionValue(inmueble, "calle"),
         getDireccionValue(inmueble, "barrio"),
         getDireccionValue(inmueble, "ciudad"),
@@ -278,6 +337,23 @@ const matchesTextSearch = (inmueble, search) => {
         .join(" ");
 
     return normalizeText(searchableText).includes(normalizedSearch);
+};
+
+const matchesMinNumberFilter = ({ currentValue, filterValue }) => {
+    const currentNumber = toNumber(currentValue);
+    const filterNumber = toNumber(filterValue);
+
+    if (filterNumber === null) return true;
+
+    return currentNumber !== null && currentNumber >= filterNumber;
+};
+
+const getCocherasValueForFilter = (inmueble = {}) => {
+    const cocherasCantidad = getCocherasCantidad(inmueble);
+
+    if (cocherasCantidad) return cocherasCantidad;
+
+    return hasCochera(inmueble) ? 1 : "";
 };
 
 const matchesFilters = (inmueble, filters) => {
@@ -311,12 +387,38 @@ const matchesFilters = (inmueble, filters) => {
         return false;
     }
 
-    const dormitorios = toNumber(inmueble.dormitorios);
-    const dormitoriosMin = toNumber(filters.dormitoriosMin);
+    if (
+        !matchesMinNumberFilter({
+            currentValue: getDormitorios(inmueble),
+            filterValue: filters.dormitoriosMin,
+        })
+    ) {
+        return false;
+    }
 
     if (
-        dormitoriosMin !== null &&
-        (dormitorios === null || dormitorios < dormitoriosMin)
+        !matchesMinNumberFilter({
+            currentValue: getBanos(inmueble),
+            filterValue: filters.banosMin,
+        })
+    ) {
+        return false;
+    }
+
+    if (
+        !matchesMinNumberFilter({
+            currentValue: getCocherasValueForFilter(inmueble),
+            filterValue: filters.cocherasMin,
+        })
+    ) {
+        return false;
+    }
+
+    if (
+        !matchesMinNumberFilter({
+            currentValue: getSuperficiePrincipal(inmueble),
+            filterValue: filters.superficieMin,
+        })
     ) {
         return false;
     }
@@ -330,6 +432,18 @@ const matchesFilters = (inmueble, filters) => {
     }
 
     if (precioMax !== null && (precio === null || precio > precioMax)) {
+        return false;
+    }
+
+    const selectedAmenities = AMENITY_FILTERS.filter(
+        (amenityFilter) => filters[amenityFilter.key] === "true",
+    );
+
+    const hasSelectedAmenities = selectedAmenities.every((amenityFilter) =>
+        inmuebleHasAmenity(inmueble, amenityFilter.key),
+    );
+
+    if (!hasSelectedAmenities) {
         return false;
     }
 
@@ -379,13 +493,16 @@ const sortInmuebles = (items, sortBy) => {
         }
 
         if (sortBy === "dormitorios_desc") {
-            return (toNumber(b.dormitorios) || 0) - (toNumber(a.dormitorios) || 0);
+            return (
+                (toNumber(getDormitorios(b)) || 0) -
+                (toNumber(getDormitorios(a)) || 0)
+            );
         }
 
         if (sortBy === "superficie_desc") {
             return (
-                (toNumber(b.superficie?.total) || 0) -
-                (toNumber(a.superficie?.total) || 0)
+                (toNumber(getSuperficiePrincipal(b)) || 0) -
+                (toNumber(getSuperficiePrincipal(a)) || 0)
             );
         }
 
@@ -431,6 +548,10 @@ const buildSeoTitle = (filters) => {
         parts.push(`en ${filters.ciudad}`);
     }
 
+    if (filters.dormitoriosMin) {
+        parts.push(`desde ${filters.dormitoriosMin} dorm.`);
+    }
+
     if (filters.search) {
         parts.push(`| ${filters.search}`);
     }
@@ -447,7 +568,9 @@ const buildSeoDescription = ({ filters, resultCount }) => {
 
     if (resultCount > 0) {
         parts.push(
-            `${resultCount} ${resultCount === 1 ? "publicación inmobiliaria" : "publicaciones inmobiliarias"
+            `${resultCount} ${resultCount === 1
+                ? "publicación inmobiliaria"
+                : "publicaciones inmobiliarias"
             }`,
         );
     } else {
@@ -478,6 +601,24 @@ const buildSeoDescription = ({ filters, resultCount }) => {
         parts.push(`desde ${filters.dormitoriosMin} dormitorios`);
     }
 
+    if (filters.banosMin) {
+        parts.push(`desde ${filters.banosMin} baños`);
+    }
+
+    if (filters.cocherasMin) {
+        parts.push(`desde ${filters.cocherasMin} cocheras`);
+    }
+
+    if (filters.superficieMin) {
+        parts.push(`desde ${filters.superficieMin} m²`);
+    }
+
+    AMENITY_FILTERS.forEach((amenityFilter) => {
+        if (filters[amenityFilter.key] === "true") {
+            parts.push(amenityFilter.label.toLowerCase());
+        }
+    });
+
     if (filters.precioMin || filters.precioMax) {
         const priceText = [
             filters.precioMin ? `precio mínimo ${filters.precioMin}` : "",
@@ -492,7 +633,7 @@ const buildSeoDescription = ({ filters, resultCount }) => {
     const baseDescription =
         parts.length > 1
             ? parts.join(", ")
-            : "Filtrá propiedades por operación, tipo, ciudad, barrio, dormitorios, precio y origen.";
+            : "Filtrá propiedades por operación, tipo, ciudad, barrio, dormitorios, baños, cocheras, superficie, precio y origen.";
 
     return truncateText(
         `${baseDescription}. Consultá propiedades publicadas por inmobiliarias y particulares en ONO Prop.`,
@@ -556,15 +697,94 @@ const buildItemListJsonLd = ({ filteredInmuebles, seoUrl }) => {
     };
 };
 
-const mapInmuebleToPortalItem = (inmueble) => {
+const getInmuebleInmobiliariaId = (inmueble = {}) => {
+    return (
+        inmueble.inmobiliariaId ||
+        inmueble.ownerInmobiliariaId ||
+        inmueble.agenciaId ||
+        ""
+    );
+};
+
+const getInmobiliariaLogoUrl = (inmobiliaria = {}) => {
+    return (
+        inmobiliaria.logoUrl ||
+        inmobiliaria.logo ||
+        inmobiliaria.branding?.logoUrl ||
+        inmobiliaria.branding?.logo?.url ||
+        inmobiliaria.branding?.logo ||
+        inmobiliaria.branding?.isologoUrl ||
+        ""
+    );
+};
+
+const buildInmobiliariasById = async (inmuebles = []) => {
+    const uniqueIds = Array.from(
+        new Set(
+            inmuebles
+                .map((inmueble) => getInmuebleInmobiliariaId(inmueble))
+                .filter(Boolean),
+        ),
+    );
+
+    const entries = await Promise.all(
+        uniqueIds.map(async (inmobiliariaId) => {
+            try {
+                const inmobiliaria = await getPublicInmobiliariaById(inmobiliariaId);
+
+                if (!inmobiliaria) {
+                    return null;
+                }
+
+                return [inmobiliariaId, inmobiliaria];
+            } catch (err) {
+                console.warn(
+                    "No se pudo cargar la inmobiliaria pública:",
+                    inmobiliariaId,
+                    err,
+                );
+
+                return null;
+            }
+        }),
+    );
+
+    return entries
+        .filter(Boolean)
+        .reduce((acc, [inmobiliariaId, inmobiliaria]) => {
+            acc[inmobiliariaId] = inmobiliaria;
+            return acc;
+        }, {});
+};
+
+const mapInmuebleToPortalItem = (inmueble, inmobiliariasById = {}) => {
     const slugOrId = inmueble.slug || inmueble.id;
+    const inmobiliariaId = getInmuebleInmobiliariaId(inmueble);
+    const inmobiliaria = inmobiliariasById[inmobiliariaId] || null;
 
     const sourceLabel =
         inmueble.inmobiliariaNombre ||
         inmueble.inmobiliariaDisplayName ||
         inmueble.agenciaNombre ||
         inmueble.inmobiliaria?.nombre ||
+        inmobiliaria?.nombre ||
+        inmobiliaria?.razonSocial ||
         "Inmobiliaria adherida";
+
+    const inmobiliariaSlug =
+        inmueble.inmobiliariaSlug ||
+        inmueble.agenciaSlug ||
+        inmueble.inmobiliaria?.slug ||
+        inmobiliaria?.slug ||
+        "";
+
+    const sourceLogoUrl =
+        inmueble.inmobiliariaLogoUrl ||
+        inmueble.agenciaLogoUrl ||
+        inmueble.inmobiliaria?.branding?.logo?.url ||
+        inmueble.inmobiliaria?.branding?.logoUrl ||
+        inmueble.inmobiliaria?.logoUrl ||
+        getInmobiliariaLogoUrl(inmobiliaria);
 
     return {
         ...inmueble,
@@ -572,17 +792,9 @@ const mapInmuebleToPortalItem = (inmueble) => {
         sourceLabel,
         sourceTypeLabel: "Inmobiliaria",
         sourceBadgeClass: "text-bg-primary",
-        sourceLogoUrl:
-            inmueble.inmobiliariaLogoUrl ||
-            inmueble.agenciaLogoUrl ||
-            inmueble.inmobiliaria?.branding?.logo?.url ||
-            inmueble.inmobiliaria?.logoUrl ||
-            "",
-        inmobiliariaSlug:
-            inmueble.inmobiliariaSlug ||
-            inmueble.agenciaSlug ||
-            inmueble.inmobiliaria?.slug ||
-            "",
+        sourceLogoUrl,
+        inmobiliariaId,
+        inmobiliariaSlug,
         publicPath: slugOrId ? `/inmueble/${slugOrId}` : "",
         precioLabel: "",
         createdAt: inmueble.createdAt || inmueble.updatedAt || null,
@@ -597,20 +809,27 @@ const mapParticularPublicationToPortalItem = (publication) => {
             : {};
 
     const ciudad =
-        publication.ciudad ||
-        direccion.ciudad ||
-        publication.localidad ||
-        "";
+        publication.ciudad || direccion.ciudad || publication.localidad || "";
 
-    const barrio =
-        publication.barrio ||
-        direccion.barrio ||
-        "";
+    const barrio = publication.barrio || direccion.barrio || "";
 
-    const precio =
-        publication.precio ||
-        publication.precioEstimado ||
-        "";
+    const precio = publication.precio || publication.precioEstimado || "";
+
+    const ambientes = publication.ambientes || "";
+    const dormitorios = publication.dormitorios || "";
+    const banos = publication.banos || publication.banios || "";
+    const cocheras = publication.cocheras || "";
+
+    const superficie =
+        publication.superficie && typeof publication.superficie === "object"
+            ? publication.superficie
+            : {
+                total: publication.superficieTotal || "",
+                cubierta: publication.superficieCubierta || "",
+                semicubierta: publication.superficieSemicubierta || "",
+                descubierta: publication.superficieDescubierta || "",
+                terreno: publication.superficieTerreno || "",
+            };
 
     return {
         id: publication.id,
@@ -623,9 +842,7 @@ const mapParticularPublicationToPortalItem = (publication) => {
         publicPath: `/particulares/${publication.id}`,
 
         titulo:
-            publication.titulo ||
-            publication.ubicacion ||
-            "Publicación particular",
+            publication.titulo || publication.ubicacion || "Publicación particular",
 
         descripcion: publication.descripcion || "",
         operacion: publication.operacion || "",
@@ -644,28 +861,35 @@ const mapParticularPublicationToPortalItem = (publication) => {
         precioLabel: precio || "Consultar",
         moneda: publication.moneda || "",
 
-        ambientes: publication.ambientes || "",
-        dormitorios: publication.dormitorios || "",
-        banos: publication.banos || publication.banios || "",
-        cocheras: publication.cocheras || "",
+        ambientes,
+        dormitorios,
+        banos,
+        cocheras,
 
-        superficie:
-            publication.superficie && typeof publication.superficie === "object"
-                ? publication.superficie
-                : {
-                    total: publication.superficieTotal || "",
-                    cubierta: publication.superficieCubierta || "",
-                },
+        caracteristicas: {
+            ...(publication.caracteristicas || {}),
+            ambientes: publication.caracteristicas?.ambientes || ambientes,
+            dormitorios: publication.caracteristicas?.dormitorios || dormitorios,
+            banos: publication.caracteristicas?.banos || banos,
+            cocheras: Boolean(
+                publication.caracteristicas?.cocheras ||
+                publication.caracteristicas?.cocherasCantidad ||
+                cocheras,
+            ),
+            cocherasCantidad:
+                publication.caracteristicas?.cocherasCantidad || cocheras,
+        },
+
+        superficie,
+        amenities: publication.amenities || {},
+        servicios: publication.servicios || {},
 
         images: Array.isArray(publication.images) ? publication.images : [],
 
         destacado: false,
 
         createdAt:
-            publication.approvedAt ||
-            publication.createdAt ||
-            publication.updatedAt ||
-            null,
+            publication.approvedAt || publication.createdAt || publication.updatedAt || null,
 
         updatedAt: publication.updatedAt || null,
 
@@ -743,47 +967,6 @@ const getShortDescription = (description = "", maxLength = 115) => {
     }
 
     return `${cleanDescription.slice(0, maxLength).trim()}...`;
-};
-
-const getFeatureItems = (inmueble) => {
-    const items = [];
-
-    if (inmueble?.ambientes) {
-        items.push({
-            key: "ambientes",
-            label: `${inmueble.ambientes} amb.`,
-        });
-    }
-
-    if (inmueble?.dormitorios) {
-        items.push({
-            key: "dormitorios",
-            label: `${inmueble.dormitorios} dorm.`,
-        });
-    }
-
-    if (inmueble?.banos) {
-        items.push({
-            key: "banos",
-            label: `${inmueble.banos} baños`,
-        });
-    }
-
-    if (inmueble?.superficie?.total) {
-        items.push({
-            key: "superficie",
-            label: `${formatNumber(inmueble.superficie.total)} m²`,
-        });
-    }
-
-    if (inmueble?.cocheras) {
-        items.push({
-            key: "cocheras",
-            label: `${inmueble.cocheras} coch.`,
-        });
-    }
-
-    return items;
 };
 
 const InmueblePortalPage = () => {
@@ -908,13 +1091,15 @@ const InmueblePortalPage = () => {
                         }),
                     ]);
 
-                const inmobiliariaItems = (inmueblesResult?.data || []).map(
-                    mapInmuebleToPortalItem,
+                const rawInmuebles = inmueblesResult?.data || [];
+
+                const inmobiliariasById = await buildInmobiliariasById(rawInmuebles);
+
+                const inmobiliariaItems = rawInmuebles.map((inmueble) =>
+                    mapInmuebleToPortalItem(inmueble, inmobiliariasById),
                 );
 
-                const particularPublications = Array.isArray(
-                    particularPublicationsResult,
-                )
+                const particularPublications = Array.isArray(particularPublicationsResult)
                     ? particularPublicationsResult
                     : particularPublicationsResult?.data || [];
 
@@ -960,6 +1145,13 @@ const InmueblePortalPage = () => {
         }
 
         updateFilters(nextFilters);
+    };
+
+    const handleAmenityFilterChange = (key, checked) => {
+        updateFilters({
+            ...filters,
+            [key]: checked ? "true" : "",
+        });
     };
 
     const handleClearFilters = () => {
@@ -1055,8 +1247,9 @@ const InmueblePortalPage = () => {
 
                             <p className="lead text-muted mb-0">
                                 Filtrá propiedades por operación, tipo, ciudad, barrio,
-                                dormitorios, precio y origen. Encontrá publicaciones de
-                                inmobiliarias adheridas y propietarios particulares.
+                                dormitorios, baños, cocheras, superficie, precio, amenities y
+                                origen. Encontrá publicaciones de inmobiliarias adheridas y
+                                propietarios particulares.
                             </p>
                         </div>
 
@@ -1218,6 +1411,51 @@ const InmueblePortalPage = () => {
                                 </div>
 
                                 <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Baños</label>
+                                    <select
+                                        name="banosMin"
+                                        className="form-select"
+                                        value={filters.banosMin}
+                                        onChange={handleFilterChange}
+                                    >
+                                        <option value="">Cualquiera</option>
+                                        <option value="1">1+</option>
+                                        <option value="2">2+</option>
+                                        <option value="3">3+</option>
+                                        <option value="4">4+</option>
+                                    </select>
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Cocheras</label>
+                                    <select
+                                        name="cocherasMin"
+                                        className="form-select"
+                                        value={filters.cocherasMin}
+                                        onChange={handleFilterChange}
+                                    >
+                                        <option value="">Cualquiera</option>
+                                        <option value="1">1+</option>
+                                        <option value="2">2+</option>
+                                        <option value="3">3+</option>
+                                        <option value="4">4+</option>
+                                    </select>
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
+                                    <label className="form-label">Superficie mín.</label>
+                                    <input
+                                        type="number"
+                                        name="superficieMin"
+                                        className="form-control"
+                                        min="0"
+                                        placeholder="100"
+                                        value={filters.superficieMin}
+                                        onChange={handleFilterChange}
+                                    />
+                                </div>
+
+                                <div className="col-6 col-lg-3 col-xl-2">
                                     <label className="form-label">Precio mín.</label>
                                     <input
                                         type="number"
@@ -1257,6 +1495,36 @@ const InmueblePortalPage = () => {
                                             </option>
                                         ))}
                                     </select>
+                                </div>
+
+                                <div className="col-12">
+                                    <label className="form-label">Diferenciales</label>
+
+                                    <div className="d-flex flex-wrap gap-3">
+                                        {AMENITY_FILTERS.map((amenityFilter) => (
+                                            <div className="form-check" key={amenityFilter.key}>
+                                                <input
+                                                    id={`portal-filter-${amenityFilter.key}`}
+                                                    className="form-check-input"
+                                                    type="checkbox"
+                                                    checked={filters[amenityFilter.key] === "true"}
+                                                    onChange={(e) =>
+                                                        handleAmenityFilterChange(
+                                                            amenityFilter.key,
+                                                            e.target.checked,
+                                                        )
+                                                    }
+                                                />
+
+                                                <label
+                                                    className="form-check-label"
+                                                    htmlFor={`portal-filter-${amenityFilter.key}`}
+                                                >
+                                                    {amenityFilter.label}
+                                                </label>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
 
                                 <div className="col-12 col-lg-3 col-xl-3 d-grid">
@@ -1344,7 +1612,8 @@ const InmueblePortalPage = () => {
                                 const sourceBadgeClass = getSourceBadgeClass(inmueble);
                                 const sourceLogoUrl = getSourceLogoUrl(inmueble);
                                 const photoCount = getPhotoCount(inmueble);
-                                const featureItems = getFeatureItems(inmueble);
+                                const featureItems = getInmuebleFeatureBadges(inmueble);
+                                const amenityItems = getInmuebleAmenityBadges(inmueble, 4);
                                 const shortDescription = getShortDescription(inmueble.descripcion);
 
                                 return (
@@ -1425,7 +1694,9 @@ const InmueblePortalPage = () => {
                                                     )}
 
                                                     <div className="min-w-0">
-                                                        <div className="small text-muted lh-sm">Publicado por</div>
+                                                        <div className="small text-muted lh-sm">
+                                                            Publicado por
+                                                        </div>
                                                         <div className="fw-semibold small text-truncate">
                                                             {sourceName}
                                                         </div>
@@ -1443,9 +1714,7 @@ const InmueblePortalPage = () => {
                                                 </Link>
 
                                                 {address && (
-                                                    <p className="text-muted small mb-2">
-                                                        📍 {address}
-                                                    </p>
+                                                    <p className="text-muted small mb-2">📍 {address}</p>
                                                 )}
 
                                                 <div className="h4 mb-3 portal-listing-price">
@@ -1457,6 +1726,19 @@ const InmueblePortalPage = () => {
                                                         {featureItems.map((item) => (
                                                             <span
                                                                 className="border rounded-pill px-2 py-1 bg-light"
+                                                                key={item.key}
+                                                            >
+                                                                {item.label}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {amenityItems.length > 0 && (
+                                                    <div className="d-flex flex-wrap gap-2 small mb-3">
+                                                        {amenityItems.map((item) => (
+                                                            <span
+                                                                className="badge text-bg-light border text-dark"
                                                                 key={item.key}
                                                             >
                                                                 {item.label}

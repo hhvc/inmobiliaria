@@ -16,6 +16,13 @@ import {
   reserveParticularPublicationRequestConversion,
 } from "../../particular/services/particularPublication.service";
 import PublicationRequestImages from "../../particular/components/PublicationRequestImages";
+import {
+  DEFAULT_AMENITIES,
+  DEFAULT_CARACTERISTICAS,
+  DEFAULT_MEDIDAS,
+  DEFAULT_SERVICIOS,
+  DEFAULT_SUPERFICIE,
+} from "../utils/inmuebleDetailsSchema";
 
 /* =========================
    Valores iniciales
@@ -57,9 +64,23 @@ const INITIAL_VALUES = {
   },
 
   superficie: {
-    total: "",
-    cubierta: "",
-    descubierta: "",
+    ...DEFAULT_SUPERFICIE,
+  },
+
+  caracteristicas: {
+    ...DEFAULT_CARACTERISTICAS,
+  },
+
+  amenities: {
+    ...DEFAULT_AMENITIES,
+  },
+
+  servicios: {
+    ...DEFAULT_SERVICIOS,
+  },
+
+  medidas: {
+    ...DEFAULT_MEDIDAS,
   },
 
   ambientes: "",
@@ -158,6 +179,35 @@ const buildPrefillFromParticularRequest = ({
     direccion: {
       ...INITIAL_VALUES.direccion,
       barrio: request?.ubicacion || "",
+    },
+
+    superficie: {
+      ...DEFAULT_SUPERFICIE,
+      ...(request?.superficie || {}),
+    },
+
+    caracteristicas: {
+      ...DEFAULT_CARACTERISTICAS,
+      ambientes: request?.ambientes || "",
+      dormitorios: request?.dormitorios || "",
+      banos: request?.banos || request?.banios || "",
+      cocheras: Boolean(request?.cocheras),
+      cocherasCantidad: request?.cocheras || "",
+    },
+
+    amenities: {
+      ...DEFAULT_AMENITIES,
+      ...(request?.amenities || {}),
+    },
+
+    servicios: {
+      ...DEFAULT_SERVICIOS,
+      ...(request?.servicios || {}),
+    },
+
+    medidas: {
+      ...DEFAULT_MEDIDAS,
+      ...(request?.medidas || {}),
     },
 
     estado: "activo",

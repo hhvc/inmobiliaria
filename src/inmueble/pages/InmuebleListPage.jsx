@@ -2,6 +2,11 @@ import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
+  AMENITIES_LABELS,
+  getPublicationQuality,
+} from "../utils/inmuebleDetailsSchema";
+
+import {
   getInmueblesByInmobiliaria,
   deleteInmueble,
   updateInmueble,
@@ -9,6 +14,7 @@ import {
 
 import { useAuth } from "../../context/auth/useAuth";
 import InmuebleFilters from "../components/InmuebleFilters";
+
 
 const PAGE_SIZE = 10;
 
@@ -63,6 +69,97 @@ const getOperationTypeLabel = (inmueble) => {
   const tipo = inmueble?.tipo || "Sin tipo";
 
   return `${operacion} · ${tipo}`;
+};
+
+const getCaracteristicas = (inmueble = {}) => {
+  return inmueble.caracteristicas && typeof inmueble.caracteristicas === "object"
+    ? inmueble.caracteristicas
+    : {};
+};
+
+const getSuperficie = (inmueble = {}) => {
+  return inmueble.superficie && typeof inmueble.superficie === "object"
+    ? inmueble.superficie
+    : {};
+};
+
+const getAmenities = (inmueble = {}) => {
+  return inmueble.amenities && typeof inmueble.amenities === "object"
+    ? inmueble.amenities
+    : {};
+};
+
+const getFeatureBadges = (inmueble = {}) => {
+  const caracteristicas = getCaracteristicas(inmueble);
+  const superficie = getSuperficie(inmueble);
+
+  const dormitorios =
+    caracteristicas.dormitorios || inmueble.dormitorios || "";
+
+  const banos =
+    caracteristicas.banos || inmueble.banos || inmueble.banios || "";
+
+  const cocherasCantidad =
+    caracteristicas.cocherasCantidad || inmueble.cocheras || "";
+
+  const superficiePrincipal =
+    superficie.cubierta ||
+    superficie.total ||
+    superficie.terreno ||
+    "";
+
+  const items = [];
+
+  if (dormitorios) {
+    items.push(`${dormitorios} dorm.`);
+  }
+
+  if (banos) {
+    items.push(`${banos} baño${Number(banos) === 1 ? "" : "s"}`);
+  }
+
+  if (cocherasCantidad) {
+    items.push(`${cocherasCantidad} coch.`);
+  } else if (caracteristicas.cocheras) {
+    items.push("Con cochera");
+  }
+
+  if (superficiePrincipal) {
+    items.push(`${superficiePrincipal} m²`);
+  }
+
+  return items;
+};
+
+const getAmenityBadges = (inmueble = {}) => {
+  const amenities = getAmenities(inmueble);
+
+  return Object.entries(amenities)
+    .filter(([, value]) => Boolean(value))
+    .map(([key]) => AMENITIES_LABELS[key] || key)
+    .slice(0, 5);
+};
+
+const getQualityBadgeClass = (status = "") => {
+  const classes = {
+    incompleta: "text-bg-danger",
+    basica: "text-bg-warning",
+    buena: "text-bg-info",
+    destacada: "text-bg-success",
+  };
+
+  return classes[status] || "text-bg-secondary";
+};
+
+const getQualityLabel = (status = "") => {
+  const labels = {
+    incompleta: "Incompleta",
+    basica: "Básica",
+    buena: "Buena",
+    destacada: "Destacada",
+  };
+
+  return labels[status] || "Sin evaluar";
 };
 
 const InmuebleListPage = () => {
@@ -354,6 +451,10 @@ const InmuebleListPage = () => {
               const updatingDestacado = togglingDestacadoId === inmueble.id;
               const deleting = deletingId === inmueble.id;
 
+              const featureBadges = getFeatureBadges(inmueble);
+              const amenityBadges = getAmenityBadges(inmueble);
+              const publicationQuality = getPublicationQuality(inmueble);
+
               return (
                 <article
                   key={inmueble.id}
@@ -401,6 +502,11 @@ const InmuebleListPage = () => {
                             {isPublicado ? "Publicado en portal" : "No publicado"}
                           </span>
 
+                          <span className={`badge ${getQualityBadgeClass(publicationQuality.status)}`}>
+                            Calidad: {getQualityLabel(publicationQuality.status)} ·{" "}
+                            {publicationQuality.score}/100
+                          </span>
+
                           {inmueble.destacado && (
                             <span className="badge text-bg-warning">
                               ★ Destacado
@@ -419,6 +525,33 @@ const InmuebleListPage = () => {
                         <p className="mb-2">{getOperationTypeLabel(inmueble)}</p>
 
                         <div className="h5 mb-3">{formatPrice(inmueble)}</div>
+
+                        {featureBadges.length > 0 && (
+                          <div className="d-flex flex-wrap gap-2 mb-3">
+                            {featureBadges.map((item) => (
+                              <span className="badge text-bg-light border text-dark" key={item}>
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {amenityBadges.length > 0 && (
+                          <div className="d-flex flex-wrap gap-2 mb-3">
+                            {amenityBadges.map((item) => (
+                              <span className="badge text-bg-secondary" key={item}>
+                                {item}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {publicationQuality.missingFields.length > 0 && (
+                          <div className="alert alert-warning small py-2 mb-3">
+                            <strong>Mejorar publicación:</strong>{" "}
+                            faltan {publicationQuality.missingFields.join(", ")}.
+                          </div>
+                        )}
 
                         {inmueble.slug && (
                           <p className="small text-muted mb-0">

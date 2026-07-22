@@ -9,6 +9,14 @@ import { canEditInmueble } from "../helpers/permissions";
 
 import { updateConvertedPublicationVisibility } from "../../particular/services/particularPublication.service";
 
+import {
+  DEFAULT_AMENITIES,
+  DEFAULT_CARACTERISTICAS,
+  DEFAULT_MEDIDAS,
+  DEFAULT_SERVICIOS,
+  DEFAULT_SUPERFICIE,
+} from "../utils/inmuebleDetailsSchema";
+
 /* =========================
    Valores iniciales
    ========================= */
@@ -49,9 +57,23 @@ const EMPTY_VALUES = {
   },
 
   superficie: {
-    total: "",
-    cubierta: "",
-    descubierta: "",
+    ...DEFAULT_SUPERFICIE,
+  },
+
+  caracteristicas: {
+    ...DEFAULT_CARACTERISTICAS,
+  },
+
+  amenities: {
+    ...DEFAULT_AMENITIES,
+  },
+
+  servicios: {
+    ...DEFAULT_SERVICIOS,
+  },
+
+  medidas: {
+    ...DEFAULT_MEDIDAS,
   },
 
   ambientes: "",
@@ -254,8 +276,50 @@ const InmuebleEditPage = () => {
           },
 
           superficie: {
-            ...EMPTY_VALUES.superficie,
+            ...DEFAULT_SUPERFICIE,
             ...(data.superficie || {}),
+          },
+
+          caracteristicas: {
+            ...DEFAULT_CARACTERISTICAS,
+            ...(data.caracteristicas || {}),
+            ambientes:
+              data.caracteristicas?.ambientes ||
+              data.ambientes ||
+              "",
+            dormitorios:
+              data.caracteristicas?.dormitorios ||
+              data.dormitorios ||
+              "",
+            banos:
+              data.caracteristicas?.banos ||
+              data.banos ||
+              data.banios ||
+              "",
+            cocheras: Boolean(
+              data.caracteristicas?.cocheras ||
+              data.caracteristicas?.cocherasCantidad ||
+              data.cocheras,
+            ),
+            cocherasCantidad:
+              data.caracteristicas?.cocherasCantidad ||
+              data.cocheras ||
+              "",
+          },
+
+          amenities: {
+            ...DEFAULT_AMENITIES,
+            ...(data.amenities || {}),
+          },
+
+          servicios: {
+            ...DEFAULT_SERVICIOS,
+            ...(data.servicios || {}),
+          },
+
+          medidas: {
+            ...DEFAULT_MEDIDAS,
+            ...(data.medidas || {}),
           },
 
           images: Array.isArray(data.images) ? data.images : [],

@@ -489,6 +489,88 @@ export async function getPublicInmobiliariaById(id) {
   };
 }
 
+const getInmobiliariaLogoUrl = (inmobiliaria = {}) => {
+  return (
+    inmobiliaria.logoUrl ||
+    inmobiliaria.logo ||
+    inmobiliaria.branding?.logoUrl ||
+    inmobiliaria.branding?.logo?.url ||
+    inmobiliaria.branding?.logo ||
+    inmobiliaria.branding?.isologoUrl ||
+    ""
+  );
+};
+
+export async function getInmobiliariaPublisherSnapshot(inmobiliariaId) {
+  const inmobiliaria = await getPublicInmobiliariaById(inmobiliariaId);
+
+  const fallbackName = "Inmobiliaria adherida";
+
+  if (!inmobiliaria) {
+    return {
+      publisher: {
+        type: "inmobiliaria",
+        id: inmobiliariaId || "",
+        name: fallbackName,
+        slug: "",
+        logoUrl: "",
+        verified: false,
+        profilePath: "",
+        contact: {
+          email: "",
+          telefono: "",
+          whatsapp: "",
+        },
+      },
+
+      inmobiliariaNombre: fallbackName,
+      inmobiliariaSlug: "",
+      inmobiliariaLogoUrl: "",
+
+      sourceLabel: fallbackName,
+      sourceLogoUrl: "",
+      sourceTypeLabel: "Inmobiliaria",
+      sourceBadgeClass: "text-bg-primary",
+    };
+  }
+
+  const name =
+    inmobiliaria.nombre ||
+    inmobiliaria.razonSocial ||
+    fallbackName;
+
+  const slug = inmobiliaria.slug || "";
+  const logoUrl = getInmobiliariaLogoUrl(inmobiliaria);
+  const verified = inmobiliaria.verificacion?.estado === "verificada";
+  const profilePath = slug ? `/inmobiliaria/${slug}` : "";
+
+  return {
+    publisher: {
+      type: "inmobiliaria",
+      id: inmobiliaria.id || inmobiliariaId || "",
+      name,
+      slug,
+      logoUrl,
+      verified,
+      profilePath,
+      contact: {
+        email: inmobiliaria.configuracion?.contacto?.email || "",
+        telefono: inmobiliaria.configuracion?.contacto?.telefono || "",
+        whatsapp: inmobiliaria.configuracion?.contacto?.whatsapp || "",
+      },
+    },
+
+    inmobiliariaNombre: name,
+    inmobiliariaSlug: slug,
+    inmobiliariaLogoUrl: logoUrl,
+
+    sourceLabel: name,
+    sourceLogoUrl: logoUrl,
+    sourceTypeLabel: "Inmobiliaria",
+    sourceBadgeClass: "text-bg-primary",
+  };
+}
+
 /**
  * 🔍 Obtener inmobiliaria pública por Slug
  */

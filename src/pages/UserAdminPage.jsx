@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   arrayRemove,
   arrayUnion,
@@ -51,6 +52,30 @@ const SUBSCRIPTION_MODULES = [
 ];
 
 const DEFAULT_MODULES = ["inmuebles", "consultas"];
+
+const VERIFICATION_STATUS_LABELS = {
+  pendiente_documentacion: "Pendiente de documentación",
+  pendiente_revision: "Documentación en revisión",
+  observada: "Documentación observada",
+  rechazada: "Verificación rechazada",
+  verificada: "Inmobiliaria verificada",
+};
+
+const VERIFICATION_STATUS_BADGES = {
+  pendiente_documentacion: "text-bg-warning",
+  pendiente_revision: "text-bg-info",
+  observada: "text-bg-warning",
+  rechazada: "text-bg-danger",
+  verificada: "text-bg-success",
+};
+
+const VERIFICATION_DOCUMENT_KEYS = [
+  "constanciaArca",
+  "dniTitular",
+  "estatutoContratoSocial",
+  "dniApoderado",
+  "poderApoderado",
+];
 
 const normalizeTimestamp = (value) => {
   if (!value) return null;
@@ -158,16 +183,38 @@ const mapUserDoc = (docSnap) => {
 const mapInmobiliariaDoc = (docSnap) => {
   const raw = docSnap.data();
 
+  const verificacion =
+    raw.verificacion && typeof raw.verificacion === "object"
+      ? raw.verificacion
+      : {};
+
+  const documentacionVerificacion =
+    raw.documentacionVerificacion &&
+      typeof raw.documentacionVerificacion === "object"
+      ? raw.documentacionVerificacion
+      : {};
+
   return {
     id: docSnap.id,
     ...raw,
     nombre: raw.nombre || "Sin nombre",
     slug: raw.slug || "",
+    razonSocial: raw.razonSocial || "",
+    cuit: raw.cuit || "",
     activa: raw.activa !== false,
     admins: Array.isArray(raw.admins) ? raw.admins : [],
     modulosSuscriptos: Array.isArray(raw.modulosSuscriptos)
       ? raw.modulosSuscriptos
       : DEFAULT_MODULES,
+    verificacion: {
+      estado: "pendiente_documentacion",
+      estadoLabel: "Pendiente de documentación para validar",
+      documentacionCompleta: false,
+      documentacionAprobada: false,
+      requiereDocumentacion: true,
+      ...verificacion,
+    },
+    documentacionVerificacion,
     createdAt: normalizeTimestamp(raw.createdAt),
     updatedAt: normalizeTimestamp(raw.updatedAt),
   };
@@ -187,6 +234,58 @@ const getInmobiliariaLabel = (inmobiliaria) => {
   }
 
   return parts.join(" ");
+};
+
+const getVerificationEstado = (inmobiliaria) => {
+  return inmobiliaria?.verificacion?.estado || "pendiente_documentacion";
+};
+
+const getVerificationLabel = (inmobiliaria) => {
+  const estado = getVerificationEstado(inmobiliaria);
+
+  return (
+    inmobiliaria?.verificacion?.estadoLabel ||
+    VERIFICATION_STATUS_LABELS[estado] ||
+    estado
+  );
+};
+
+const getVerificationBadgeClass = (inmobiliaria) => {
+  const estado = getVerificationEstado(inmobiliaria);
+
+  return VERIFICATION_STATUS_BADGES[estado] || "text-bg-secondary";
+};
+
+const getUploadedVerificationDocumentsCount = (inmobiliaria) => {
+  const documents =
+    inmobiliaria?.documentacionVerificacion &&
+      typeof inmobiliaria.documentacionVerificacion === "object"
+      ? inmobiliaria.documentacionVerificacion
+      : {};
+
+  return VERIFICATION_DOCUMENT_KEYS.filter((key) => documents[key]?.path)
+    .length;
+};
+
+const getVerificationCounters = (items = []) => {
+  return items.reduce(
+    (acc, inmobiliaria) => {
+      const estado = getVerificationEstado(inmobiliaria);
+
+      acc.total += 1;
+      acc[estado] = (acc[estado] || 0) + 1;
+
+      return acc;
+    },
+    {
+      total: 0,
+      pendiente_documentacion: 0,
+      pendiente_revision: 0,
+      observada: 0,
+      rechazada: 0,
+      verificada: 0,
+    },
+  );
 };
 
 const getNextActiveInmobiliariaId = ({
@@ -283,6 +382,9 @@ const UserAdminPage = () => {
         inmobiliaria.slug,
         inmobiliaria.razonSocial,
         inmobiliaria.cuit,
+        inmobiliaria.verificacion?.estado,
+        inmobiliaria.verificacion?.estadoLabel,
+        getVerificationLabel(inmobiliaria),
         ...(inmobiliaria.modulosSuscriptos || []),
       ]
         .filter(Boolean)
@@ -292,6 +394,10 @@ const UserAdminPage = () => {
       return text.includes(term);
     });
   }, [inmoSearch, inmobiliarias]);
+
+  const verificationCounters = useMemo(() => {
+    return getVerificationCounters(inmobiliarias);
+  }, [inmobiliarias]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -600,7 +706,7 @@ const UserAdminPage = () => {
       )}
 
       <section className="row g-3 mb-4">
-        <div className="col-md-4">
+        <div className="col-md-3">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
               <div className="h3 mb-0">{users.length}</div>
@@ -609,7 +715,7 @@ const UserAdminPage = () => {
           </div>
         </div>
 
-        <div className="col-md-4">
+        <div className="col-md-3">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
               <div className="h3 mb-0">{inmobiliarias.length}</div>
@@ -618,13 +724,113 @@ const UserAdminPage = () => {
           </div>
         </div>
 
-        <div className="col-md-4">
+        <div className="col-md-3">
           <div className="card border-0 shadow-sm h-100">
             <div className="card-body">
               <div className="h3 mb-0">
                 {inmobiliarias.filter((inmo) => inmo.activa !== false).length}
               </div>
               <div className="text-muted">Inmobiliarias activas</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="col-md-3">
+          <div className="card border-0 shadow-sm h-100">
+            <div className="card-body">
+              <div className="h3 mb-0">
+                {verificationCounters.pendiente_revision || 0}
+              </div>
+              <div className="text-muted">Documentación en revisión</div>
+
+              <Link
+                to="/admin/inmobiliarias/verificacion"
+                className="btn btn-sm btn-outline-primary mt-3"
+              >
+                Revisar ahora
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card border-0 shadow-sm mb-4">
+        <div className="card-body p-4">
+          <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+            <div>
+              <p className="text-uppercase text-muted small mb-1">
+                Validación documental
+              </p>
+
+              <h2 className="h4 mb-1">Control de documentación de inmobiliarias</h2>
+
+              <p className="text-muted mb-0">
+                Revisá constancias, DNI, estatutos, poderes y el estado de validación
+                de cada inmobiliaria.
+              </p>
+            </div>
+
+            <div className="d-flex flex-wrap gap-2">
+              <Link
+                to="/admin/inmobiliarias/verificacion"
+                className="btn btn-primary"
+              >
+                Abrir panel de revisión
+              </Link>
+
+              <Link
+                to="/admin/inmobiliarias"
+                className="btn btn-outline-secondary"
+              >
+                Ver inmobiliarias
+              </Link>
+            </div>
+          </div>
+
+          <div className="row g-3 mt-3">
+            <div className="col-6 col-lg">
+              <div className="border rounded-3 p-3 bg-light h-100">
+                <div className="h4 mb-0">
+                  {verificationCounters.pendiente_revision || 0}
+                </div>
+                <div className="small text-muted">En revisión</div>
+              </div>
+            </div>
+
+            <div className="col-6 col-lg">
+              <div className="border rounded-3 p-3 bg-light h-100">
+                <div className="h4 mb-0">
+                  {verificationCounters.observada || 0}
+                </div>
+                <div className="small text-muted">Observadas</div>
+              </div>
+            </div>
+
+            <div className="col-6 col-lg">
+              <div className="border rounded-3 p-3 bg-light h-100">
+                <div className="h4 mb-0">
+                  {verificationCounters.pendiente_documentacion || 0}
+                </div>
+                <div className="small text-muted">Pendientes</div>
+              </div>
+            </div>
+
+            <div className="col-6 col-lg">
+              <div className="border rounded-3 p-3 bg-light h-100">
+                <div className="h4 mb-0">
+                  {verificationCounters.verificada || 0}
+                </div>
+                <div className="small text-muted">Verificadas</div>
+              </div>
+            </div>
+
+            <div className="col-6 col-lg">
+              <div className="border rounded-3 p-3 bg-light h-100">
+                <div className="h4 mb-0">
+                  {verificationCounters.rechazada || 0}
+                </div>
+                <div className="small text-muted">Rechazadas</div>
+              </div>
             </div>
           </div>
         </div>
@@ -859,14 +1065,31 @@ const UserAdminPage = () => {
                       <div className="small text-muted">
                         Admins: {(inmobiliaria.admins || []).length}
                       </div>
+                      <div className="small text-muted">
+                        Documentos cargados:{" "}
+                        {getUploadedVerificationDocumentsCount(inmobiliaria)} /{" "}
+                        {VERIFICATION_DOCUMENT_KEYS.length}
+                      </div>
+
+                      {inmobiliaria.verificacion?.reviewNote && (
+                        <div className="small text-muted mt-1">
+                          Nota revisión: {inmobiliaria.verificacion.reviewNote}
+                        </div>
+                      )}
                     </div>
 
-                    <span
-                      className={`badge ${inmobiliaria.activa ? "text-bg-success" : "text-bg-danger"
-                        }`}
-                    >
-                      {inmobiliaria.activa ? "Activa" : "Inactiva"}
-                    </span>
+                    <div className="d-flex flex-wrap gap-2 justify-content-xl-end">
+                      <span className={`badge ${getVerificationBadgeClass(inmobiliaria)}`}>
+                        {getVerificationLabel(inmobiliaria)}
+                      </span>
+
+                      <span
+                        className={`badge ${inmobiliaria.activa ? "text-bg-success" : "text-bg-danger"
+                          }`}
+                      >
+                        {inmobiliaria.activa ? "Activa" : "Inactiva"}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="d-flex flex-column gap-3 mb-3">
@@ -897,16 +1120,36 @@ const UserAdminPage = () => {
                     ))}
                   </div>
 
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => handleSaveInmobiliariaModules(inmobiliaria)}
-                    disabled={savingInmobiliariaId === inmobiliaria.id}
-                  >
-                    {savingInmobiliariaId === inmobiliaria.id
-                      ? "Guardando…"
-                      : "Guardar módulos"}
-                  </button>
+                  <div className="d-flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => handleSaveInmobiliariaModules(inmobiliaria)}
+                      disabled={savingInmobiliariaId === inmobiliaria.id}
+                    >
+                      {savingInmobiliariaId === inmobiliaria.id
+                        ? "Guardando…"
+                        : "Guardar módulos"}
+                    </button>
+
+                    <Link
+                      to="/admin/inmobiliarias/verificacion"
+                      className="btn btn-outline-primary"
+                    >
+                      Revisar documentación
+                    </Link>
+
+                    {inmobiliaria.slug && (
+                      <Link
+                        to={`/inmobiliaria/${inmobiliaria.slug}`}
+                        className="btn btn-outline-secondary"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ver pública
+                      </Link>
+                    )}
+                  </div>
                 </div>
               </article>
             ))}

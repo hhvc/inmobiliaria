@@ -1,80 +1,103 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { getInmobiliariaBySlug } from "../services/inmobiliaria.service";
+import SEO from "../../components/SEO";
+import {
+  getInmobiliariaBySlug,
+} from "../services/inmobiliaria.service";
 import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueble.service";
 import { getAgencySlugFromDomain } from "../utils/domainRouting";
 import { useDomainAgency } from "../context/useDomainAgency";
-
-import SEO from "../../components/SEO";
+import {
+  getInmuebleAmenityBadges,
+  getInmuebleFeatureBadges,
+  getBanos,
+  getCocherasCantidad,
+  getDormitorios,
+  getSuperficiePrincipal,
+  inmuebleHasAmenity,
+} from "../../inmueble/utils/inmuebleDisplay.helpers";
 
 const INITIAL_FILTERS = {
   search: "",
   operacion: "",
   tipo: "",
+  ciudad: "",
+  barrio: "",
+  dormitoriosMin: "",
+  banosMin: "",
+  cocherasMin: "",
+  superficieMin: "",
+  piscina: false,
+  patio: false,
+  jardin: false,
+  aptoCredito: false,
+  sortBy: "destacados",
 };
 
 const DEFAULT_SEO_IMAGE = "/assets/img/Logo.png";
 
-const VERIFICATION_STATUS_CONFIG = {
-  pendiente_documentacion: {
-    label: "Pendiente de documentación para validar",
-    cardLabel: "Perfil activo · Pendiente de documentación",
-    alertClass: "alert-warning",
-    title: "Inmobiliaria pendiente de documentación",
-    description:
-      "Esta inmobiliaria se encuentra activa en ONO Prop y puede operar, pero todavía debe presentar documentación legal y fiscal para completar su validación.",
-  },
-  pendiente_revision: {
-    label: "Documentación en revisión",
-    cardLabel: "Perfil activo · Documentación en revisión",
-    alertClass: "alert-info",
-    title: "Documentación en revisión",
-    description:
-      "Esta inmobiliaria ya presentó documentación y se encuentra en proceso de revisión por parte del equipo de ONO Prop.",
-  },
-  verificada: {
-    label: "Inmobiliaria verificada",
-    cardLabel: "Perfil comercial verificado",
-    alertClass: "alert-success",
-    title: "",
-    description: "",
-  },
-  observada: {
-    label: "Documentación observada",
-    cardLabel: "Perfil activo · Documentación observada",
-    alertClass: "alert-warning",
-    title: "Documentación observada",
-    description:
-      "La documentación presentada por esta inmobiliaria requiere correcciones o información adicional para completar la validación.",
-  },
-  rechazada: {
-    label: "Verificación rechazada",
-    cardLabel: "Perfil no verificado",
-    alertClass: "alert-danger",
-    title: "Inmobiliaria no verificada",
-    description:
-      "Esta inmobiliaria no cuenta actualmente con validación aprobada en ONO Prop.",
-  },
+const SORT_OPTIONS = [
+  { value: "destacados", label: "Destacados primero" },
+  { value: "recientes", label: "Más recientes" },
+  { value: "precio_asc", label: "Precio menor a mayor" },
+  { value: "precio_desc", label: "Precio mayor a menor" },
+  { value: "dormitorios_desc", label: "Más dormitorios" },
+  { value: "superficie_desc", label: "Mayor superficie" },
+];
+
+const AMENITY_FILTERS = [
+  { key: "piscina", label: "Piscina" },
+  { key: "patio", label: "Patio" },
+  { key: "jardin", label: "Jardín" },
+  { key: "aptoCredito", label: "Apto crédito" },
+];
+
+const normalizeText = (value = "") => {
+  return value
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 };
 
-const getVerificationStatus = (inmobiliaria) => {
-  const estado =
-    inmobiliaria?.verificacion?.estado || "pendiente_documentacion";
+const normalizeSeoText = (value = "") => {
+  return value.toString().replace(/\s+/g, " ").trim();
+};
 
-  const config =
-    VERIFICATION_STATUS_CONFIG[estado] ||
-    VERIFICATION_STATUS_CONFIG.pendiente_documentacion;
+const truncateText = (value = "", maxLength = 165) => {
+  const cleanValue = normalizeSeoText(value);
 
-  return {
-    estado,
-    ...config,
-    label: inmobiliaria?.verificacion?.estadoLabel || config.label,
-    showPublicAlert: estado !== "verificada",
-  };
+  if (cleanValue.length <= maxLength) return cleanValue;
+
+  return `${cleanValue.slice(0, maxLength - 1).trim()}…`;
+};
+
+const capitalize = (value = "") => {
+  const cleanValue = normalizeSeoText(value);
+
+  if (!cleanValue) return "";
+
+  return cleanValue.charAt(0).toUpperCase() + cleanValue.slice(1);
+};
+
+const toNumber = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+
+  const cleanValue = value
+    .toString()
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+
+  const number = Number(cleanValue);
+
+  return Number.isFinite(number) ? number : null;
 };
 
 const formatPrice = (inmueble) => {
+  if (inmueble?.precioLabel) return inmueble.precioLabel;
   if (!inmueble?.precio) return "Consultar";
 
   const moneda = inmueble.moneda || "USD";
@@ -87,16 +110,17 @@ const formatPrice = (inmueble) => {
   return `${moneda} ${precio.toLocaleString("es-AR")}`;
 };
 
-const formatNumber = (value) => {
-  const number = Number(value);
-
-  if (!Number.isFinite(number)) return value;
-
-  return number.toLocaleString("es-AR");
+const getDireccionValue = (inmueble, key) => {
+  return inmueble?.direccion?.[key] || inmueble?.[key] || "";
 };
 
-const buildAddress = (direccion = {}) => {
-  return [direccion.barrio, direccion.ciudad].filter(Boolean).join(", ");
+const buildAddress = (inmueble = {}) => {
+  return [
+    getDireccionValue(inmueble, "barrio"),
+    getDireccionValue(inmueble, "ciudad"),
+  ]
+    .filter(Boolean)
+    .join(", ");
 };
 
 const getCoverImage = (inmueble) => {
@@ -107,13 +131,10 @@ const getCoverImage = (inmueble) => {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0];
 };
 
-const normalizeText = (value = "") => {
-  return value
-    .toString()
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
+const getPhotoCount = (inmueble) => {
+  if (!Array.isArray(inmueble?.images)) return 0;
+
+  return inmueble.images.filter((image) => image?.url).length;
 };
 
 const getUniqueOptions = (items, getter) => {
@@ -126,6 +147,18 @@ const getUniqueOptions = (items, getter) => {
   return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
 };
 
+const getDateValue = (value) => {
+  if (!value) return 0;
+
+  if (typeof value.toDate === "function") {
+    return value.toDate().getTime();
+  }
+
+  const date = new Date(value);
+
+  return Number.isFinite(date.getTime()) ? date.getTime() : 0;
+};
+
 const getCurrentInmobiliariaUrl = (slug) => {
   if (!slug) return "";
 
@@ -136,10 +169,20 @@ const getCurrentInmobiliariaUrl = (slug) => {
   return `${window.location.origin}/inmobiliaria/${slug}`;
 };
 
-const buildWhatsappUrl = ({ whatsapp, inmobiliaria, slug }) => {
-  if (!whatsapp) return null;
+const buildInmuebleUrl = (inmueble = {}) => {
+  if (inmueble.publicPath) return inmueble.publicPath;
 
-  const cleanNumber = whatsapp.toString().replace(/\D/g, "");
+  const slugOrId = inmueble.slug || inmueble.id;
+
+  return slugOrId ? `/inmueble/${slugOrId}` : "/inmuebles";
+};
+
+const normalizeWhatsappNumber = (value = "") => {
+  return value.toString().replace(/\D/g, "");
+};
+
+const buildWhatsappUrl = ({ whatsapp, inmobiliaria, slug }) => {
+  const cleanNumber = normalizeWhatsappNumber(whatsapp);
 
   if (!cleanNumber) return null;
 
@@ -156,6 +199,59 @@ const buildWhatsappUrl = ({ whatsapp, inmobiliaria, slug }) => {
   return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
 };
 
+const getLogoUrl = (inmobiliaria = {}) => {
+  const safeInmobiliaria = inmobiliaria || {};
+
+  const branding =
+    safeInmobiliaria.branding && typeof safeInmobiliaria.branding === "object"
+      ? safeInmobiliaria.branding
+      : {};
+
+  return (
+    safeInmobiliaria.logoUrl ||
+    safeInmobiliaria.logo ||
+    branding.logoUrl ||
+    branding.logo?.url ||
+    branding.logo ||
+    branding.isologoUrl ||
+    ""
+  );
+};
+
+const getHeroBackgroundUrl = (inmobiliaria = {}) => {
+  const safeInmobiliaria = inmobiliaria || {};
+
+  const branding =
+    safeInmobiliaria.branding && typeof safeInmobiliaria.branding === "object"
+      ? safeInmobiliaria.branding
+      : {};
+
+  return (
+    branding.backgrounds?.hero?.url ||
+    branding.backgrounds?.principal?.url ||
+    branding.backgrounds?.home?.url ||
+    branding.heroUrl ||
+    branding.coverUrl ||
+    safeInmobiliaria.heroImageUrl ||
+    safeInmobiliaria.coverUrl ||
+    ""
+  );
+};
+
+const isVerifiedAgency = (inmobiliaria = {}) => {
+  return inmobiliaria?.verificacion?.estado === "verificada";
+};
+
+const getVerificationLabel = (inmobiliaria = {}) => {
+  if (isVerifiedAgency(inmobiliaria)) return "Inmobiliaria verificada";
+
+  return (
+    inmobiliaria?.verificacion?.estadoLabel ||
+    inmobiliaria?.verificacion?.estado ||
+    "Pendiente de validación"
+  );
+};
+
 const inmuebleMatchesFilters = (inmueble, filters) => {
   const normalizedSearch = normalizeText(filters.search);
 
@@ -165,8 +261,11 @@ const inmuebleMatchesFilters = (inmueble, filters) => {
       inmueble.descripcion,
       inmueble.operacion,
       inmueble.tipo,
+      inmueble.direccion?.calle,
       inmueble.direccion?.barrio,
       inmueble.direccion?.ciudad,
+      inmueble.direccion?.provincia,
+      inmueble.ubicacion,
     ]
       .filter(Boolean)
       .join(" ");
@@ -184,7 +283,125 @@ const inmuebleMatchesFilters = (inmueble, filters) => {
     return false;
   }
 
+  if (
+    filters.ciudad &&
+    normalizeText(getDireccionValue(inmueble, "ciudad")) !==
+    normalizeText(filters.ciudad)
+  ) {
+    return false;
+  }
+
+  if (
+    filters.barrio &&
+    normalizeText(getDireccionValue(inmueble, "barrio")) !==
+    normalizeText(filters.barrio)
+  ) {
+    return false;
+  }
+
+  const dormitoriosMin = toNumber(filters.dormitoriosMin);
+  const banosMin = toNumber(filters.banosMin);
+  const cocherasMin = toNumber(filters.cocherasMin);
+  const superficieMin = toNumber(filters.superficieMin);
+
+  const dormitorios = toNumber(getDormitorios(inmueble));
+  const banos = toNumber(getBanos(inmueble));
+  const cocheras = toNumber(getCocherasCantidad(inmueble));
+  const superficie = toNumber(getSuperficiePrincipal(inmueble));
+
+  if (
+    dormitoriosMin !== null &&
+    (dormitorios === null || dormitorios < dormitoriosMin)
+  ) {
+    return false;
+  }
+
+  if (banosMin !== null && (banos === null || banos < banosMin)) {
+    return false;
+  }
+
+  if (cocherasMin !== null && (cocheras === null || cocheras < cocherasMin)) {
+    return false;
+  }
+
+  if (
+    superficieMin !== null &&
+    (superficie === null || superficie < superficieMin)
+  ) {
+    return false;
+  }
+
+  if (filters.piscina && !inmuebleHasAmenity(inmueble, "piscina")) {
+    return false;
+  }
+
+  if (filters.patio && !inmuebleHasAmenity(inmueble, "patio")) {
+    return false;
+  }
+
+  if (filters.jardin && !inmuebleHasAmenity(inmueble, "jardin")) {
+    return false;
+  }
+
+  if (filters.aptoCredito && !inmuebleHasAmenity(inmueble, "aptoCredito")) {
+    return false;
+  }
+
   return true;
+};
+
+const sortInmuebles = (items, sortBy) => {
+  const sortedItems = [...items];
+
+  sortedItems.sort((a, b) => {
+    if (sortBy === "recientes") {
+      return getDateValue(b.createdAt) - getDateValue(a.createdAt);
+    }
+
+    if (sortBy === "precio_asc") {
+      const priceA = toNumber(a.precio);
+      const priceB = toNumber(b.precio);
+
+      if (priceA === null && priceB === null) return 0;
+      if (priceA === null) return 1;
+      if (priceB === null) return -1;
+
+      return priceA - priceB;
+    }
+
+    if (sortBy === "precio_desc") {
+      const priceA = toNumber(a.precio);
+      const priceB = toNumber(b.precio);
+
+      if (priceA === null && priceB === null) return 0;
+      if (priceA === null) return 1;
+      if (priceB === null) return -1;
+
+      return priceB - priceA;
+    }
+
+    if (sortBy === "dormitorios_desc") {
+      return (
+        (toNumber(getDormitorios(b)) || 0) -
+        (toNumber(getDormitorios(a)) || 0)
+      );
+    }
+
+    if (sortBy === "superficie_desc") {
+      return (
+        (toNumber(getSuperficiePrincipal(b)) || 0) -
+        (toNumber(getSuperficiePrincipal(a)) || 0)
+      );
+    }
+
+    if (a.destacado !== b.destacado) {
+      return Number(Boolean(b.destacado)) - Number(Boolean(a.destacado));
+    }
+
+    return getDateValue(b.createdAt) - getDateValue(a.createdAt);
+  });
+
+  return sortedItems;
 };
 
 const getFeaturedInmuebles = (inmuebles) => {
@@ -197,19 +414,63 @@ const getFeaturedInmuebles = (inmuebles) => {
   return inmuebles.slice(0, 3);
 };
 
-const buildSeoDescription = ({ inmobiliaria, contacto }) => {
+const getOperationTypeLabel = (inmueble = {}) => {
+  return [capitalize(inmueble.operacion), capitalize(inmueble.tipo)]
+    .filter(Boolean)
+    .join(" · ");
+};
+
+const getActiveFilterBadges = (filters) => {
+  const badges = [];
+
+  if (filters.search) badges.push({ key: "search", label: filters.search });
+  if (filters.operacion) badges.push({ key: "operacion", label: filters.operacion });
+  if (filters.tipo) badges.push({ key: "tipo", label: filters.tipo });
+  if (filters.ciudad) badges.push({ key: "ciudad", label: filters.ciudad });
+  if (filters.barrio) badges.push({ key: "barrio", label: filters.barrio });
+  if (filters.dormitoriosMin) {
+    badges.push({ key: "dormitoriosMin", label: `${filters.dormitoriosMin}+ dorm.` });
+  }
+  if (filters.banosMin) {
+    badges.push({ key: "banosMin", label: `${filters.banosMin}+ baños` });
+  }
+  if (filters.cocherasMin) {
+    badges.push({ key: "cocherasMin", label: `${filters.cocherasMin}+ coch.` });
+  }
+  if (filters.superficieMin) {
+    badges.push({ key: "superficieMin", label: `${filters.superficieMin}+ m²` });
+  }
+
+  AMENITY_FILTERS.forEach((filter) => {
+    if (filters[filter.key]) {
+      badges.push({ key: filter.key, label: filter.label });
+    }
+  });
+
+  if (filters.sortBy && filters.sortBy !== INITIAL_FILTERS.sortBy) {
+    badges.push({ key: "sortBy", label: `Orden: ${filters.sortBy}` });
+  }
+
+  return badges;
+};
+
+const buildSeoDescription = ({ inmobiliaria, contacto, inmueblesCount }) => {
   if (!inmobiliaria) {
     return "Sitio público de inmobiliaria en ONO Prop.";
   }
 
-  return [
-    inmobiliaria.razonSocial,
-    `Conocé las propiedades publicadas por ${inmobiliaria.nombre}.`,
-    contacto.telefono ? `Teléfono: ${contacto.telefono}.` : "",
-    contacto.whatsapp ? `WhatsApp: ${contacto.whatsapp}.` : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  return truncateText(
+    [
+      inmobiliaria.razonSocial,
+      `Conocé ${inmueblesCount || "las"} propiedades publicadas por ${inmobiliaria?.nombre
+      }.`,
+      contacto.telefono ? `Teléfono: ${contacto.telefono}.` : "",
+      contacto.whatsapp ? `WhatsApp: ${contacto.whatsapp}.` : "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    165,
+  );
 };
 
 const buildInmobiliariaJsonLd = ({
@@ -217,13 +478,14 @@ const buildInmobiliariaJsonLd = ({
   contacto,
   seoUrl,
   seoImage,
+  inmuebles,
 }) => {
   if (!inmobiliaria) return null;
 
   return {
     "@context": "https://schema.org",
     "@type": "RealEstateAgent",
-    name: inmobiliaria.nombre,
+    name: inmobiliaria?.nombre,
     url: seoUrl,
     image: seoImage,
     telephone: contacto.telefono || contacto.whatsapp || undefined,
@@ -231,16 +493,141 @@ const buildInmobiliariaJsonLd = ({
     address: {
       "@type": "PostalAddress",
       addressLocality:
-        inmobiliaria.configuracion?.ubicacion?.ciudad ||
+        inmobiliaria?.configuracion?.ubicacion?.ciudad ||
         contacto.ciudad ||
         undefined,
       addressRegion:
-        inmobiliaria.configuracion?.ubicacion?.provincia ||
+        inmobiliaria?.configuracion?.ubicacion?.provincia ||
         contacto.provincia ||
         undefined,
       addressCountry: "AR",
     },
+    makesOffer: inmuebles.slice(0, 20).map((inmueble) => ({
+      "@type": "Offer",
+      name: inmueble.titulo || "Inmueble publicado",
+      url:
+        typeof window !== "undefined"
+          ? `${window.location.origin}${buildInmuebleUrl(inmueble)}`
+          : buildInmuebleUrl(inmueble),
+      price: toNumber(inmueble.precio) || undefined,
+      priceCurrency: inmueble.moneda || "USD",
+      itemOffered: {
+        "@type": "Place",
+        name: inmueble.titulo || "Inmueble publicado",
+        address: buildAddress(inmueble) || undefined,
+      },
+    })),
   };
+};
+
+const InmueblePublicCard = ({ inmueble }) => {
+  const coverImage = getCoverImage(inmueble);
+  const detailUrl = buildInmuebleUrl(inmueble);
+  const featureItems = getInmuebleFeatureBadges(inmueble);
+  const amenityItems = getInmuebleAmenityBadges(inmueble, 4);
+  const address = buildAddress(inmueble);
+  const photoCount = getPhotoCount(inmueble);
+
+  return (
+    <article className="card h-100 shadow-sm border-0 overflow-hidden portal-listing-card">
+      <div className="position-relative portal-listing-image-wrap">
+        <Link to={detailUrl} className="text-decoration-none">
+          {coverImage ? (
+            <img
+              src={coverImage.url}
+              alt={inmueble.titulo || "Inmueble publicado"}
+              className="card-img-top portal-listing-image"
+              loading="lazy"
+            />
+          ) : (
+            <div className="portal-listing-image-empty">Sin imagen</div>
+          )}
+        </Link>
+
+        <div className="position-absolute top-0 start-0 p-3 d-flex flex-wrap gap-2">
+          {inmueble.operacion && (
+            <span className="badge text-bg-primary">
+              {capitalize(inmueble.operacion)}
+            </span>
+          )}
+
+          {inmueble.tipo && (
+            <span className="badge text-bg-dark">{capitalize(inmueble.tipo)}</span>
+          )}
+        </div>
+
+        {inmueble.destacado && (
+          <div className="position-absolute top-0 end-0 p-3">
+            <span className="badge text-bg-warning">★ Destacado</span>
+          </div>
+        )}
+
+        {photoCount > 0 && (
+          <div className="position-absolute bottom-0 end-0 p-3">
+            <span className="badge text-bg-dark bg-opacity-75">
+              {photoCount} foto{photoCount === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="card-body d-flex flex-column p-4">
+        <Link to={detailUrl} className="text-decoration-none text-dark">
+          <h3 className="h5 mb-2 portal-listing-title">
+            {inmueble.titulo || "Inmueble publicado"}
+          </h3>
+        </Link>
+
+        {address && <p className="text-muted small mb-2">📍 {address}</p>}
+
+        {getOperationTypeLabel(inmueble) && (
+          <p className="text-muted small mb-2">{getOperationTypeLabel(inmueble)}</p>
+        )}
+
+        <div className="h4 mb-3 portal-listing-price">
+          {formatPrice(inmueble)}
+        </div>
+
+        {featureItems.length > 0 && (
+          <div className="d-flex flex-wrap gap-2 small text-muted mb-3">
+            {featureItems.map((item) => (
+              <span
+                className="border rounded-pill px-2 py-1 bg-light"
+                key={item.key}
+              >
+                {item.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {amenityItems.length > 0 && (
+          <div className="d-flex flex-wrap gap-2 small mb-3">
+            {amenityItems.map((item) => (
+              <span
+                className="badge text-bg-light border text-dark"
+                key={item.key}
+              >
+                {item.label}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {inmueble.descripcion && (
+          <p className="text-muted small mb-4">
+            {truncateText(inmueble.descripcion, 110)}
+          </p>
+        )}
+
+        <div className="mt-auto d-grid">
+          <Link to={detailUrl} className="btn btn-primary">
+            Ver inmueble
+          </Link>
+        </div>
+      </div>
+    </article>
+  );
 };
 
 export default function InmobiliariaPublicPage({ forcedSlug = null }) {
@@ -259,6 +646,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
 
   const [error, setError] = useState(null);
   const [inmueblesError, setInmueblesError] = useState(null);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const loadInmobiliaria = useCallback(async () => {
     try {
@@ -293,7 +681,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
         setInmueblesLoading(true);
 
         const result = await getPublicInmueblesByInmobiliaria(inmobiliariaId, {
-          pageSize: 48,
+          pageSize: 72,
         });
 
         setInmuebles(Array.isArray(result?.data) ? result.data : []);
@@ -341,56 +729,31 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     });
   }, [contacto.whatsapp, inmobiliaria, slug]);
 
-  const seoTitle = useMemo(() => {
-    return inmobiliaria?.nombre
-      ? `${inmobiliaria.nombre} | Propiedades publicadas`
-      : "Inmobiliaria | ONO Prop";
-  }, [inmobiliaria]);
-
-  const seoDescription = useMemo(() => {
-    return buildSeoDescription({
-      inmobiliaria,
-      contacto,
-    });
-  }, [contacto, inmobiliaria]);
-
-  const seoImage = useMemo(() => {
-    return (
-      inmobiliaria?.branding?.logo?.url ||
-      inmobiliaria?.branding?.backgrounds?.hero?.url ||
-      DEFAULT_SEO_IMAGE
-    );
-  }, [inmobiliaria]);
-
-  const seoUrl = useMemo(() => {
-    if (typeof window !== "undefined") {
-      return window.location.href;
-    }
-
-    return slug ? `/inmobiliaria/${slug}` : "/";
-  }, [slug]);
-
-  const inmobiliariaJsonLd = useMemo(() => {
-    return buildInmobiliariaJsonLd({
-      inmobiliaria,
-      contacto,
-      seoUrl,
-      seoImage,
-    });
-  }, [contacto, inmobiliaria, seoImage, seoUrl]);
-
-  const shouldNoIndexInmobiliaria =
-    inmobiliaria?.noIndex === true || inmobiliaria?.seo?.noIndex === true;
-
-  const verificationStatus = useMemo(() => {
-    return getVerificationStatus(inmobiliaria);
-  }, [inmobiliaria]);
-
   const operacionesPermitidas =
     inmobiliaria?.configuracion?.operacionesPermitidas || [];
 
   const tiposPermitidos =
     inmobiliaria?.configuracion?.tiposInmueblePermitidos || [];
+
+  const ciudades = useMemo(() => {
+    return getUniqueOptions(inmuebles, (inmueble) =>
+      getDireccionValue(inmueble, "ciudad"),
+    );
+  }, [inmuebles]);
+
+  const barrios = useMemo(() => {
+    const filteredByCiudad = filters.ciudad
+      ? inmuebles.filter(
+        (inmueble) =>
+          normalizeText(getDireccionValue(inmueble, "ciudad")) ===
+          normalizeText(filters.ciudad),
+      )
+      : inmuebles;
+
+    return getUniqueOptions(filteredByCiudad, (inmueble) =>
+      getDireccionValue(inmueble, "barrio"),
+    );
+  }, [filters.ciudad, inmuebles]);
 
   const operacionesDisponibles = useMemo(() => {
     return getUniqueOptions(inmuebles, (inmueble) => inmueble.operacion);
@@ -401,9 +764,11 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
   }, [inmuebles]);
 
   const filteredInmuebles = useMemo(() => {
-    return inmuebles.filter((inmueble) =>
+    const filteredItems = inmuebles.filter((inmueble) =>
       inmuebleMatchesFilters(inmueble, filters),
     );
+
+    return sortInmuebles(filteredItems, filters.sortBy);
   }, [inmuebles, filters]);
 
   const featuredInmuebles = useMemo(() => {
@@ -411,7 +776,19 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
   }, [inmuebles]);
 
   const activeFiltersCount = useMemo(() => {
-    return Object.values(filters).filter(Boolean).length;
+    return Object.entries(filters).filter(([key, value]) => {
+      if (!value) return false;
+
+      if (key === "sortBy" && value === INITIAL_FILTERS.sortBy) {
+        return false;
+      }
+
+      return true;
+    }).length;
+  }, [filters]);
+
+  const activeFilterBadges = useMemo(() => {
+    return getActiveFilterBadges(filters);
   }, [filters]);
 
   const totalDestacados = useMemo(() => {
@@ -428,23 +805,113 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
       ? tiposPermitidos.slice(0, 4).join(", ")
       : "casas, departamentos, terrenos y locales";
 
-  const heroBackground =
-    inmobiliaria?.branding?.backgrounds?.hero?.url ||
-    inmobiliaria?.branding?.backgrounds?.principal?.url ||
-    inmobiliaria?.branding?.backgrounds?.home?.url ||
-    null;
+  const heroBackground = getHeroBackgroundUrl(inmobiliaria);
+  const logoUrl = getLogoUrl(inmobiliaria);
+
+  const seoUrl = useMemo(() => {
+    if (typeof window !== "undefined") {
+      return window.location.href;
+    }
+
+    return slug ? `/inmobiliaria/${slug}` : "/";
+  }, [slug]);
+
+  const seoImage = useMemo(() => {
+    return logoUrl || heroBackground || DEFAULT_SEO_IMAGE;
+  }, [heroBackground, logoUrl]);
+
+  const seoTitle = useMemo(() => {
+    return inmobiliaria?.nombre
+      ? `${inmobiliaria?.nombre} | Propiedades publicadas`
+      : "Inmobiliaria | ONO Prop";
+  }, [inmobiliaria]);
+
+  const seoDescription = useMemo(() => {
+    return buildSeoDescription({
+      inmobiliaria,
+      contacto,
+      inmueblesCount: inmuebles.length,
+    });
+  }, [contacto, inmobiliaria, inmuebles.length]);
+
+  const inmobiliariaJsonLd = useMemo(() => {
+    return buildInmobiliariaJsonLd({
+      inmobiliaria,
+      contacto,
+      seoUrl,
+      seoImage,
+      inmuebles,
+    });
+  }, [contacto, inmobiliaria, inmuebles, seoImage, seoUrl]);
+
+  const shouldNoIndexInmobiliaria =
+    inmobiliaria?.noIndex === true || inmobiliaria?.seo?.noIndex === true;
 
   const handleFilterChange = (e) => {
-    const { name, value } = e.target;
+    const { name, value, type, checked } = e.target;
 
     setFilters((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: type === "checkbox" ? checked : value,
+      ...(name === "ciudad" ? { barrio: "" } : {}),
     }));
   };
 
   const handleClearFilters = () => {
     setFilters(INITIAL_FILTERS);
+  };
+
+  const handleRemoveFilter = (key) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: INITIAL_FILTERS[key] ?? "",
+      ...(key === "ciudad" ? { barrio: "" } : {}),
+    }));
+  };
+
+  const handleCopyProfileLink = async () => {
+    try {
+      const currentUrl = getCurrentInmobiliariaUrl(slug);
+
+      if (!currentUrl) {
+        throw new Error("No se pudo obtener el link de la inmobiliaria");
+      }
+
+      await navigator.clipboard.writeText(currentUrl);
+      setCopySuccess(true);
+
+      window.setTimeout(() => {
+        setCopySuccess(false);
+      }, 2500);
+    } catch (err) {
+      console.error("Error copiando link de inmobiliaria:", err);
+      setCopySuccess(false);
+      alert("No se pudo copiar el link de la inmobiliaria.");
+    }
+  };
+
+  const handleShareProfileByWhatsapp = () => {
+    try {
+      const currentUrl = getCurrentInmobiliariaUrl(slug);
+
+      if (!currentUrl) {
+        throw new Error("No se pudo obtener el link de la inmobiliaria");
+      }
+
+      const message = [
+        `Te comparto el perfil de ${inmobiliaria?.nombre || "esta inmobiliaria"}:`,
+        currentUrl,
+      ].join("\n");
+
+      const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(
+        message,
+      )}`;
+
+      window.open(whatsappShareUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("Error compartiendo inmobiliaria por WhatsApp:", err);
+      alert("No se pudo abrir WhatsApp para compartir la inmobiliaria.");
+    }
   };
 
   if (loading) {
@@ -502,34 +969,6 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
         noIndex={shouldNoIndexInmobiliaria}
       />
 
-      {verificationStatus.showPublicAlert && (
-        <section className="pt-4">
-          <div className="container">
-            <div
-              className={`alert ${verificationStatus.alertClass} border shadow-sm mb-0`}
-              role="alert"
-            >
-              <div className="d-flex flex-column flex-md-row gap-2 justify-content-between">
-                <div>
-                  <strong>{verificationStatus.title}</strong>
-
-                  <p className="mb-0 mt-1">
-                    {verificationStatus.description}
-                  </p>
-                </div>
-
-                <span className="badge text-bg-light align-self-start">
-                  {verificationStatus.label}
-                </span>
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* =========================
-          Hero sitio inmobiliaria
-         ========================= */}
       <section className="py-5">
         <div className="container">
           <div
@@ -544,12 +983,23 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
             <div className="card-body p-4 p-lg-5">
               <div className="row align-items-center g-5">
                 <div className="col-lg-8">
-                  <div className="portal-eyebrow mb-3">
-                    Sitio oficial de inmobiliaria
+                  <div className="d-flex flex-wrap gap-2 mb-3">
+                    <span className="badge text-bg-light text-dark">
+                      Sitio oficial de inmobiliaria
+                    </span>
+
+                    <span
+                      className={`badge ${isVerifiedAgency(inmobiliaria)
+                        ? "text-bg-success"
+                        : "text-bg-warning"
+                        }`}
+                    >
+                      {getVerificationLabel(inmobiliaria)}
+                    </span>
                   </div>
 
                   <h1 className="display-4 fw-bold mb-3">
-                    {inmobiliaria.nombre}
+                    {inmobiliaria?.nombre}
                   </h1>
 
                   <p
@@ -595,67 +1045,72 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                 <div className="col-lg-4">
                   <div className="bg-white text-dark rounded-4 p-4 shadow-sm">
                     <div className="d-flex align-items-center gap-3 mb-4">
-                      {inmobiliaria.branding?.logo?.url ? (
+                      {logoUrl ? (
                         <img
-                          src={inmobiliaria.branding.logo.url}
-                          alt={`Logo ${inmobiliaria.nombre}`}
+                          src={logoUrl}
+                          alt={`Logo ${inmobiliaria?.nombre}`}
                           className="rounded border"
                           style={{
-                            width: 76,
-                            height: 76,
+                            width: 88,
+                            height: 88,
                             objectFit: "contain",
                             background: "#fff",
                           }}
                         />
                       ) : (
                         <div
-                          className="rounded border d-flex align-items-center justify-content-center bg-light"
-                          style={{ width: 76, height: 76 }}
+                          className="rounded border bg-light d-flex align-items-center justify-content-center fw-bold"
+                          style={{ width: 88, height: 88 }}
                         >
-                          {inmobiliaria.nombre?.slice(0, 2)?.toUpperCase()}
+                          {inmobiliaria?.nombre?.slice(0, 1) || "I"}
                         </div>
                       )}
 
                       <div>
-                        <div className="fw-bold">{inmobiliaria.nombre}</div>
-                        <div className="small text-muted">
-                          {verificationStatus.cardLabel}
+                        <div className="fw-bold">{inmobiliaria?.nombre}</div>
+                        <div className="text-muted small">
+                          {isVerifiedAgency(inmobiliaria)
+                            ? "Perfil validado por ONO Prop"
+                            : "Perfil pendiente de validación"}
                         </div>
                       </div>
                     </div>
 
-                    <div className="row g-2">
-                      <div className="col-6">
-                        <div className="border rounded-3 p-3">
-                          <div className="h4 mb-0">{inmuebles.length}</div>
-                          <div className="small text-muted">Publicaciones</div>
-                        </div>
+                    <div className="row g-3 text-center">
+                      <div className="col-4">
+                        <div className="h3 mb-0">{inmuebles.length}</div>
+                        <div className="small text-muted">Publicadas</div>
                       </div>
 
-                      <div className="col-6">
-                        <div className="border rounded-3 p-3">
-                          <div className="h4 mb-0">{totalDestacados}</div>
-                          <div className="small text-muted">Destacadas</div>
-                        </div>
+                      <div className="col-4">
+                        <div className="h3 mb-0">{totalDestacados}</div>
+                        <div className="small text-muted">Destacadas</div>
                       </div>
 
-                      <div className="col-12">
-                        <div className="border rounded-3 p-3">
-                          <div className="small text-muted mb-1">
-                            Contacto directo
-                          </div>
-
-                          {contacto.whatsapp ? (
-                            <div className="fw-semibold">{contacto.whatsapp}</div>
-                          ) : contacto.telefono ? (
-                            <div className="fw-semibold">{contacto.telefono}</div>
-                          ) : contacto.email ? (
-                            <div className="fw-semibold">{contacto.email}</div>
-                          ) : (
-                            <div className="text-muted">Consultar publicación</div>
-                          )}
-                        </div>
+                      <div className="col-4">
+                        <div className="h3 mb-0">{ciudades.length}</div>
+                        <div className="small text-muted">Ciudades</div>
                       </div>
+                    </div>
+
+                    <hr />
+
+                    <div className="d-grid gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary btn-sm"
+                        onClick={handleCopyProfileLink}
+                      >
+                        {copySuccess ? "Link copiado" : "Copiar perfil"}
+                      </button>
+
+                      <button
+                        type="button"
+                        className="btn btn-outline-success btn-sm"
+                        onClick={handleShareProfileByWhatsapp}
+                      >
+                        Compartir por WhatsApp
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -665,21 +1120,15 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
         </div>
       </section>
 
-      {/* =========================
-          Destacados
-         ========================= */}
       {featuredInmuebles.length > 0 && (
-        <section className="pb-5">
+        <section className="pb-4">
           <div className="container">
-            <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+            <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-3">
               <div>
                 <p className="text-uppercase text-muted small mb-1">
-                  Selección destacada
+                  Selección de la inmobiliaria
                 </p>
-
-                <h2 className="portal-section-title mb-0">
-                  Propiedades recomendadas
-                </h2>
+                <h2 className="h3 mb-0">Propiedades destacadas</h2>
               </div>
 
               <a href="#inmuebles-publicados" className="btn btn-outline-primary">
@@ -688,277 +1137,51 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
             </div>
 
             <div className="row g-4">
-              {featuredInmuebles.map((inmueble) => {
-                const coverImage = getCoverImage(inmueble);
-                const address = buildAddress(inmueble.direccion);
-                const detailUrl = inmueble.slug
-                  ? `/inmueble/${inmueble.slug}`
-                  : null;
-
-                return (
-                  <article className="col-12 col-md-6 col-xl-4" key={inmueble.id}>
-                    <div className="card h-100 border-0 shadow-sm overflow-hidden">
-                      {coverImage ? (
-                        <img
-                          src={coverImage.url}
-                          alt={inmueble.titulo}
-                          className="card-img-top"
-                          style={{
-                            height: 250,
-                            objectFit: "cover",
-                          }}
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div
-                          className="bg-light d-flex align-items-center justify-content-center text-muted"
-                          style={{ height: 250 }}
-                        >
-                          Sin imagen
-                        </div>
-                      )}
-
-                      <div className="card-body p-4 d-flex flex-column">
-                        <div className="d-flex flex-wrap gap-2 mb-2">
-                          {inmueble.operacion && (
-                            <span className="badge text-bg-primary">
-                              {inmueble.operacion}
-                            </span>
-                          )}
-
-                          {inmueble.tipo && (
-                            <span className="badge text-bg-dark">
-                              {inmueble.tipo}
-                            </span>
-                          )}
-
-                          {inmueble.destacado && (
-                            <span className="badge text-bg-warning">
-                              Destacado
-                            </span>
-                          )}
-                        </div>
-
-                        <h3 className="h5">{inmueble.titulo}</h3>
-
-                        {address && (
-                          <p className="text-muted small mb-2">{address}</p>
-                        )}
-
-                        <div className="h4 mb-3">{formatPrice(inmueble)}</div>
-
-                        <div className="small text-muted mb-3">
-                          {inmueble.ambientes && (
-                            <span>{inmueble.ambientes} amb.</span>
-                          )}
-
-                          {inmueble.dormitorios && (
-                            <span> · {inmueble.dormitorios} dorm.</span>
-                          )}
-
-                          {inmueble.superficie?.total && (
-                            <span>
-                              {" "}
-                              · {formatNumber(inmueble.superficie.total)} m²
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="mt-auto d-grid">
-                          {detailUrl ? (
-                            <Link to={detailUrl} className="btn btn-primary">
-                              Ver inmueble
-                            </Link>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn-outline-secondary"
-                              disabled
-                            >
-                              Sin enlace público
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+              {featuredInmuebles.map((inmueble) => (
+                <div className="col-12 col-md-6 col-xl-4" key={inmueble.id}>
+                  <InmueblePublicCard inmueble={inmueble} />
+                </div>
+              ))}
             </div>
           </div>
         </section>
       )}
 
-      {/* =========================
-          Contacto y especialidades
-         ========================= */}
-      <section id="contacto" className="pb-5">
-        <div className="container">
-          <div className="row g-4">
-            <div className="col-lg-5">
-              <div className="card h-100 border-0 shadow-sm">
-                <div className="card-body p-4">
-                  <h2 className="h4 mb-3">Contacto directo</h2>
-
-                  <p className="text-muted">
-                    Comunicate con {inmobiliaria.nombre} para coordinar una
-                    visita, consultar disponibilidad o pedir más información.
-                  </p>
-
-                  {contacto.email && (
-                    <p className="mb-2">
-                      <strong>Email:</strong>{" "}
-                      <a href={`mailto:${contacto.email}`}>{contacto.email}</a>
-                    </p>
-                  )}
-
-                  {contacto.telefono && (
-                    <p className="mb-2">
-                      <strong>Teléfono:</strong>{" "}
-                      <a href={`tel:${contacto.telefono}`}>{contacto.telefono}</a>
-                    </p>
-                  )}
-
-                  {contacto.whatsapp && (
-                    <p className="mb-3">
-                      <strong>WhatsApp:</strong>{" "}
-                      {whatsappUrl ? (
-                        <a
-                          href={whatsappUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {contacto.whatsapp}
-                        </a>
-                      ) : (
-                        contacto.whatsapp
-                      )}
-                    </p>
-                  )}
-
-                  {whatsappUrl && (
-                    <a
-                      href={whatsappUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-success w-100"
-                    >
-                      Escribir por WhatsApp
-                    </a>
-                  )}
-
-                  {!contacto.email && !contacto.telefono && !contacto.whatsapp && (
-                    <p className="text-muted mb-0">
-                      Esta inmobiliaria todavía no cargó datos de contacto
-                      públicos.
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-lg-7">
-              <div className="card h-100 border-0 shadow-sm">
-                <div className="card-body p-4">
-                  <h2 className="h4 mb-3">Qué podés encontrar</h2>
-
-                  {operacionesPermitidas.length > 0 && (
-                    <div className="mb-3">
-                      <div className="small text-muted mb-2">Operaciones</div>
-
-                      <div className="d-flex flex-wrap gap-2">
-                        {operacionesPermitidas.map((op, index) => (
-                          <span
-                            key={`${op}-${index}`}
-                            className="badge text-bg-primary"
-                          >
-                            {op}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {tiposPermitidos.length > 0 && (
-                    <div>
-                      <div className="small text-muted mb-2">
-                        Tipos de inmuebles
-                      </div>
-
-                      <div className="d-flex flex-wrap gap-2">
-                        {tiposPermitidos.map((tipo, index) => (
-                          <span
-                            key={`${tipo}-${index}`}
-                            className="badge text-bg-success"
-                          >
-                            {tipo}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {operacionesPermitidas.length === 0 &&
-                    tiposPermitidos.length === 0 && (
-                      <p className="text-muted mb-0">
-                        Consultá las propiedades disponibles y las oportunidades
-                        activas de esta inmobiliaria.
-                      </p>
-                    )}
-
-                  {inmobiliaria.cuit && (
-                    <p className="text-muted small mb-0 mt-4 pt-3 border-top">
-                      <strong>CUIT:</strong> {inmobiliaria.cuit}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* =========================
-          Inmuebles publicados
-         ========================= */}
-      <section id="inmuebles-publicados" className="pb-5">
+      <section className="py-4" id="inmuebles-publicados">
         <div className="container">
           <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
             <div>
               <p className="text-uppercase text-muted small mb-1">
-                Propiedades publicadas
+                Inmuebles publicados
               </p>
-
-              <h2 className="portal-section-title mb-1">
-                Inmuebles de {inmobiliaria.nombre}
-              </h2>
-
+              <h2 className="h3 mb-1">Propiedades de {inmobiliaria?.nombre}</h2>
               <p className="text-muted mb-0">
-                {filteredInmuebles.length} resultado
-                {filteredInmuebles.length === 1 ? "" : "s"} disponible
-                {filteredInmuebles.length === 1 ? "" : "s"}
+                Filtrá dentro del catálogo público de esta inmobiliaria.
               </p>
+            </div>
+
+            <div className="text-muted small">
+              {filteredInmuebles.length} resultado
+              {filteredInmuebles.length === 1 ? "" : "s"}
             </div>
           </div>
 
-          <div className="portal-search-card card mb-4">
+          <section className="card border-0 shadow-sm mb-4">
             <div className="card-body p-3 p-lg-4">
-              <div className="row g-3 align-items-end">
-                <div className="col-12 col-lg-5">
-                  <label className="form-label">
-                    Buscar dentro de esta inmobiliaria
-                  </label>
+              <div className="row g-3">
+                <div className="col-12 col-lg-4">
+                  <label className="form-label">Buscar</label>
                   <input
                     type="search"
                     name="search"
-                    className="form-control form-control-lg"
-                    placeholder="Título, barrio, ciudad, tipo..."
+                    className="form-control"
+                    placeholder="Título, barrio, ciudad, pileta..."
                     value={filters.search}
                     onChange={handleFilterChange}
                   />
                 </div>
 
-                <div className="col-6 col-lg-3">
+                <div className="col-6 col-lg-2">
                   <label className="form-label">Operación</label>
                   <select
                     name="operacion"
@@ -969,13 +1192,13 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                     <option value="">Todas</option>
                     {operacionesDisponibles.map((operacion) => (
                       <option key={operacion} value={operacion}>
-                        {operacion}
+                        {capitalize(operacion)}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div className="col-6 col-lg-3">
+                <div className="col-6 col-lg-2">
                   <label className="form-label">Tipo</label>
                   <select
                     name="tipo"
@@ -986,25 +1209,176 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                     <option value="">Todos</option>
                     {tiposDisponibles.map((tipo) => (
                       <option key={tipo} value={tipo}>
-                        {tipo}
+                        {capitalize(tipo)}
                       </option>
                     ))}
                   </select>
                 </div>
 
-                <div className="col-12 col-lg-1 d-grid">
+                <div className="col-6 col-lg-2">
+                  <label className="form-label">Ciudad</label>
+                  <select
+                    name="ciudad"
+                    className="form-select"
+                    value={filters.ciudad}
+                    onChange={handleFilterChange}
+                  >
+                    <option value="">Todas</option>
+                    {ciudades.map((ciudad) => (
+                      <option key={ciudad} value={ciudad}>
+                        {ciudad}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-6 col-lg-2">
+                  <label className="form-label">Barrio</label>
+                  <select
+                    name="barrio"
+                    className="form-select"
+                    value={filters.barrio}
+                    onChange={handleFilterChange}
+                    disabled={barrios.length === 0}
+                  >
+                    <option value="">Todos</option>
+                    {barrios.map((barrio) => (
+                      <option key={barrio} value={barrio}>
+                        {barrio}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-6 col-lg-2">
+                  <label className="form-label">Dormitorios</label>
+                  <select
+                    name="dormitoriosMin"
+                    className="form-select"
+                    value={filters.dormitoriosMin}
+                    onChange={handleFilterChange}
+                  >
+                    <option value="">Cualquiera</option>
+                    <option value="1">1+</option>
+                    <option value="2">2+</option>
+                    <option value="3">3+</option>
+                    <option value="4">4+</option>
+                    <option value="5">5+</option>
+                  </select>
+                </div>
+
+                <div className="col-6 col-lg-2">
+                  <label className="form-label">Baños</label>
+                  <select
+                    name="banosMin"
+                    className="form-select"
+                    value={filters.banosMin}
+                    onChange={handleFilterChange}
+                  >
+                    <option value="">Cualquiera</option>
+                    <option value="1">1+</option>
+                    <option value="2">2+</option>
+                    <option value="3">3+</option>
+                    <option value="4">4+</option>
+                  </select>
+                </div>
+
+                <div className="col-6 col-lg-2">
+                  <label className="form-label">Cocheras</label>
+                  <select
+                    name="cocherasMin"
+                    className="form-select"
+                    value={filters.cocherasMin}
+                    onChange={handleFilterChange}
+                  >
+                    <option value="">Cualquiera</option>
+                    <option value="1">1+</option>
+                    <option value="2">2+</option>
+                    <option value="3">3+</option>
+                  </select>
+                </div>
+
+                <div className="col-6 col-lg-2">
+                  <label className="form-label">Superficie mín.</label>
+                  <input
+                    type="number"
+                    name="superficieMin"
+                    className="form-control"
+                    min="0"
+                    placeholder="100"
+                    value={filters.superficieMin}
+                    onChange={handleFilterChange}
+                  />
+                </div>
+
+                <div className="col-12 col-lg-3">
+                  <label className="form-label">Ordenar por</label>
+                  <select
+                    name="sortBy"
+                    className="form-select"
+                    value={filters.sortBy}
+                    onChange={handleFilterChange}
+                  >
+                    {SORT_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-12 col-lg-3 d-grid">
+                  <label className="form-label d-none d-lg-block">&nbsp;</label>
                   <button
                     type="button"
                     className="btn btn-outline-secondary"
                     onClick={handleClearFilters}
                     disabled={activeFiltersCount === 0}
                   >
-                    Limpiar
+                    Limpiar filtros
                   </button>
+                </div>
+
+                <div className="col-12">
+                  <div className="d-flex flex-wrap gap-3">
+                    {AMENITY_FILTERS.map((filter) => (
+                      <div className="form-check" key={filter.key}>
+                        <input
+                          id={`agency-filter-${filter.key}`}
+                          className="form-check-input"
+                          type="checkbox"
+                          name={filter.key}
+                          checked={Boolean(filters[filter.key])}
+                          onChange={handleFilterChange}
+                        />
+                        <label
+                          className="form-check-label"
+                          htmlFor={`agency-filter-${filter.key}`}
+                        >
+                          {filter.label}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
+
+          {activeFilterBadges.length > 0 && (
+            <div className="d-flex flex-wrap gap-2 mb-4">
+              {activeFilterBadges.map((badge) => (
+                <button
+                  type="button"
+                  key={badge.key}
+                  className="btn btn-sm btn-light border rounded-pill"
+                  onClick={() => handleRemoveFilter(badge.key)}
+                >
+                  {badge.label} ×
+                </button>
+              ))}
+            </div>
+          )}
 
           {inmueblesLoading && (
             <div className="alert alert-light border">
@@ -1016,141 +1390,147 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
             <div className="alert alert-warning">{inmueblesError}</div>
           )}
 
-          {!inmueblesLoading && !inmueblesError && inmuebles.length === 0 && (
+          {!inmueblesLoading && !inmueblesError && filteredInmuebles.length === 0 && (
             <div className="alert alert-info">
-              Esta inmobiliaria todavía no tiene inmuebles publicados en el
-              portal.
+              No encontramos inmuebles con esos filtros.
             </div>
           )}
-
-          {!inmueblesLoading &&
-            !inmueblesError &&
-            inmuebles.length > 0 &&
-            filteredInmuebles.length === 0 && (
-              <div className="alert alert-info">
-                No encontramos inmuebles con esos filtros dentro de esta
-                inmobiliaria.
-              </div>
-            )}
 
           {!inmueblesLoading && !inmueblesError && filteredInmuebles.length > 0 && (
             <div className="row g-4">
-              {filteredInmuebles.map((inmueble) => {
-                const coverImage = getCoverImage(inmueble);
-                const address = buildAddress(inmueble.direccion);
-                const detailUrl = inmueble.slug
-                  ? `/inmueble/${inmueble.slug}`
-                  : null;
-
-                return (
-                  <article
-                    className="col-12 col-md-6 col-xl-4"
-                    key={inmueble.id}
-                  >
-                    <div className="card h-100 border-0 shadow-sm overflow-hidden">
-                      <div className="position-relative">
-                        {coverImage ? (
-                          <img
-                            src={coverImage.url}
-                            alt={inmueble.titulo}
-                            className="card-img-top"
-                            style={{
-                              height: 240,
-                              objectFit: "cover",
-                            }}
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div
-                            className="bg-light d-flex align-items-center justify-content-center text-muted"
-                            style={{ height: 240 }}
-                          >
-                            Sin imagen
-                          </div>
-                        )}
-
-                        <div className="position-absolute top-0 start-0 p-3 d-flex flex-wrap gap-2">
-                          {inmueble.operacion && (
-                            <span className="badge text-bg-primary">
-                              {inmueble.operacion}
-                            </span>
-                          )}
-
-                          {inmueble.tipo && (
-                            <span className="badge text-bg-dark">
-                              {inmueble.tipo}
-                            </span>
-                          )}
-                        </div>
-
-                        {inmueble.destacado && (
-                          <div className="position-absolute top-0 end-0 p-3">
-                            <span className="badge text-bg-warning">
-                              Destacado
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="card-body d-flex flex-column p-4">
-                        <h3 className="h5 card-title">{inmueble.titulo}</h3>
-
-                        {address && (
-                          <p className="text-muted small mb-2">{address}</p>
-                        )}
-
-                        <p className="h4 mb-3">{formatPrice(inmueble)}</p>
-
-                        <div className="small text-muted mb-3">
-                          {inmueble.ambientes && (
-                            <span>{inmueble.ambientes} amb.</span>
-                          )}
-
-                          {inmueble.dormitorios && (
-                            <span> · {inmueble.dormitorios} dorm.</span>
-                          )}
-
-                          {inmueble.superficie?.total && (
-                            <span>
-                              {" "}
-                              · {formatNumber(inmueble.superficie.total)} m²
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="mt-auto d-grid">
-                          {detailUrl ? (
-                            <Link
-                              to={detailUrl}
-                              className="btn btn-primary"
-                              onClick={() => {
-                                if (typeof window !== "undefined") {
-                                  window.sessionStorage.setItem(
-                                    "lastInmuebleSearchUrl",
-                                    window.location.href,
-                                  );
-                                }
-                              }}
-                            >
-                              Ver inmueble
-                            </Link>
-                          ) : (
-                            <button
-                              type="button"
-                              className="btn btn-outline-secondary"
-                              disabled
-                            >
-                              Sin enlace público
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+              {filteredInmuebles.map((inmueble) => (
+                <div className="col-12 col-md-6 col-xl-4" key={inmueble.id}>
+                  <InmueblePublicCard inmueble={inmueble} />
+                </div>
+              ))}
             </div>
           )}
+        </div>
+      </section>
+
+      <section className="py-5 bg-light" id="contacto">
+        <div className="container">
+          <div className="row g-4 align-items-stretch">
+            <div className="col-lg-7">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body p-4 p-lg-5">
+                  <p className="text-uppercase text-muted small mb-1">Contacto</p>
+                  <h2 className="h3 mb-3">Hablá con {inmobiliaria?.nombre}</h2>
+                  <p className="text-muted mb-4">
+                    Consultá por sus propiedades publicadas o solicitá una
+                    tasación. La inmobiliaria recibirá tu contacto directamente.
+                  </p>
+
+                  <div className="d-flex flex-column gap-3">
+                    {whatsappUrl && (
+                      <a
+                        href={whatsappUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-success btn-lg align-self-start"
+                      >
+                        Consultar por WhatsApp
+                      </a>
+                    )}
+
+                    {contacto.email && (
+                      <div>
+                        <div className="small text-muted">Email</div>
+                        <a href={`mailto:${contacto.email}`}>{contacto.email}</a>
+                      </div>
+                    )}
+
+                    {contacto.telefono && (
+                      <div>
+                        <div className="small text-muted">Teléfono</div>
+                        <a href={`tel:${contacto.telefono}`}>{contacto.telefono}</a>
+                      </div>
+                    )}
+
+                    {contacto.whatsapp && (
+                      <div>
+                        <div className="small text-muted">WhatsApp</div>
+                        <span>{contacto.whatsapp}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="col-lg-5">
+              <div className="card border-0 shadow-sm h-100">
+                <div className="card-body p-4 p-lg-5">
+                  <p className="text-uppercase text-muted small mb-1">
+                    Datos de perfil
+                  </p>
+                  <h2 className="h4 mb-3">Información de la inmobiliaria</h2>
+
+                  <div className="vstack gap-3">
+                    <div>
+                      <div className="small text-muted">Nombre comercial</div>
+                      <div className="fw-semibold">{inmobiliaria?.nombre}</div>
+                    </div>
+
+                    {inmobiliaria.razonSocial && (
+                      <div>
+                        <div className="small text-muted">Razón social</div>
+                        <div>{inmobiliaria.razonSocial}</div>
+                      </div>
+                    )}
+
+                    {inmobiliaria.cuit && (
+                      <div>
+                        <div className="small text-muted">CUIT</div>
+                        <div>{inmobiliaria.cuit}</div>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="small text-muted">Validación</div>
+                      <span
+                        className={`badge ${isVerifiedAgency(inmobiliaria)
+                          ? "text-bg-success"
+                          : "text-bg-warning"
+                          }`}
+                      >
+                        {getVerificationLabel(inmobiliaria)}
+                      </span>
+                    </div>
+
+                    {operacionesPermitidas.length > 0 && (
+                      <div>
+                        <div className="small text-muted mb-2">Operaciones</div>
+                        <div className="d-flex flex-wrap gap-2">
+                          {operacionesPermitidas.map((operacion) => (
+                            <span
+                              key={operacion}
+                              className="badge text-bg-primary"
+                            >
+                              {operacion}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {tiposPermitidos.length > 0 && (
+                      <div>
+                        <div className="small text-muted mb-2">Tipos de inmueble</div>
+                        <div className="d-flex flex-wrap gap-2">
+                          {tiposPermitidos.map((tipo) => (
+                            <span key={tipo} className="badge text-bg-light border text-dark">
+                              {tipo}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </main>

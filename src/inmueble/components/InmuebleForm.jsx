@@ -13,6 +13,26 @@ import { db } from "../../firebase/config";
 import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
 
+import {
+  AMENITIES_LABELS,
+  DEFAULT_AMENITIES,
+  DEFAULT_CARACTERISTICAS,
+  DEFAULT_MEDIDAS,
+  DEFAULT_SERVICIOS,
+  DEFAULT_SUPERFICIE,
+  ESTADOS_CONSERVACION,
+  ORIENTACIONES,
+  SERVICIOS_LABELS,
+  getAmenitiesForTipo,
+  getServiciosForTipo,
+  normalizeInmuebleDetails,
+  shouldShowAmbientes,
+  shouldShowDormitorios,
+  shouldShowMedidasLote,
+  shouldShowPisoDepartamento,
+  shouldShowSuperficieTerreno,
+} from "../utils/inmuebleDetailsSchema";
+
 const DEFAULT_SHARING = {
   enabled: false,
   mode: "all_colleagues",
@@ -177,6 +197,58 @@ const InmuebleForm = ({
 
   const sharingEnabled = Boolean(sharingValues.enabled);
 
+  const selectedTipo = values?.tipo || "";
+
+  const superficieValues = {
+    ...DEFAULT_SUPERFICIE,
+    ...(values?.superficie || {}),
+  };
+
+  const caracteristicasValues = {
+    ...DEFAULT_CARACTERISTICAS,
+    ...(values?.caracteristicas || {}),
+    ambientes:
+      values?.caracteristicas?.ambientes ||
+      values?.ambientes ||
+      "",
+    dormitorios:
+      values?.caracteristicas?.dormitorios ||
+      values?.dormitorios ||
+      "",
+    banos:
+      values?.caracteristicas?.banos ||
+      values?.banos ||
+      values?.banios ||
+      "",
+    cocheras: Boolean(
+      values?.caracteristicas?.cocheras ||
+      values?.caracteristicas?.cocherasCantidad ||
+      values?.cocheras,
+    ),
+    cocherasCantidad:
+      values?.caracteristicas?.cocherasCantidad ||
+      values?.cocheras ||
+      "",
+  };
+
+  const amenitiesValues = {
+    ...DEFAULT_AMENITIES,
+    ...(values?.amenities || {}),
+  };
+
+  const serviciosValues = {
+    ...DEFAULT_SERVICIOS,
+    ...(values?.servicios || {}),
+  };
+
+  const medidasValues = {
+    ...DEFAULT_MEDIDAS,
+    ...(values?.medidas || {}),
+  };
+
+  const amenitiesForTipo = selectedTipo ? getAmenitiesForTipo(selectedTipo) : [];
+  const serviciosForTipo = selectedTipo ? getServiciosForTipo(selectedTipo) : [];
+
   const updateSharingField = (field, value) => {
     handleNestedChange("sharing", field, value);
   };
@@ -209,8 +281,18 @@ const InmuebleForm = ({
       ...(values?.networkData || {}),
     };
 
+    const normalizedDetails = normalizeInmuebleDetails({
+      ...values,
+      superficie: superficieValues,
+      caracteristicas: caracteristicasValues,
+      amenities: amenitiesValues,
+      servicios: serviciosValues,
+      medidas: medidasValues,
+    });
+
     handleSubmit({
       ...values,
+      ...normalizedDetails,
 
       images: isEditMode ? images : values?.images || [],
 
@@ -468,6 +550,453 @@ const InmuebleForm = ({
       </div>
 
       {/* =========================
+    Superficies y medidas
+   ========================= */}
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Superficies y medidas</div>
+
+        <div className="card-body row g-3">
+          <div className="col-md-3">
+            <label className="form-label">Superficie total m²</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="form-control"
+              value={superficieValues.total || ""}
+              onChange={(e) =>
+                handleNestedChange("superficie", "total", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Cubierta m²</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="form-control"
+              value={superficieValues.cubierta || ""}
+              onChange={(e) =>
+                handleNestedChange("superficie", "cubierta", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Semicubierta m²</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="form-control"
+              value={superficieValues.semicubierta || ""}
+              onChange={(e) =>
+                handleNestedChange("superficie", "semicubierta", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Descubierta m²</label>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              className="form-control"
+              value={superficieValues.descubierta || ""}
+              onChange={(e) =>
+                handleNestedChange("superficie", "descubierta", e.target.value)
+              }
+            />
+          </div>
+
+          {shouldShowSuperficieTerreno(selectedTipo) && (
+            <div className="col-md-3">
+              <label className="form-label">Terreno m²</label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                className="form-control"
+                value={superficieValues.terreno || ""}
+                onChange={(e) =>
+                  handleNestedChange("superficie", "terreno", e.target.value)
+                }
+              />
+            </div>
+          )}
+
+          {shouldShowMedidasLote(selectedTipo) && (
+            <>
+              <div className="col-md-3">
+                <label className="form-label">Frente</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control"
+                  value={medidasValues.frente || ""}
+                  onChange={(e) =>
+                    handleNestedChange("medidas", "frente", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="col-md-3">
+                <label className="form-label">Fondo</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="form-control"
+                  value={medidasValues.fondo || ""}
+                  onChange={(e) =>
+                    handleNestedChange("medidas", "fondo", e.target.value)
+                  }
+                />
+              </div>
+
+              {selectedTipo === "campo" && (
+                <div className="col-md-3">
+                  <label className="form-label">Hectáreas</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="form-control"
+                    value={medidasValues.hectareas || ""}
+                    onChange={(e) =>
+                      handleNestedChange("medidas", "hectareas", e.target.value)
+                    }
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* =========================
+    Características principales
+   ========================= */}
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Características principales</div>
+
+        <div className="card-body row g-3">
+          {shouldShowAmbientes(selectedTipo) && (
+            <div className="col-md-3">
+              <label className="form-label">Ambientes</label>
+              <input
+                type="number"
+                min="0"
+                className="form-control"
+                value={caracteristicasValues.ambientes || ""}
+                onChange={(e) =>
+                  handleNestedChange("caracteristicas", "ambientes", e.target.value)
+                }
+              />
+            </div>
+          )}
+
+          {shouldShowDormitorios(selectedTipo) && (
+            <div className="col-md-3">
+              <label className="form-label">Dormitorios</label>
+              <input
+                type="number"
+                min="0"
+                className="form-control"
+                value={caracteristicasValues.dormitorios || ""}
+                onChange={(e) =>
+                  handleNestedChange(
+                    "caracteristicas",
+                    "dormitorios",
+                    e.target.value,
+                  )
+                }
+              />
+            </div>
+          )}
+
+          {!["terreno", "cochera"].includes(selectedTipo) && (
+            <>
+              <div className="col-md-3">
+                <label className="form-label">Baños</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="form-control"
+                  value={caracteristicasValues.banos || ""}
+                  onChange={(e) =>
+                    handleNestedChange("caracteristicas", "banos", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="col-md-3">
+                <label className="form-label">Toilettes</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="form-control"
+                  value={caracteristicasValues.toilettes || ""}
+                  onChange={(e) =>
+                    handleNestedChange(
+                      "caracteristicas",
+                      "toilettes",
+                      e.target.value,
+                    )
+                  }
+                />
+              </div>
+            </>
+          )}
+
+          {!["terreno", "campo"].includes(selectedTipo) && (
+            <>
+              <div className="col-md-3">
+                <div className="form-check mt-md-4">
+                  <input
+                    id="caracteristicasCocheras"
+                    className="form-check-input"
+                    type="checkbox"
+                    checked={Boolean(caracteristicasValues.cocheras)}
+                    onChange={(e) => {
+                      handleNestedChange(
+                        "caracteristicas",
+                        "cocheras",
+                        e.target.checked,
+                      );
+
+                      if (!e.target.checked) {
+                        handleNestedChange(
+                          "caracteristicas",
+                          "cocherasCantidad",
+                          "",
+                        );
+                      }
+                    }}
+                  />
+
+                  <label
+                    className="form-check-label"
+                    htmlFor="caracteristicasCocheras"
+                  >
+                    Tiene cochera
+                  </label>
+                </div>
+              </div>
+
+              <div className="col-md-3">
+                <label className="form-label">Cantidad de cocheras</label>
+                <input
+                  type="number"
+                  min="0"
+                  className="form-control"
+                  value={caracteristicasValues.cocherasCantidad || ""}
+                  disabled={!caracteristicasValues.cocheras}
+                  onChange={(e) =>
+                    handleNestedChange(
+                      "caracteristicas",
+                      "cocherasCantidad",
+                      e.target.value,
+                    )
+                  }
+                />
+              </div>
+            </>
+          )}
+
+          <div className="col-md-3">
+            <label className="form-label">Plantas</label>
+            <input
+              type="number"
+              min="0"
+              className="form-control"
+              value={caracteristicasValues.plantas || ""}
+              onChange={(e) =>
+                handleNestedChange("caracteristicas", "plantas", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Antigüedad</label>
+            <input
+              type="number"
+              min="0"
+              className="form-control"
+              value={caracteristicasValues.antiguedad || ""}
+              onChange={(e) =>
+                handleNestedChange("caracteristicas", "antiguedad", e.target.value)
+              }
+            />
+            <div className="form-text">En años. Usá 0 para a estrenar.</div>
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Estado de conservación</label>
+            <select
+              className="form-select"
+              value={caracteristicasValues.estadoConservacion || ""}
+              onChange={(e) =>
+                handleNestedChange(
+                  "caracteristicas",
+                  "estadoConservacion",
+                  e.target.value,
+                )
+              }
+            >
+              {ESTADOS_CONSERVACION.map((option) => (
+                <option key={option.id || "empty"} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Orientación</label>
+            <select
+              className="form-select"
+              value={caracteristicasValues.orientacion || ""}
+              onChange={(e) =>
+                handleNestedChange("caracteristicas", "orientacion", e.target.value)
+              }
+            >
+              {ORIENTACIONES.map((option) => (
+                <option key={option.id || "empty"} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {shouldShowPisoDepartamento(selectedTipo) && (
+            <>
+              <div className="col-md-3">
+                <label className="form-label">Piso</label>
+                <input
+                  type="number"
+                  className="form-control"
+                  value={caracteristicasValues.piso || ""}
+                  onChange={(e) =>
+                    handleNestedChange("caracteristicas", "piso", e.target.value)
+                  }
+                />
+              </div>
+
+              <div className="col-md-3">
+                <label className="form-label">Departamento / unidad</label>
+                <input
+                  className="form-control"
+                  value={caracteristicasValues.departamento || ""}
+                  onChange={(e) =>
+                    handleNestedChange(
+                      "caracteristicas",
+                      "departamento",
+                      e.target.value,
+                    )
+                  }
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* =========================
+    Amenities
+   ========================= */}
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Amenities y diferenciales</div>
+
+        <div className="card-body">
+          {!selectedTipo && (
+            <div className="alert alert-light border mb-0">
+              Seleccioná el tipo de inmueble para ver los amenities sugeridos.
+            </div>
+          )}
+
+          {selectedTipo && amenitiesForTipo.length === 0 && (
+            <div className="alert alert-light border mb-0">
+              No hay amenities específicos para este tipo de inmueble.
+            </div>
+          )}
+
+          {amenitiesForTipo.length > 0 && (
+            <div className="row g-3">
+              {amenitiesForTipo.map((key) => (
+                <div className="col-6 col-md-4 col-lg-3" key={key}>
+                  <div className="form-check">
+                    <input
+                      id={`amenity-${key}`}
+                      className="form-check-input"
+                      type="checkbox"
+                      checked={Boolean(amenitiesValues[key])}
+                      onChange={(e) =>
+                        handleNestedChange("amenities", key, e.target.checked)
+                      }
+                    />
+
+                    <label className="form-check-label" htmlFor={`amenity-${key}`}>
+                      {AMENITIES_LABELS[key] || key}
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* =========================
+    Servicios
+   ========================= */}
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Servicios disponibles</div>
+
+        <div className="card-body">
+          {!selectedTipo && (
+            <div className="alert alert-light border mb-0">
+              Seleccioná el tipo de inmueble para ver los servicios sugeridos.
+            </div>
+          )}
+
+          {selectedTipo && serviciosForTipo.length === 0 && (
+            <div className="alert alert-light border mb-0">
+              No hay servicios específicos sugeridos para este tipo de inmueble.
+            </div>
+          )}
+
+          {serviciosForTipo.length > 0 && (
+            <div className="row g-3">
+              {serviciosForTipo.map((key) => (
+                <div className="col-6 col-md-4 col-lg-3" key={key}>
+                  <div className="form-check">
+                    <input
+                      id={`servicio-${key}`}
+                      className="form-check-input"
+                      type="checkbox"
+                      checked={Boolean(serviciosValues[key])}
+                      onChange={(e) =>
+                        handleNestedChange("servicios", key, e.target.checked)
+                      }
+                    />
+
+                    <label className="form-check-label" htmlFor={`servicio-${key}`}>
+                      {SERVICIOS_LABELS[key] || key}
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* =========================
           Imágenes
          ========================= */}
       <div className="card mb-4">
@@ -492,14 +1021,36 @@ const InmuebleForm = ({
                   inmobiliariaId: selectedInmobiliariaId,
                 });
               }}
-              onReorderImages={(fromIndex, toIndex) =>
+              onReorderImages={(payloadOrFromIndex, maybeToIndex) => {
+                const fromIndex = Number(
+                  payloadOrFromIndex && typeof payloadOrFromIndex === "object"
+                    ? payloadOrFromIndex.fromIndex
+                    : payloadOrFromIndex,
+                );
+
+                const toIndex = Number(
+                  payloadOrFromIndex && typeof payloadOrFromIndex === "object"
+                    ? payloadOrFromIndex.toIndex
+                    : maybeToIndex,
+                );
+
+                if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) {
+                  console.warn("Índices inválidos para reordenar imágenes:", {
+                    payloadOrFromIndex,
+                    maybeToIndex,
+                    fromIndex,
+                    toIndex,
+                  });
+                  return;
+                }
+
                 reorderImages({
                   fromIndex,
                   toIndex,
                   inmuebleId,
                   inmobiliariaId: selectedInmobiliariaId,
-                })
-              }
+                });
+              }}
               loading={imagesLoading}
               error={imagesError}
               inmuebleId={inmuebleId}

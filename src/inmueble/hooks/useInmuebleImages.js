@@ -3,25 +3,61 @@ import { doc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { ref, deleteObject } from "firebase/storage";
 
 import { db, storage } from "../../firebase/config";
-import { uploadInmuebleImages } from "../helpers/uploadInmuebleImages";
+import {
+  INMUEBLE_MAX_IMAGES,
+  uploadInmuebleImages,
+} from "../helpers/uploadInmuebleImages";
 
-const MAX_IMAGES = 15;
+const MAX_IMAGES = INMUEBLE_MAX_IMAGES;
 
-const normalizeImages = (images = []) => {
+const mapImage = (img, index) => ({
+  id: img.id || img.storagePath || img.url || `image-${index}`,
+
+  url: img.url,
+  storagePath: img.storagePath || "",
+
+  thumbnailUrl: img.thumbnailUrl || img.url,
+  thumbnailPath: img.thumbnailPath || "",
+
+  order: index,
+
+  filename: img.filename || img.name || "",
+  name: img.name || img.filename || "",
+  size: img.size || 0,
+  type: img.type || img.contentType || "",
+  contentType: img.contentType || img.type || "",
+
+  width: img.width || null,
+  height: img.height || null,
+  thumbnailWidth: img.thumbnailWidth || null,
+  thumbnailHeight: img.thumbnailHeight || null,
+
+  portalReady: img.portalReady !== false,
+  qualityWarnings: Array.isArray(img.qualityWarnings)
+    ? img.qualityWarnings
+    : [],
+
+  source: img.source || null,
+
+  createdAt: img.createdAt || null,
+  copiedFrom: img.copiedFrom || "",
+});
+
+const normalizeImages = (images = [], { sortByOrder = true } = {}) => {
   if (!Array.isArray(images)) return [];
 
-  return [...images]
-    .filter((img) => img?.url)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-    .map((img, index) => ({
-      url: img.url,
-      storagePath: img.storagePath || "",
-      order: index,
-      filename: img.filename || "",
-      size: img.size || 0,
-      type: img.type || "",
-      createdAt: img.createdAt || null,
-    }));
+  const validImages = [...images].filter((img) => img?.url);
+
+  if (sortByOrder) {
+    validImages.sort((a, b) => {
+      const orderA = Number.isFinite(Number(a.order)) ? Number(a.order) : 0;
+      const orderB = Number.isFinite(Number(b.order)) ? Number(b.order) : 0;
+
+      return orderA - orderB;
+    });
+  }
+
+  return validImages.map((img, index) => mapImage(img, index));
 };
 
 const getInmuebleRef = (inmobiliariaId, inmuebleId) => {
@@ -39,6 +75,18 @@ const persistImages = async ({ inmobiliariaId, inmuebleId, images }) => {
     images: normalizeImages(images),
     updatedAt: serverTimestamp(),
   });
+};
+
+const deleteImageStorageObjects = async (image) => {
+  const paths = [image?.storagePath, image?.thumbnailPath].filter(Boolean);
+
+  await Promise.all(
+    paths.map((path) =>
+      deleteObject(ref(storage, path)).catch((err) => {
+        console.warn("No se pudo eliminar archivo de Storage:", path, err);
+      }),
+    ),
+  );
 };
 
 export const useInmuebleImages = (initialImages = []) => {
@@ -68,7 +116,7 @@ export const useInmuebleImages = (initialImages = []) => {
       }
 
       if (activeImages.length + filesArray.length > MAX_IMAGES) {
-        setError(`Máximo ${MAX_IMAGES} imágenes permitidas`);
+        setError(`Máximo ${MAX_IMAGES} imágenes permitidas por inmueble`);
         return;
       }
 
@@ -98,19 +146,7 @@ export const useInmuebleImages = (initialImages = []) => {
         console.error("Error subiendo imágenes:", err);
 
         await Promise.all(
-          uploadedImages.map((img) => {
-            if (!img?.storagePath) return Promise.resolve();
-
-            return deleteObject(ref(storage, img.storagePath)).catch(
-              (deleteErr) => {
-                console.warn(
-                  "No se pudo limpiar imagen subida parcialmente:",
-                  img.storagePath,
-                  deleteErr,
-                );
-              },
-            );
-          }),
+          uploadedImages.map((img) => deleteImageStorageObjects(img)),
         );
 
         setError(err.message || "No se pudieron subir las imágenes");
@@ -148,15 +184,7 @@ export const useInmuebleImages = (initialImages = []) => {
 
         setImages(nextImages);
 
-        if (image.storagePath) {
-          await deleteObject(ref(storage, image.storagePath)).catch((err) => {
-            console.warn(
-              "No se pudo eliminar la imagen de Storage:",
-              image.storagePath,
-              err,
-            );
-          });
-        }
+        await deleteImageStorageObjects(image);
 
         await persistImages({
           inmobiliariaId,
@@ -176,7 +204,10 @@ export const useInmuebleImages = (initialImages = []) => {
 
   const reorderImages = useCallback(
     async ({ fromIndex, toIndex, inmuebleId, inmobiliariaId }) => {
-      if (fromIndex === toIndex) return;
+      const safeFromIndex = Number(fromIndex);
+      const safeToIndex = Number(toIndex);
+
+      if (safeFromIndex === safeToIndex) return;
 
       if (!inmuebleId || !inmobiliariaId) {
         setError("Faltan IDs para reordenar imágenes");
@@ -184,11 +215,14 @@ export const useInmuebleImages = (initialImages = []) => {
       }
 
       if (
-        fromIndex < 0 ||
-        toIndex < 0 ||
-        fromIndex >= activeImages.length ||
-        toIndex >= activeImages.length
+        !Number.isInteger(safeFromIndex) ||
+        !Number.isInteger(safeToIndex) ||
+        safeFromIndex < 0 ||
+        safeToIndex < 0 ||
+        safeFromIndex >= activeImages.length ||
+        safeToIndex >= activeImages.length
       ) {
+        setError("Índices inválidos para reordenar imágenes");
         return;
       }
 
@@ -199,10 +233,13 @@ export const useInmuebleImages = (initialImages = []) => {
         setError(null);
 
         const reordered = [...activeImages];
-        const [moved] = reordered.splice(fromIndex, 1);
-        reordered.splice(toIndex, 0, moved);
+        const [moved] = reordered.splice(safeFromIndex, 1);
+        reordered.splice(safeToIndex, 0, moved);
 
-        const nextImages = normalizeImages(reordered);
+        // Importante:
+        // acá NO ordenamos por order viejo, porque eso deshace el movimiento.
+        // Reindexamos respetando el orden actual del array.
+        const nextImages = normalizeImages(reordered, { sortByOrder: false });
 
         setImages(nextImages);
 
@@ -227,6 +264,7 @@ export const useInmuebleImages = (initialImages = []) => {
     activeImages,
     coverImage,
     hasReachedLimit,
+    maxImages: MAX_IMAGES,
 
     loading,
     error,
