@@ -114,9 +114,10 @@ const InmuebleGallery = ({
 
           <p className="small text-muted mb-0">
             Hasta {INMUEBLE_MAX_IMAGES} imágenes · máximo{" "}
-            {bytesToMb(MAX_IMAGE_SIZE_BYTES)} MB cada una · resolución mínima{" "}
-            {MIN_IMAGE_WIDTH} x {MIN_IMAGE_HEIGHT}px · máxima {MAX_IMAGE_WIDTH}{" "}
-            x {MAX_IMAGE_HEIGHT}px.
+            {bytesToMb(MAX_IMAGE_SIZE_BYTES)} MB cada una · JPG, PNG, WEBP,
+            GIF, BMP, HEIC/HEIF · resolución mínima {MIN_IMAGE_WIDTH} x{" "}
+            {MIN_IMAGE_HEIGHT}px · máxima {MAX_IMAGE_WIDTH} x{" "}
+            {MAX_IMAGE_HEIGHT}px.
           </p>
 
           <p className="small text-muted mb-0">

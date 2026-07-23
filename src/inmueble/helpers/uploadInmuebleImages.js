@@ -37,6 +37,8 @@ export const ACCEPTED_IMAGE_MIME_TYPES = [
   "image/bmp",
   "image/heic",
   "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
 ];
 
 export const ACCEPTED_IMAGE_EXTENSIONS = [
@@ -58,6 +60,8 @@ export const ACCEPTED_IMAGE_INPUT = [
   "image/bmp",
   "image/heic",
   "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
   ".jpg",
   ".jpeg",
   ".png",
@@ -95,6 +99,21 @@ const getFileExtension = (fileName = "") => {
   return ext || "jpg";
 };
 
+export const isHeicImageFile = ({ type = "", name = "" } = {}) => {
+  const normalizedType = type.toLowerCase();
+  const extension = getFileExtension(name);
+
+  return (
+    [
+      "image/heic",
+      "image/heif",
+      "image/heic-sequence",
+      "image/heif-sequence",
+    ].includes(normalizedType) ||
+    ["heic", "heif"].includes(extension)
+  );
+};
+
 const isAllowedImage = ({ type = "", name = "" } = {}) => {
   const normalizedType = type.toLowerCase();
   const extension = getFileExtension(name);
@@ -103,6 +122,13 @@ const isAllowedImage = ({ type = "", name = "" } = {}) => {
     ACCEPTED_IMAGE_MIME_TYPES.includes(normalizedType) ||
     ACCEPTED_IMAGE_EXTENSIONS.includes(extension)
   );
+};
+
+export const isAcceptedImageFile = (file = {}) => {
+  return isAllowedImage({
+    type: file.type || "",
+    name: file.name || "",
+  });
 };
 
 const ensureImageBlob = (blob, imageName = "imagen") => {
@@ -116,6 +142,87 @@ const ensureImageBlob = (blob, imageName = "imagen") => {
 
   if (blob.type && !blob.type.startsWith("image/")) {
     throw new Error(`El archivo "${imageName}" no es una imagen válida.`);
+  }
+};
+
+let heic2anyModulePromise = null;
+
+const getHeic2Any = async () => {
+  if (!heic2anyModulePromise) {
+    heic2anyModulePromise = import("heic2any");
+  }
+
+  const module = await heic2anyModulePromise;
+
+  return module.default || module;
+};
+
+const getFirstBlob = (result) => {
+  if (Array.isArray(result)) return result[0];
+
+  return result;
+};
+
+const convertHeicToJpegBlob = async ({ source, imageName = "imagen" }) => {
+  try {
+    const heic2any = await getHeic2Any();
+
+    const result = await heic2any({
+      blob: source,
+      toType: OUTPUT_CONTENT_TYPE,
+      quality: PORTAL_READY_QUALITY,
+    });
+
+    const convertedBlob = getFirstBlob(result);
+
+    ensureImageBlob(convertedBlob, imageName);
+
+    return convertedBlob;
+  } catch (err) {
+    console.error("Error convirtiendo HEIC/HEIF:", err);
+
+    throw new Error(
+      `No se pudo convertir la imagen HEIC/HEIF "${imageName}" a JPG.`,
+    );
+  }
+};
+
+export const normalizeImageFileForBrowserUpload = async (file) => {
+  const originalName = file?.name || "imagen";
+
+  ensureImageBlob(file, originalName);
+
+  if (!isAllowedImage({ type: file?.type || "", name: originalName })) {
+    throw new Error(
+      `Formato no permitido en "${originalName}". Usá JPG, JPEG, PNG, WEBP, GIF, BMP, HEIC o HEIF.`,
+    );
+  }
+
+  if (!isHeicImageFile({ type: file?.type || "", name: originalName })) {
+    return file;
+  }
+
+  const convertedBlob = await convertHeicToJpegBlob({
+    source: file,
+    imageName: originalName,
+  });
+
+  const safeName = sanitizeFileName(originalName);
+  const baseName = safeName.replace(/\.[^.]+$/, "") || "imagen";
+  const convertedName = `${baseName}.jpg`;
+
+  try {
+    return new File([convertedBlob], convertedName, {
+      type: OUTPUT_CONTENT_TYPE,
+      lastModified: file.lastModified || Date.now(),
+    });
+  } catch (err) {
+    console.warn("No se pudo crear File para HEIC convertido:", err);
+
+    convertedBlob.name = convertedName;
+    convertedBlob.lastModified = file.lastModified || Date.now();
+
+    return convertedBlob;
   }
 };
 
@@ -137,7 +244,7 @@ const loadImageElement = (blob, imageName = "imagen") => {
       URL.revokeObjectURL(objectUrl);
       reject(
         new Error(
-          `No se pudo procesar la imagen "${imageName}". Si es HEIC/HEIF, convertí la foto a JPG/PNG/WEBP o agregamos conversión específica.`,
+          `No se pudo procesar la imagen "${imageName}". Probá con otra imagen o verificá que el archivo no esté dañado.`,
         ),
       );
     };
@@ -241,7 +348,19 @@ const prepareImageForUpload = async ({ source, imageName }) => {
     );
   }
 
-  const loadedImage = await loadImageElement(source, imageName);
+  const convertedFromHeic = isHeicImageFile({
+    type: source.type || "",
+    name: imageName,
+  });
+
+  const processableSource = convertedFromHeic
+    ? await convertHeicToJpegBlob({
+      source,
+      imageName,
+    })
+    : source;
+
+  const loadedImage = await loadImageElement(processableSource, imageName);
 
   try {
     validateImageDimensions({
@@ -290,6 +409,7 @@ const prepareImageForUpload = async ({ source, imageName }) => {
       thumbnailWidth: thumbnailSize.width,
       thumbnailHeight: thumbnailSize.height,
       portalReady: true,
+      convertedFromHeic,
       qualityWarnings: [],
     };
   } finally {
@@ -375,6 +495,7 @@ const uploadImageVersions = async ({
     thumbnailHeight: preparedImage.thumbnailHeight,
 
     portalReady: preparedImage.portalReady,
+    convertedFromHeic: preparedImage.convertedFromHeic,
     qualityWarnings: preparedImage.qualityWarnings,
 
     source: {
@@ -383,6 +504,7 @@ const uploadImageVersions = async ({
       originalSizeBytes: source.size || 0,
       originalType: source.type || "",
       originalName: originalName || safeOriginalName,
+      convertedFromHeic: preparedImage.convertedFromHeic,
     },
 
     createdAt: new Date().toISOString(),

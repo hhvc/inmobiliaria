@@ -4,6 +4,11 @@ import { Link } from "react-router-dom";
 import Login from "../../components/auth/Login";
 import SEO from "../../components/SEO";
 import InmuebleVideos from "../../inmueble/components/InmuebleVideos";
+import {
+    ACCEPTED_IMAGE_INPUT,
+    MAX_IMAGE_SIZE_BYTES as SHARED_MAX_IMAGE_SIZE_BYTES,
+    normalizeImageFileForBrowserUpload,
+} from "../../inmueble/helpers/uploadInmuebleImages";
 import { normalizeInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import { useAuth } from "../../context/auth/useAuth";
 import {
@@ -14,7 +19,7 @@ import {
 const MIN_DESCRIPTION_LENGTH = 20;
 const MAX_DESCRIPTION_LENGTH = 1000;
 const MAX_IMAGES = 50;
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_SIZE_BYTES = SHARED_MAX_IMAGE_SIZE_BYTES;
 
 const INITIAL_FORM = {
     nombre: "",
@@ -88,6 +93,7 @@ const ParticularPublicationRequestPage = () => {
     const [imageFiles, setImageFiles] = useState([]);
     const [imagePreviews, setImagePreviews] = useState([]);
     const [imageError, setImageError] = useState("");
+    const [processingImages, setProcessingImages] = useState(false);
     const [inmobiliarias, setInmobiliarias] = useState([]);
     const [loadingInmobiliarias, setLoadingInmobiliarias] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -193,8 +199,9 @@ const ParticularPublicationRequestPage = () => {
         setSuccess("");
     };
 
-    const handleImageChange = (e) => {
-        const selectedFiles = Array.from(e.target.files || []);
+    const handleImageChange = async (e) => {
+        const input = e.target;
+        const selectedFiles = Array.from(input.files || []);
 
         if (selectedFiles.length === 0) return;
 
@@ -206,43 +213,52 @@ const ParticularPublicationRequestPage = () => {
 
         if (availableSlots <= 0) {
             setImageError(`Ya cargaste el máximo de ${MAX_IMAGES} fotos.`);
-            e.target.value = "";
+            input.value = "";
             return;
         }
 
         const filesToAdd = [];
         const errors = [];
 
-        selectedFiles.slice(0, availableSlots).forEach((file) => {
-            if (!file.type?.startsWith("image/")) {
-                errors.push(`"${file.name}" no es una imagen válida.`);
-                return;
+        try {
+            setProcessingImages(true);
+
+            const limitedFiles = selectedFiles.slice(0, availableSlots);
+
+            for (let index = 0; index < limitedFiles.length; index += 1) {
+                const file = limitedFiles[index];
+
+                try {
+                    const uploadReadyFile =
+                        await normalizeImageFileForBrowserUpload(file);
+
+                    filesToAdd.push(uploadReadyFile);
+                } catch (err) {
+                    errors.push(
+                        err.message ||
+                        `"${file.name}" no se pudo procesar como imagen.`,
+                    );
+                }
             }
 
-            if (file.size > MAX_IMAGE_SIZE_BYTES) {
-                errors.push(`"${file.name}" supera los 8 MB.`);
-                return;
+            if (selectedFiles.length > availableSlots) {
+                errors.push(
+                    `Solo se agregaron ${availableSlots} foto${availableSlots === 1 ? "" : "s"
+                    }. El máximo es ${MAX_IMAGES}.`,
+                );
             }
 
-            filesToAdd.push(file);
-        });
+            if (filesToAdd.length > 0) {
+                setImageFiles((prev) => [...prev, ...filesToAdd]);
+            }
 
-        if (selectedFiles.length > availableSlots) {
-            errors.push(
-                `Solo se agregaron ${availableSlots} foto${availableSlots === 1 ? "" : "s"
-                }. El máximo es ${MAX_IMAGES}.`,
-            );
+            if (errors.length > 0) {
+                setImageError(errors.join(" "));
+            }
+        } finally {
+            setProcessingImages(false);
+            input.value = "";
         }
-
-        if (filesToAdd.length > 0) {
-            setImageFiles((prev) => [...prev, ...filesToAdd]);
-        }
-
-        if (errors.length > 0) {
-            setImageError(errors.join(" "));
-        }
-
-        e.target.value = "";
     };
 
     const handleRemoveImage = (indexToRemove) => {
@@ -728,7 +744,7 @@ const ParticularPublicationRequestPage = () => {
                                                         </label>
                                                         <div className="form-text mt-0">
                                                             Opcional. Podés subir hasta {MAX_IMAGES} fotos de
-                                                            máximo 8 MB cada una.
+                                                            máximo {formatFileSize(MAX_IMAGE_SIZE_BYTES)} cada una. Se aceptan JPG, PNG, WEBP, GIF, BMP y HEIC/HEIF.
                                                         </div>
                                                     </div>
 
@@ -741,11 +757,21 @@ const ParticularPublicationRequestPage = () => {
                                                 <input
                                                     type="file"
                                                     className="form-control"
-                                                    accept="image/*"
+                                                    accept={ACCEPTED_IMAGE_INPUT}
                                                     multiple
                                                     onChange={handleImageChange}
-                                                    disabled={saving || remainingImages <= 0}
+                                                    disabled={
+                                                        saving ||
+                                                        processingImages ||
+                                                        remainingImages <= 0
+                                                    }
                                                 />
+
+                                                {processingImages && (
+                                                    <div className="small text-muted mt-2">
+                                                        Procesando fotos seleccionadas...
+                                                    </div>
+                                                )}
 
                                                 {imageError && (
                                                     <div className="alert alert-warning small mt-2 mb-0">
@@ -830,7 +856,7 @@ const ParticularPublicationRequestPage = () => {
                                                 <button
                                                     type="submit"
                                                     className="btn btn-primary"
-                                                    disabled={saving || isDescriptionShort}
+                                                    disabled={saving || processingImages || isDescriptionShort}
                                                 >
                                                     {saving ? "Enviando..." : "Enviar solicitud"}
                                                 </button>

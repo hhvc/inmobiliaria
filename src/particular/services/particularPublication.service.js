@@ -16,6 +16,11 @@ import {
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 import { auth, db, storage } from "../../firebase/config";
+import {
+    MAX_IMAGE_SIZE_BYTES as SHARED_MAX_IMAGE_SIZE_BYTES,
+    isAcceptedImageFile,
+    normalizeImageFileForBrowserUpload,
+} from "../../inmueble/helpers/uploadInmuebleImages";
 import { normalizeInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 
 const COLLECTION_NAME = "particular_publication_requests";
@@ -24,7 +29,7 @@ const publicationRequestsRef = collection(db, COLLECTION_NAME);
 const inmobiliariasRef = collection(db, "inmobiliarias");
 
 const MAX_IMAGES = 50;
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_SIZE_BYTES = SHARED_MAX_IMAGE_SIZE_BYTES;
 
 const REQUEST_STATUSES = [
     "nuevo",
@@ -116,8 +121,10 @@ const validateImageFiles = (files = []) => {
     }
 
     imageFiles.forEach((file) => {
-        if (!file.type?.startsWith("image/")) {
-            throw new Error(`El archivo "${file.name}" no es una imagen válida.`);
+        if (!isAcceptedImageFile(file)) {
+            throw new Error(
+                `Formato no permitido en "${file.name}". Usá JPG, JPEG, PNG, WEBP, GIF, BMP, HEIC o HEIF.`,
+            );
         }
 
         if (file.size > MAX_IMAGE_SIZE_BYTES) {
@@ -139,37 +146,49 @@ const uploadPublicationRequestImages = async ({
 
     if (imageFiles.length === 0) return [];
 
-    const uploads = imageFiles.map(async (file, index) => {
+    const uploadedImages = [];
+
+    for (let index = 0; index < imageFiles.length; index += 1) {
+        const file = imageFiles[index];
+        const uploadFile = await normalizeImageFileForBrowserUpload(file);
         const imageId = createImageId();
-        const safeName = sanitizeFileName(file.name);
+        const safeName = sanitizeFileName(uploadFile.name || file.name);
         const storagePath = `${COLLECTION_NAME}/${requestId}/${userId}/${String(
             index,
         ).padStart(2, "0")}-${imageId}-${safeName}`;
 
         const storageRef = ref(storage, storagePath);
+        const convertedFromHeic =
+            file.name !== uploadFile.name ||
+            file.type !== uploadFile.type;
 
-        await uploadBytes(storageRef, file, {
-            contentType: file.type || "image/jpeg",
+        await uploadBytes(storageRef, uploadFile, {
+            contentType: uploadFile.type || "image/jpeg",
             customMetadata: {
                 requestId,
                 uploaderUid: userId,
+                originalName: file.name || "",
+                originalType: file.type || "",
+                convertedFromHeic: String(convertedFromHeic),
             },
         });
 
         const url = await getDownloadURL(storageRef);
 
-        return {
+        uploadedImages.push({
             id: imageId,
             url,
             storagePath,
             order: index,
-            name: file.name || safeName,
-            size: file.size || 0,
-            contentType: file.type || "",
-        };
-    });
+            name: uploadFile.name || safeName,
+            originalName: file.name || "",
+            size: uploadFile.size || 0,
+            contentType: uploadFile.type || "image/jpeg",
+            convertedFromHeic,
+        });
+    }
 
-    return Promise.all(uploads);
+    return uploadedImages;
 };
 
 const normalizeImages = (images = []) => {
@@ -182,8 +201,10 @@ const normalizeImages = (images = []) => {
             storagePath: image.storagePath || "",
             order: Number.isFinite(Number(image.order)) ? Number(image.order) : index,
             name: image.name || "",
+            originalName: image.originalName || "",
             size: Number.isFinite(Number(image.size)) ? Number(image.size) : 0,
             contentType: image.contentType || "",
+            convertedFromHeic: image.convertedFromHeic === true,
         }))
         .filter((image) => image.url || image.storagePath)
         .sort((a, b) => a.order - b.order);
