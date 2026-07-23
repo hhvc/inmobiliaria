@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import SEO from "../../components/SEO";
+import { useAuth } from "../../context/auth/useAuth";
 import { getAllInmobiliarias } from "../../inmobiliaria/services/inmobiliaria.service";
 
 import {
@@ -14,6 +15,8 @@ import { approvePublicationRequestAsParticular } from "../services/particularPub
 
 import PublicationRequestImages from "../components/PublicationRequestImages";
 import PublicationRequestActivityLog from "../components/PublicationRequestActivityLog";
+import InmuebleVideoSection from "../../inmueble/components/InmuebleVideoSection";
+import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 
 const STATUS_OPTIONS = [
     { id: "nuevo", label: "Nuevas" },
@@ -70,6 +73,30 @@ const normalizeText = (value = "") => {
         .replace(/[\u0300-\u036f]/g, "");
 };
 
+const userIsRoot = (user, hasRole) => {
+    if (typeof hasRole === "function" && hasRole("root")) {
+        return true;
+    }
+
+    if (!user) {
+        return false;
+    }
+
+    if (user.role === "root") {
+        return true;
+    }
+
+    if (user.primaryRole === "root") {
+        return true;
+    }
+
+    if (Array.isArray(user.roles) && user.roles.includes("root")) {
+        return true;
+    }
+
+    return false;
+};
+
 const requestMatchesSearch = (request, searchTerm) => {
     const normalizedSearch = normalizeText(searchTerm);
 
@@ -90,6 +117,8 @@ const requestMatchesSearch = (request, searchTerm) => {
         request.assignedInmobiliariaNombre,
         request.convertedTitle,
         request.convertedInmuebleId,
+        request.particularPublicationId,
+        request.particularPublicationPath,
     ]
         .filter(Boolean)
         .join(" ");
@@ -115,7 +144,8 @@ const canConvertRequest = (request) => {
     return true;
 };
 
-const canApproveAsParticularPublication = (request) => {
+const canApproveAsParticularPublication = (request, isRootUser) => {
+    if (!isRootUser) return false;
     if (request?.targetType !== "onoprop") return false;
 
     return canConvertRequest(request);
@@ -123,7 +153,11 @@ const canApproveAsParticularPublication = (request) => {
 
 const getConversionLockLabel = (request) => {
     if (request?.convertedInmuebleId) {
-        return "Convertida";
+        return "Convertida en inmueble";
+    }
+
+    if (request?.particularPublicationId) {
+        return "Aprobada como particular";
     }
 
     if (request?.conversionLockStatus === "processing") {
@@ -138,7 +172,7 @@ const getConversionLockLabel = (request) => {
 };
 
 const getConversionLockBadgeClass = (request) => {
-    if (request?.convertedInmuebleId) {
+    if (request?.convertedInmuebleId || request?.particularPublicationId) {
         return "text-bg-success";
     }
 
@@ -226,7 +260,43 @@ const getConvertedPublicUrl = (request) => {
     return "";
 };
 
+const getParticularPublicationPublicUrl = (request) => {
+    if (request?.particularPublicationPath) {
+        return request.particularPublicationPath;
+    }
+
+    if (request?.particularPublicationId) {
+        return `/particulares/${request.particularPublicationId}`;
+    }
+
+    return "";
+};
+
+const getRequestFlowHelp = (request, isRootUser) => {
+    if (request?.particularPublicationId) {
+        return "Esta solicitud ya fue aprobada como publicación particular directa de ONO Prop.";
+    }
+
+    if (request?.convertedInmuebleId) {
+        return "Esta solicitud ya fue convertida en inmueble de inmobiliaria.";
+    }
+
+    if (request?.targetType === "onoprop") {
+        return isRootUser
+            ? "Destino ONO Prop: podés aprobarla como publicación particular directa o convertirla en inmueble de una inmobiliaria."
+            : "Destino ONO Prop: la aprobación como publicación particular corresponde al administrador general de ONO Prop.";
+    }
+
+    if (request?.targetType === "inmobiliaria") {
+        return "Destino inmobiliaria: esta solicitud debe gestionarse convirtiéndola en inmueble de la inmobiliaria seleccionada.";
+    }
+
+    return "Revisá el destino de esta solicitud antes de avanzar.";
+};
+
 const ParticularPublicationRequestsAdminPage = () => {
+    const { user, hasRole } = useAuth();
+
     const [items, setItems] = useState([]);
     const [inmobiliarias, setInmobiliarias] = useState([]);
     const [statusFilter, setStatusFilter] = useState("nuevo");
@@ -240,6 +310,7 @@ const ParticularPublicationRequestsAdminPage = () => {
     const [success, setSuccess] = useState("");
 
     const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
+    const isRootUser = userIsRoot(user, hasRole);
 
     const activeInmobiliarias = useMemo(() => {
         return inmobiliarias
@@ -265,6 +336,14 @@ const ParticularPublicationRequestsAdminPage = () => {
                     acc.convertidas += 1;
                 }
 
+                if (item.particularPublicationId) {
+                    acc.particulares += 1;
+                }
+
+                if (item.convertedInmuebleId || item.particularPublicationId) {
+                    acc.finalizadas += 1;
+                }
+
                 return acc;
             },
             {
@@ -272,6 +351,8 @@ const ParticularPublicationRequestsAdminPage = () => {
                 onoprop: 0,
                 inmobiliaria: 0,
                 convertidas: 0,
+                particulares: 0,
+                finalizadas: 0,
             },
         );
     }, [items]);
@@ -401,8 +482,14 @@ const ParticularPublicationRequestsAdminPage = () => {
 
     const handleApproveAsParticularPublication = async (request) => {
         try {
+            if (!isRootUser) {
+                throw new Error(
+                    "Solo el administrador general de ONO Prop puede aprobar publicaciones particulares directas.",
+                );
+            }
+
             const confirmed = window.confirm(
-                "¿Confirmás aprobar esta solicitud como publicación particular de ONO Prop?",
+                "¿Confirmás aprobar esta solicitud como publicación particular directa de ONO Prop?",
             );
 
             if (!confirmed) return;
@@ -437,6 +524,14 @@ const ParticularPublicationRequestsAdminPage = () => {
 
     const getConvertButtonState = (request) => {
         const selectedInmobiliariaId = getSelectedInmobiliariaIdForRequest(request);
+
+        if (request?.particularPublicationId) {
+            return {
+                disabled: true,
+                label: "Aprobada como particular",
+                to: "#",
+            };
+        }
 
         if (!canConvertRequest(request)) {
             return {
@@ -497,8 +592,8 @@ const ParticularPublicationRequestsAdminPage = () => {
 
                             <p className="lead text-muted mb-0">
                                 Revisá solicitudes enviadas a ONO Prop o a inmobiliarias de la
-                                plataforma, contactá al propietario y convertí la solicitud en
-                                una publicación.
+                                plataforma, contactá al propietario y definí si corresponde
+                                aprobarlas como publicación particular o convertirlas en inmueble.
                             </p>
                         </div>
 
@@ -518,6 +613,14 @@ const ParticularPublicationRequestsAdminPage = () => {
                             </select>
                         </div>
                     </div>
+
+                    {!isRootUser && (
+                        <div className="alert alert-warning">
+                            Esta vista está pensada para administración general de ONO
+                            Prop. La aprobación como publicación particular directa sólo se
+                            muestra a usuarios root.
+                        </div>
+                    )}
 
                     <div className="row g-3 mb-4">
                         <div className="col-6 col-md-3">
@@ -550,8 +653,10 @@ const ParticularPublicationRequestsAdminPage = () => {
                         <div className="col-6 col-md-3">
                             <div className="card border-0 shadow-sm">
                                 <div className="card-body">
-                                    <div className="h4 mb-0">{counters.convertidas}</div>
-                                    <div className="small text-muted">Convertidas</div>
+                                    <div className="h4 mb-0">{counters.finalizadas}</div>
+                                    <div className="small text-muted">
+                                        Aprobadas / convertidas
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -630,22 +735,41 @@ const ParticularPublicationRequestsAdminPage = () => {
                                 const whatsappUrl = buildWhatsappUrl(request.telefono);
                                 const noteValue =
                                     notesById[request.id] ?? request.internalNote ?? "";
-                                const isConverted = Boolean(request.convertedInmuebleId);
 
+                                const isConverted = Boolean(request.convertedInmuebleId);
                                 const isParticularPublicationApproved = Boolean(
                                     request.particularPublicationId,
                                 );
-                                const isFinalized = isConverted || isParticularPublicationApproved;
-                                const canApproveAsParticular = canApproveAsParticularPublication(request);
+                                const isFinalized =
+                                    isConverted || isParticularPublicationApproved;
+
+                                const canApproveAsParticular =
+                                    canApproveAsParticularPublication(request, isRootUser);
 
                                 const conversionLockLabel = getConversionLockLabel(request);
                                 const selectedInmobiliariaId =
                                     getSelectedInmobiliariaIdForRequest(request);
                                 const convertButton = getConvertButtonState(request);
+
                                 const editUrl = getStoredOrGeneratedEditUrl(request);
                                 const previewUrl = getStoredOrGeneratedPreviewUrl(request);
                                 const publicUrl = getConvertedPublicUrl(request);
+                                const particularPublicUrl =
+                                    getParticularPublicationPublicUrl(request);
 
+                                const visibleVideos = getVisibleInmuebleVideos(
+                                    request?.videos || [],
+                                );
+                                const hasVideos = visibleVideos.length > 0;
+
+                                const imagesCount = Array.isArray(request.images)
+                                    ? request.images.filter((image) => image?.url).length
+                                    : 0;
+
+                                const flowHelp = getRequestFlowHelp(
+                                    request,
+                                    isRootUser,
+                                );
 
                                 return (
                                     <article className="card border-0 shadow-sm" key={request.id}>
@@ -658,11 +782,16 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                                 "text-bg-secondary"
                                                                 }`}
                                                         >
-                                                            {STATUS_LABELS[request.estado] || request.estado}
+                                                            {STATUS_LABELS[request.estado] ||
+                                                                request.estado}
                                                         </span>
 
                                                         {conversionLockLabel && (
-                                                            <span className={`badge ${getConversionLockBadgeClass(request)}`}>
+                                                            <span
+                                                                className={`badge ${getConversionLockBadgeClass(
+                                                                    request,
+                                                                )}`}
+                                                            >
                                                                 {conversionLockLabel}
                                                             </span>
                                                         )}
@@ -680,6 +809,22 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                         <span className="badge text-bg-light border">
                                                             {request.tipo || "inmueble"}
                                                         </span>
+
+                                                        {imagesCount > 0 && (
+                                                            <span className="badge text-bg-light border">
+                                                                {imagesCount} foto
+                                                                {imagesCount === 1 ? "" : "s"}
+                                                            </span>
+                                                        )}
+
+                                                        {hasVideos && (
+                                                            <span className="badge text-bg-danger">
+                                                                🎥 {visibleVideos.length} video
+                                                                {visibleVideos.length === 1
+                                                                    ? ""
+                                                                    : "s"}
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     <h2 className="h5 mb-1">
@@ -694,10 +839,22 @@ const ParticularPublicationRequestsAdminPage = () => {
 
                                                 <div className="text-lg-end small text-muted">
                                                     <div>Creada: {formatDate(request.createdAt)}</div>
-                                                    <div>Actualizada: {formatDate(request.updatedAt)}</div>
+                                                    <div>
+                                                        Actualizada: {formatDate(request.updatedAt)}
+                                                    </div>
+
                                                     {request.convertedAt && (
                                                         <div>
                                                             Convertida: {formatDate(request.convertedAt)}
+                                                        </div>
+                                                    )}
+
+                                                    {request.particularPublicationApprovedAt && (
+                                                        <div>
+                                                            Aprobada particular:{" "}
+                                                            {formatDate(
+                                                                request.particularPublicationApprovedAt,
+                                                            )}
                                                         </div>
                                                     )}
                                                 </div>
@@ -728,7 +885,37 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                     {request.billingModel || "none"} ·{" "}
                                                     {request.billingStatus || "free"}
                                                 </div>
+
+                                                <hr className="my-2" />
+
+                                                <div>
+                                                    <strong>Flujo sugerido:</strong> {flowHelp}
+                                                </div>
                                             </div>
+
+                                            {request.targetType === "onoprop" && !isFinalized && (
+                                                <div className="alert alert-warning small">
+                                                    <strong>Solicitud destinada a ONO Prop.</strong>
+
+                                                    <div>
+                                                        Puede aprobarse como publicación particular directa
+                                                        o convertirse en inmueble de una inmobiliaria. La
+                                                        aprobación directa sólo está habilitada para root.
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {request.targetType === "inmobiliaria" && !isFinalized && (
+                                                <div className="alert alert-info small">
+                                                    <strong>Solicitud destinada a inmobiliaria.</strong>
+
+                                                    <div>
+                                                        No corresponde aprobarla como publicación particular
+                                                        directa de ONO Prop. La acción esperada es convertirla
+                                                        en inmueble de la inmobiliaria seleccionada.
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {isConverted && (
                                                 <div className="alert alert-success small">
@@ -746,18 +933,26 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                             ID: <code>{request.convertedInmuebleId}</code>
                                                         </div>
                                                     )}
+
                                                     <div className="mt-2">
                                                         Estado público:{" "}
                                                         {publicUrl ? (
-                                                            <span className="badge text-bg-success">Visible en portal</span>
+                                                            <span className="badge text-bg-success">
+                                                                Visible en portal
+                                                            </span>
                                                         ) : (
-                                                            <span className="badge text-bg-warning">En revisión / no publicada</span>
+                                                            <span className="badge text-bg-warning">
+                                                                En revisión / no publicada
+                                                            </span>
                                                         )}
                                                     </div>
 
                                                     <div className="mt-2 d-flex flex-wrap gap-2">
                                                         {editUrl && (
-                                                            <Link to={editUrl} className="btn btn-sm btn-success">
+                                                            <Link
+                                                                to={editUrl}
+                                                                className="btn btn-sm btn-success"
+                                                            >
                                                                 Editar inmueble
                                                             </Link>
                                                         )}
@@ -770,8 +965,12 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                                 Vista previa
                                                             </Link>
                                                         )}
+
                                                         {publicUrl && (
-                                                            <Link to={publicUrl} className="btn btn-sm btn-success">
+                                                            <Link
+                                                                to={publicUrl}
+                                                                className="btn btn-sm btn-success"
+                                                            >
                                                                 Ver publicación pública
                                                             </Link>
                                                         )}
@@ -781,7 +980,9 @@ const ParticularPublicationRequestsAdminPage = () => {
 
                                             {isParticularPublicationApproved && (
                                                 <div className="alert alert-success small">
-                                                    <strong>Solicitud aprobada como publicación particular.</strong>
+                                                    <strong>
+                                                        Solicitud aprobada como publicación particular.
+                                                    </strong>
 
                                                     {request.particularPublicationId && (
                                                         <div>
@@ -792,7 +993,7 @@ const ParticularPublicationRequestsAdminPage = () => {
 
                                                     {request.particularPublicationPath && (
                                                         <div className="mt-2">
-                                                            Ruta pública prevista:{" "}
+                                                            Ruta pública:{" "}
                                                             <code>{request.particularPublicationPath}</code>
                                                         </div>
                                                     )}
@@ -803,6 +1004,17 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                             {request.particularPublicationStatus || "active"}
                                                         </span>
                                                     </div>
+
+                                                    {particularPublicUrl && (
+                                                        <div className="mt-2">
+                                                            <Link
+                                                                to={particularPublicUrl}
+                                                                className="btn btn-sm btn-success"
+                                                            >
+                                                                Ver publicación particular
+                                                            </Link>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             )}
 
@@ -826,29 +1038,36 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                     </strong>
                                                 </div>
                                             </div>
-                                            {request.conversionLockStatus === "processing" && !isConverted && (
-                                                <div className="alert alert-warning small">
-                                                    <strong>Conversión en proceso.</strong>
-                                                    <div>
-                                                        Esta solicitud está siendo convertida en inmueble. Para evitar duplicados,
-                                                        no se puede iniciar otra conversión hasta que finalice.
-                                                    </div>
-                                                </div>
-                                            )}
 
-                                            {request.conversionLockStatus === "failed" && !isConverted && (
-                                                <div className="alert alert-danger small">
-                                                    <strong>La última conversión no se completó.</strong>
-                                                    <div>
-                                                        {request.conversionError ||
-                                                            "Podés revisar el error y volver a intentar la conversión."}
+                                            {request.conversionLockStatus === "processing" &&
+                                                !isConverted && (
+                                                    <div className="alert alert-warning small">
+                                                        <strong>Conversión en proceso.</strong>
+
+                                                        <div>
+                                                            Esta solicitud está siendo convertida en inmueble.
+                                                            Para evitar duplicados, no se puede iniciar otra
+                                                            conversión hasta que finalice.
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                )}
+
+                                            {request.conversionLockStatus === "failed" &&
+                                                !isConverted && (
+                                                    <div className="alert alert-danger small">
+                                                        <strong>La última conversión no se completó.</strong>
+
+                                                        <div>
+                                                            {request.conversionError ||
+                                                                "Podés revisar el error y volver a intentar la conversión."}
+                                                        </div>
+                                                    </div>
+                                                )}
 
                                             <div className="alert alert-light border">
                                                 <strong>Descripción enviada:</strong>
                                                 <br />
+
                                                 <span style={{ whiteSpace: "pre-line" }}>
                                                     {request.descripcion}
                                                 </span>
@@ -858,6 +1077,11 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                 images={request.images}
                                                 title="Fotos enviadas por el particular"
                                                 emptyMessage="El particular no cargó fotos en esta solicitud."
+                                            />
+
+                                            <InmuebleVideoSection
+                                                videos={visibleVideos}
+                                                title="Videos enviados por el particular"
                                             />
 
                                             <PublicationRequestActivityLog
@@ -880,6 +1104,7 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                             handleNoteChange(request.id, e.target.value)
                                                         }
                                                     />
+
                                                     <div className="mt-2">
                                                         <button
                                                             type="button"
@@ -900,7 +1125,9 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                     <select
                                                         className="form-select"
                                                         value={selectedInmobiliariaId}
-                                                        disabled={isConverted || loadingInmobiliarias}
+                                                        disabled={
+                                                            isFinalized || loadingInmobiliarias
+                                                        }
                                                         onChange={(e) =>
                                                             handleSelectedInmobiliariaChange(
                                                                 request.id,
@@ -928,9 +1155,10 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                     </select>
 
                                                     <div className="form-text">
-                                                        Si el particular eligió una inmobiliaria, se sugiere
-                                                        automáticamente. Si eligió ONO Prop, root debe
-                                                        definir dónde cargar el inmueble.
+                                                        Si el particular eligió una inmobiliaria, se
+                                                        sugiere automáticamente. Si eligió ONO Prop,
+                                                        root debe definir dónde cargar el inmueble si no
+                                                        se aprueba como particular.
                                                     </div>
                                                 </div>
                                             </div>
@@ -956,7 +1184,7 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                     </a>
                                                 )}
 
-                                                {request.targetType === "onoprop" && (
+                                                {isRootUser && request.targetType === "onoprop" && (
                                                     <button
                                                         type="button"
                                                         className="btn btn-dark"
@@ -965,11 +1193,13 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                             !canApproveAsParticular ||
                                                             isParticularPublicationApproved
                                                         }
-                                                        onClick={() => handleApproveAsParticularPublication(request)}
+                                                        onClick={() =>
+                                                            handleApproveAsParticularPublication(request)
+                                                        }
                                                     >
                                                         {isParticularPublicationApproved
                                                             ? "Aprobada como particular"
-                                                            : "Aprobar publicación particular"}
+                                                            : "Aprobar publicación particular ONO Prop"}
                                                     </button>
                                                 )}
 
@@ -982,7 +1212,10 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                         {convertButton.label}
                                                     </button>
                                                 ) : (
-                                                    <Link to={convertButton.to} className="btn btn-primary">
+                                                    <Link
+                                                        to={convertButton.to}
+                                                        className="btn btn-primary"
+                                                    >
                                                         {convertButton.label}
                                                     </Link>
                                                 )}
@@ -1002,7 +1235,9 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                     type="button"
                                                     className="btn btn-outline-warning"
                                                     disabled={updatingId === request.id || isFinalized}
-                                                    onClick={() => handleUpdateStatus(request, "contactado")}
+                                                    onClick={() =>
+                                                        handleUpdateStatus(request, "contactado")
+                                                    }
                                                 >
                                                     Contactado
                                                 </button>
@@ -1011,7 +1246,9 @@ const ParticularPublicationRequestsAdminPage = () => {
                                                     type="button"
                                                     className="btn btn-outline-secondary"
                                                     disabled={updatingId === request.id || isFinalized}
-                                                    onClick={() => handleUpdateStatus(request, "derivado")}
+                                                    onClick={() =>
+                                                        handleUpdateStatus(request, "derivado")
+                                                    }
                                                 >
                                                     Derivado
                                                 </button>

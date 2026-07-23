@@ -1167,6 +1167,7 @@ match /particular_publication_requests/{requestId} {
       "descripcion",
       "precioEstimado",
       "images",
+      "videos",
 
       "targetType",
       "targetInmobiliariaId",
@@ -1227,7 +1228,15 @@ match /particular_publication_requests/{requestId} {
     && request.resource.data.precioEstimado is string
 
     && request.resource.data.images is list
-    && request.resource.data.images.size() <= 10
+    && request.resource.data.images.size() <= 50
+
+    && (
+      !request.resource.data.keys().hasAny(["videos"])
+      || (
+        request.resource.data.videos is list
+        && request.resource.data.videos.size() <= 5
+      )
+    )
 
     && request.resource.data.activityLog is list
     && request.resource.data.activityLog.size() <= 20
@@ -1296,6 +1305,7 @@ match /particular_publication_requests/{requestId} {
             "descripcion",
             "precioEstimado",
             "images",
+            "videos",
             "contact",
             "publicStatus",
             "moderationStatus",
@@ -1325,7 +1335,16 @@ match /particular_publication_requests/{requestId} {
           && request.resource.data.descripcion is string
           && request.resource.data.descripcion.size() >= 20
           && request.resource.data.images is list
-          && request.resource.data.images.size() <= 10
+          && request.resource.data.images.size() <= 50
+
+          && (
+            !request.resource.data.keys().hasAny(["videos"])
+            || (
+              request.resource.data.videos is list
+              && request.resource.data.videos.size() <= 5
+            )
+          )
+
           && request.resource.data.contact is map
           && request.resource.data.publicStatus == "active"
           && request.resource.data.moderationStatus == "approved"
@@ -1380,6 +1399,15 @@ match /particular_publication_requests/{requestId} {
         || ownerCanUpdateParticularPublicationStatus();
 
       allow delete: if isRoot();
+    }
+
+        /* ============================
+       CONFIGURACIÓN REGLAS ORDEN DE PUBLICACIONES
+       ============================ */
+
+    match /portal_config/{configId} {   
+      allow read: if true;
+      allow write: if isRoot();
     }
 
     /* ============================

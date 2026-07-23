@@ -15,7 +15,10 @@ import {
   releaseParticularPublicationRequestConversion,
   reserveParticularPublicationRequestConversion,
 } from "../../particular/services/particularPublication.service";
+import { approvePublicationRequestAsParticular } from "../../particular/services/particularPublicationListing.service";
 import PublicationRequestImages from "../../particular/components/PublicationRequestImages";
+import InmuebleVideoSection from "../components/InmuebleVideoSection";
+import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 import {
   DEFAULT_AMENITIES,
   DEFAULT_CARACTERISTICAS,
@@ -93,6 +96,7 @@ const INITIAL_VALUES = {
   publicarEnPortal: false,
   noIndex: false,
   images: [],
+  videos: [],
 
   inmobiliariaId: "",
   ownerInmobiliariaId: "",
@@ -213,6 +217,7 @@ const buildPrefillFromParticularRequest = ({
     estado: "activo",
     publicarEnPortal: false,
     noIndex: true,
+    videos: normalizeInmuebleVideos(request?.videos || []),
 
     inmobiliariaId: selectedInmobiliariaId,
     ownerInmobiliariaId: selectedInmobiliariaId,
@@ -380,6 +385,42 @@ const normalizeNetworkData = ({ sharing, networkData }) => {
   };
 };
 
+/* =========================
+   Permisos / aprobación particular
+   ========================= */
+
+const userIsRoot = (user) => {
+  return Boolean(
+    user?.role === "root" ||
+    user?.primaryRole === "root" ||
+    (Array.isArray(user?.roles) && user.roles.includes("root")),
+  );
+};
+
+const getParticularPublicationPathFromRequest = (request) => {
+  if (request?.particularPublicationPath) {
+    return request.particularPublicationPath;
+  }
+
+  if (request?.particularPublicationId) {
+    return `/particulares/${request.particularPublicationId}`;
+  }
+
+  return "";
+};
+
+const canApproveSourceRequestAsParticular = ({ request, user }) => {
+  if (!userIsRoot(user)) return false;
+  if (!request?.id) return false;
+  if (request.targetType !== "onoprop") return false;
+  if (request.particularPublicationId) return false;
+  if (request.convertedInmuebleId) return false;
+  if (request.conversionLockStatus === "processing") return false;
+  if (request.estado === "descartado") return false;
+
+  return true;
+};
+
 const InmuebleCreatePage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -397,20 +438,43 @@ const InmuebleCreatePage = () => {
   const [sourceRequest, setSourceRequest] = useState(null);
   const [loadingRequest, setLoadingRequest] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [approvingParticular, setApprovingParticular] = useState(false);
   const [error, setError] = useState(null);
 
-  const sourceRequestAlreadyConverted = Boolean(sourceRequest?.convertedInmuebleId);
+  const sourceRequestAlreadyConverted = Boolean(
+    sourceRequest?.convertedInmuebleId,
+  );
+
+  const sourceRequestAlreadyApprovedAsParticular = Boolean(
+    sourceRequest?.particularPublicationId,
+  );
 
   const sourceRequestConversionInProgress =
     sourceRequest?.conversionLockStatus === "processing" &&
     !sourceRequest?.convertedInmuebleId;
 
   const sourceRequestConversionBlocked =
-    sourceRequestAlreadyConverted || sourceRequestConversionInProgress;
+    sourceRequestAlreadyConverted ||
+    sourceRequestAlreadyApprovedAsParticular ||
+    sourceRequestConversionInProgress;
 
   const sourceRequestEditPath = getConvertedEditPathFromRequest(sourceRequest);
-  const sourceRequestPreviewPath = getConvertedPreviewPathFromRequest(sourceRequest);
+  const sourceRequestPreviewPath =
+    getConvertedPreviewPathFromRequest(sourceRequest);
   const sourceRequestPublicPath = getConvertedPublicPathFromRequest(sourceRequest);
+
+  const sourceRequestParticularPath =
+    getParticularPublicationPathFromRequest(sourceRequest);
+
+  const canApproveSourceAsParticular = canApproveSourceRequestAsParticular({
+    request: sourceRequest,
+    user,
+  });
+
+  const sourceRequestIsOnoProp = sourceRequest?.targetType === "onoprop";
+  const sourceRequestVideoCount = normalizeInmuebleVideos(
+    sourceRequest?.videos || [],
+  ).length;
 
   /* =========================
      Precargar solicitud particular
@@ -521,6 +585,41 @@ const InmuebleCreatePage = () => {
   };
 
   /* =========================
+     Aprobar como particular
+     ========================= */
+
+  const handleApproveSourceAsParticular = async () => {
+    if (!sourceRequest?.id) return;
+
+    const confirmed = window.confirm(
+      "¿Confirmás aprobar esta solicitud como publicación particular de ONO Prop?",
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setApprovingParticular(true);
+      setError(null);
+
+      const result = await approvePublicationRequestAsParticular(sourceRequest.id, {
+        internalNote: `Solicitud aprobada como publicación particular desde la vista de carga de inmueble: ${buildTitleFromRequest(
+          sourceRequest,
+        )}.`,
+      });
+
+      navigate(result?.path || `/particulares/${result?.id}`);
+    } catch (err) {
+      console.error("Error aprobando publicación particular:", err);
+      setError(
+        err.message ||
+        "No se pudo aprobar la solicitud como publicación particular.",
+      );
+    } finally {
+      setApprovingParticular(false);
+    }
+  };
+
+  /* =========================
      Crear inmueble
      ========================= */
 
@@ -531,6 +630,12 @@ const InmuebleCreatePage = () => {
     try {
       setLoading(true);
       setError(null);
+
+      if (sourceRequestAlreadyApprovedAsParticular) {
+        throw new Error(
+          "Esta solicitud ya fue aprobada como publicación particular. No se puede convertir también en inmueble.",
+        );
+      }
 
       if (sourceRequestAlreadyConverted) {
         throw new Error(
@@ -596,6 +701,9 @@ const InmuebleCreatePage = () => {
         ownerInmobiliariaId: selectedInmobiliariaId,
 
         images: [],
+        videos: normalizeInmuebleVideos(
+          formValues?.videos || sourceRequest?.videos || [],
+        ),
 
         sharedWith:
           formValues?.sharedWith && typeof formValues.sharedWith === "object"
@@ -660,7 +768,10 @@ const InmuebleCreatePage = () => {
             );
           }
         } catch (imageError) {
-          console.error("Error copiando fotos de solicitud particular:", imageError);
+          console.error(
+            "Error copiando fotos de solicitud particular:",
+            imageError,
+          );
 
           imageCopyError =
             imageError.message ||
@@ -669,8 +780,23 @@ const InmuebleCreatePage = () => {
       }
 
       if (sourceRequest?.id) {
-        const conversionNote = copiedImages.length
-          ? `Solicitud convertida en inmueble: ${inmuebleData.titulo}. Se copiaron ${copiedImages.length} foto(s).`
+        const copiedVideos = normalizeInmuebleVideos(
+          formValues?.videos || sourceRequest?.videos || [],
+        );
+
+        const mediaSummary = [
+          copiedImages.length
+            ? `Se copiaron ${copiedImages.length} foto(s)`
+            : "",
+          copiedVideos.length
+            ? `Se copiaron ${copiedVideos.length} video(s)`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" y ");
+
+        const conversionNote = mediaSummary
+          ? `Solicitud convertida en inmueble: ${inmuebleData.titulo}. ${mediaSummary}.`
           : imageCopyError
             ? `Solicitud convertida en inmueble: ${inmuebleData.titulo}. El inmueble fue creado, pero no se pudieron copiar las fotos automáticamente: ${imageCopyError}`
             : `Solicitud convertida en inmueble: ${inmuebleData.titulo}.`;
@@ -764,18 +890,54 @@ const InmuebleCreatePage = () => {
               </div>
 
               <div className="small">
-                Fotos recibidas: {sourceRequest.images?.length || 0}. Al guardar el
-                inmueble, se copiarán a la galería propia de la publicación.
+                Fotos recibidas: {sourceRequest.images?.length || 0}. Al guardar
+                el inmueble, se copiarán a la galería propia de la publicación.
+              </div>
+
+              <div className="small">
+                Videos recibidos: {sourceRequestVideoCount}. Al guardar el
+                inmueble, se copiarán como links embebidos.
               </div>
             </div>
 
             <div className="d-flex flex-wrap gap-2 align-self-lg-center">
+              {userIsRoot(user) && (
+                <Link
+                  to="/admin/publicaciones/particulares"
+                  className="btn btn-sm btn-outline-primary"
+                >
+                  Ver solicitudes root
+                </Link>
+              )}
+
               <Link
                 to="/admin/inmobiliaria/solicitudes-particulares"
                 className="btn btn-sm btn-outline-primary"
               >
-                Ver solicitudes
+                Ver solicitudes inmobiliaria
               </Link>
+
+              {canApproveSourceAsParticular && (
+                <button
+                  type="button"
+                  className="btn btn-sm btn-dark"
+                  disabled={approvingParticular || loading || loadingRequest}
+                  onClick={handleApproveSourceAsParticular}
+                >
+                  {approvingParticular
+                    ? "Aprobando..."
+                    : "Aprobar como publicación particular ONO Prop"}
+                </button>
+              )}
+
+              {sourceRequestParticularPath && (
+                <Link
+                  to={sourceRequestParticularPath}
+                  className="btn btn-sm btn-success"
+                >
+                  Ver publicación particular
+                </Link>
+              )}
 
               <Link
                 to="/admin/inmuebles/listado"
@@ -785,6 +947,56 @@ const InmuebleCreatePage = () => {
               </Link>
             </div>
           </div>
+
+          {sourceRequestIsOnoProp &&
+            !sourceRequestParticularPath &&
+            !sourceRequestAlreadyConverted &&
+            !sourceRequestConversionInProgress && (
+              <div className="alert alert-warning small mt-3 mb-0">
+                <strong>Esta solicitud fue enviada a ONO Prop.</strong>
+
+                <div>
+                  Si sos root, podés aprobarla como publicación particular de
+                  ONO Prop. Si preferís gestionarla desde una inmobiliaria,
+                  también podés completar el formulario y convertirla en inmueble.
+                </div>
+              </div>
+            )}
+
+          {sourceRequestAlreadyApprovedAsParticular && (
+            <div className="alert alert-success mt-3 mb-0">
+              <strong>
+                Esta solicitud ya fue aprobada como publicación particular.
+              </strong>
+
+              {sourceRequest.particularPublicationId && (
+                <div className="small mt-1">
+                  ID publicación particular:{" "}
+                  <code>{sourceRequest.particularPublicationId}</code>
+                </div>
+              )}
+
+              {sourceRequest.particularPublicationStatus && (
+                <div className="small mt-1">
+                  Estado:{" "}
+                  <span className="badge text-bg-success">
+                    {sourceRequest.particularPublicationStatus}
+                  </span>
+                </div>
+              )}
+
+              {sourceRequestParticularPath && (
+                <div className="mt-3">
+                  <Link
+                    to={sourceRequestParticularPath}
+                    className="btn btn-sm btn-success"
+                  >
+                    Ver publicación particular
+                  </Link>
+                </div>
+              )}
+            </div>
+          )}
 
           {sourceRequestAlreadyConverted && (
             <div className="alert alert-success mt-3 mb-0">
@@ -797,13 +1009,15 @@ const InmuebleCreatePage = () => {
               )}
 
               <div className="small mt-1">
-                ID del inmueble:{" "}
-                <code>{sourceRequest.convertedInmuebleId}</code>
+                ID del inmueble: <code>{sourceRequest.convertedInmuebleId}</code>
               </div>
 
               <div className="mt-3 d-flex flex-wrap gap-2">
                 {sourceRequestEditPath && (
-                  <Link to={sourceRequestEditPath} className="btn btn-sm btn-success">
+                  <Link
+                    to={sourceRequestEditPath}
+                    className="btn btn-sm btn-success"
+                  >
                     Editar inmueble existente
                   </Link>
                 )}
@@ -818,7 +1032,10 @@ const InmuebleCreatePage = () => {
                 )}
 
                 {sourceRequestPublicPath && (
-                  <Link to={sourceRequestPublicPath} className="btn btn-sm btn-success">
+                  <Link
+                    to={sourceRequestPublicPath}
+                    className="btn btn-sm btn-success"
+                  >
                     Ver publicación pública
                   </Link>
                 )}
@@ -832,21 +1049,28 @@ const InmuebleCreatePage = () => {
               title="Fotos que se copiarán al inmueble"
               emptyMessage="Esta solicitud no tiene fotos cargadas."
             />
+
+            <InmuebleVideoSection
+              videos={normalizeInmuebleVideos(sourceRequest.videos || [])}
+              title="Videos que se copiarán al inmueble"
+            />
           </div>
         </div>
       )}
 
       {sourceRequestConversionBlocked ? (
         <div className="alert alert-light border">
-          {sourceRequestAlreadyConverted
-            ? "No se muestra el formulario de creación porque esta solicitud ya tiene un inmueble asociado. Usá los botones superiores para editar o revisar la publicación existente."
-            : "No se muestra el formulario de creación porque esta solicitud ya está siendo convertida por otro usuario. Actualizá el panel en unos minutos para revisar el resultado."}
+          {sourceRequestAlreadyApprovedAsParticular
+            ? "No se muestra el formulario de creación porque esta solicitud ya fue aprobada como publicación particular de ONO Prop."
+            : sourceRequestAlreadyConverted
+              ? "No se muestra el formulario de creación porque esta solicitud ya tiene un inmueble asociado. Usá los botones superiores para editar o revisar la publicación existente."
+              : "No se muestra el formulario de creación porque esta solicitud ya está siendo convertida por otro usuario. Actualizá el panel en unos minutos para revisar el resultado."}
         </div>
       ) : (
         <InmuebleForm
           values={values}
           errors={{}}
-          loading={loading || loadingRequest}
+          loading={loading || loadingRequest || approvingParticular}
           isEditMode={false}
           handleChange={handleChange}
           handleNestedChange={handleNestedChange}

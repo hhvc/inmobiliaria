@@ -11,6 +11,8 @@ import {
 
 import PublicationRequestImages from "../components/PublicationRequestImages";
 import PublicationRequestActivityLog from "../components/PublicationRequestActivityLog";
+import InmuebleVideoSection from "../../inmueble/components/InmuebleVideoSection";
+import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 
 const STATUS_OPTIONS = [
     { id: "nuevo", label: "Nuevas" },
@@ -490,6 +492,8 @@ const InmobiliariaParticularRequestsPage = () => {
                                 const editUrl = getStoredOrGeneratedEditUrl(request);
                                 const previewUrl = getStoredOrGeneratedPreviewUrl(request);
                                 const publicUrl = getConvertedPublicUrl(request);
+                                const visibleVideos = getVisibleInmuebleVideos(request?.videos || []);
+                                const hasVideos = visibleVideos.length > 0;
 
                                 return (
                                     <article className="card border-0 shadow-sm" key={request.id}>
@@ -518,6 +522,11 @@ const InmobiliariaParticularRequestsPage = () => {
                                                         <span className="badge text-bg-light border">
                                                             {request.tipo || "inmueble"}
                                                         </span>
+                                                        {hasVideos && (
+                                                            <span className="badge text-bg-danger">
+                                                                🎥 {visibleVideos.length} video{visibleVideos.length === 1 ? "" : "s"}
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     <h2 className="h5 mb-1">
@@ -642,6 +651,11 @@ const InmobiliariaParticularRequestsPage = () => {
                                                 images={request.images}
                                                 title="Fotos enviadas por el particular"
                                                 emptyMessage="El particular no cargó fotos en esta solicitud."
+                                            />
+
+                                            <InmuebleVideoSection
+                                                videos={visibleVideos}
+                                                title="Videos enviados por el particular"
                                             />
 
                                             <PublicationRequestActivityLog

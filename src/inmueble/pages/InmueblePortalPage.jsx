@@ -15,6 +15,13 @@ import {
     hasCochera,
     inmuebleHasAmenity,
 } from "../utils/inmuebleDisplay.helpers";
+import { getVisibleInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+import { getPortalRankingConfig } from "../services/portalRankingConfig.service";
+import {
+    DEFAULT_PORTAL_RANKING_CONFIG,
+    getPaidPromotionScore,
+    sortPortalItemsByRelevance,
+} from "../utils/portalRanking.helpers";
 
 const INITIAL_FILTERS = {
     search: "",
@@ -33,6 +40,7 @@ const INITIAL_FILTERS = {
     patio: "",
     jardin: "",
     aptoCredito: "",
+    video: "",
     sortBy: "destacados",
 };
 
@@ -62,7 +70,7 @@ const TIPOS = [
 ];
 
 const SORT_OPTIONS = [
-    { value: "destacados", label: "Destacados primero" },
+    { value: "destacados", label: "Relevancia" },
     { value: "recientes", label: "Más recientes" },
     { value: "precio_asc", label: "Precio menor a mayor" },
     { value: "precio_desc", label: "Precio mayor a menor" },
@@ -262,6 +270,13 @@ const getActiveFilterBadges = (filters) => {
         }
     });
 
+    if (filters.video === "true") {
+        badges.push({
+            key: "video",
+            label: "Con video",
+        });
+    }
+
     if (filters.sortBy && filters.sortBy !== INITIAL_FILTERS.sortBy) {
         badges.push({
             key: "sortBy",
@@ -291,6 +306,7 @@ const getFiltersFromSearchParams = (searchParams) => {
         patio: searchParams.get("patio") || "",
         jardin: searchParams.get("jardin") || "",
         aptoCredito: searchParams.get("aptoCredito") || "",
+        video: searchParams.get("video") || "",
         sortBy: searchParams.get("sortBy") || INITIAL_FILTERS.sortBy,
     };
 };
@@ -447,6 +463,13 @@ const matchesFilters = (inmueble, filters) => {
         return false;
     }
 
+    if (
+        filters.video === "true" &&
+        getVisibleInmuebleVideos(inmueble?.videos || []).length === 0
+    ) {
+        return false;
+    }
+
     return true;
 };
 
@@ -462,8 +485,12 @@ const getDateValue = (value) => {
     return Number.isFinite(date.getTime()) ? date.getTime() : 0;
 };
 
-const sortInmuebles = (items, sortBy) => {
+const sortInmuebles = (items, sortBy, rankingConfig) => {
     const sortedItems = [...items];
+
+    if (sortBy === "destacados") {
+        return sortPortalItemsByRelevance(sortedItems, rankingConfig);
+    }
 
     sortedItems.sort((a, b) => {
         if (sortBy === "recientes") {
@@ -506,11 +533,9 @@ const sortInmuebles = (items, sortBy) => {
             );
         }
 
-        if (a.destacado !== b.destacado) {
-            return Number(Boolean(b.destacado)) - Number(Boolean(a.destacado));
-        }
-
-        return getDateValue(b.createdAt) - getDateValue(a.createdAt);
+        return sortPortalItemsByRelevance([a, b], rankingConfig)[0] === a
+            ? -1
+            : 1;
     });
 
     return sortedItems;
@@ -797,7 +822,10 @@ const mapInmuebleToPortalItem = (inmueble, inmobiliariasById = {}) => {
         inmobiliariaSlug,
         publicPath: slugOrId ? `/inmueble/${slugOrId}` : "",
         precioLabel: "",
+        promotion: inmueble.promotion || inmueble.promo || null,
+        promo: inmueble.promo || inmueble.promotion || null,
         createdAt: inmueble.createdAt || inmueble.updatedAt || null,
+        updatedAt: inmueble.updatedAt || inmueble.createdAt || null,
         destacado: Boolean(inmueble.destacado),
     };
 };
@@ -885,13 +913,17 @@ const mapParticularPublicationToPortalItem = (publication) => {
         servicios: publication.servicios || {},
 
         images: Array.isArray(publication.images) ? publication.images : [],
+        videos: Array.isArray(publication.videos) ? publication.videos : [],
 
-        destacado: false,
+        promotion: publication.promotion || publication.promo || null,
+        promo: publication.promo || publication.promotion || null,
+        destacado: Boolean(publication.destacado),
 
         createdAt:
             publication.approvedAt || publication.createdAt || publication.updatedAt || null,
 
-        updatedAt: publication.updatedAt || null,
+        updatedAt:
+            publication.updatedAt || publication.approvedAt || publication.createdAt || null,
 
         publicStatus: publication.publicStatus || "active",
         moderationStatus: publication.moderationStatus || "approved",
@@ -959,6 +991,10 @@ const getPhotoCount = (inmueble) => {
     return inmueble.images.filter((image) => image?.url).length;
 };
 
+const isPortalItemPromoted = (inmueble, rankingConfig) => {
+    return getPaidPromotionScore(inmueble, rankingConfig) > 0;
+};
+
 const getShortDescription = (description = "", maxLength = 115) => {
     const cleanDescription = description.toString().replace(/\s+/g, " ").trim();
 
@@ -977,6 +1013,10 @@ const InmueblePortalPage = () => {
         getFiltersFromSearchParams(searchParams),
     );
     const [copySuccess, setCopySuccess] = useState(false);
+
+    const [rankingConfig, setRankingConfig] = useState(
+        DEFAULT_PORTAL_RANKING_CONFIG,
+    );
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -1012,8 +1052,8 @@ const InmueblePortalPage = () => {
             matchesFilters(inmueble, filters),
         );
 
-        return sortInmuebles(filteredItems, filters.sortBy);
-    }, [filters, inmuebles]);
+        return sortInmuebles(filteredItems, filters.sortBy, rankingConfig);
+    }, [filters, inmuebles, rankingConfig]);
 
     const activeFiltersCount = useMemo(() => {
         return Object.entries(filters).filter(([key, value]) => {
@@ -1032,8 +1072,10 @@ const InmueblePortalPage = () => {
     }, [filters]);
 
     const destacadosCount = useMemo(() => {
-        return inmuebles.filter((inmueble) => inmueble.destacado).length;
-    }, [inmuebles]);
+        return inmuebles.filter((inmueble) =>
+            isPortalItemPromoted(inmueble, rankingConfig),
+        ).length;
+    }, [inmuebles, rankingConfig]);
 
     const inmobiliariasCount = useMemo(() => {
         return inmuebles.filter((inmueble) => inmueble.sourceType === "inmobiliaria")
@@ -1081,15 +1123,21 @@ const InmueblePortalPage = () => {
                 setLoading(true);
                 setError(null);
 
-                const [inmueblesResult, particularPublicationsResult] =
-                    await Promise.all([
-                        getPublicInmuebles({
-                            pageSize: 100,
-                        }),
-                        getActiveParticularPublications({
-                            pageSize: 100,
-                        }),
-                    ]);
+                const [
+                    inmueblesResult,
+                    particularPublicationsResult,
+                    portalRankingConfigResult,
+                ] = await Promise.all([
+                    getPublicInmuebles({
+                        pageSize: 100,
+                    }),
+                    getActiveParticularPublications({
+                        pageSize: 100,
+                    }),
+                    getPortalRankingConfig(),
+                ]);
+
+                setRankingConfig(portalRankingConfigResult);
 
                 const rawInmuebles = inmueblesResult?.data || [];
 
@@ -1524,6 +1572,23 @@ const InmueblePortalPage = () => {
                                                 </label>
                                             </div>
                                         ))}
+
+                                        <div className="form-check">
+                                            <input
+                                                id="portal-filter-video"
+                                                className="form-check-input"
+                                                type="checkbox"
+                                                checked={filters.video === "true"}
+                                                onChange={(e) =>
+                                                    handleAmenityFilterChange("video", e.target.checked)
+                                                }
+                                            />
+
+                                            <label className="form-check-label" htmlFor="portal-filter-video">
+                                                Con video
+                                            </label>
+                                        </div>
+
                                     </div>
                                 </div>
 
@@ -1612,9 +1677,16 @@ const InmueblePortalPage = () => {
                                 const sourceBadgeClass = getSourceBadgeClass(inmueble);
                                 const sourceLogoUrl = getSourceLogoUrl(inmueble);
                                 const photoCount = getPhotoCount(inmueble);
+                                const visibleVideos = getVisibleInmuebleVideos(inmueble?.videos || []);
+                                const videoCount = visibleVideos.length;
+                                const hasVideos = videoCount > 0;
                                 const featureItems = getInmuebleFeatureBadges(inmueble);
                                 const amenityItems = getInmuebleAmenityBadges(inmueble, 4);
                                 const shortDescription = getShortDescription(inmueble.descripcion);
+                                const isPromoted = isPortalItemPromoted(
+                                    inmueble,
+                                    rankingConfig,
+                                );
 
                                 return (
                                     <article
@@ -1661,10 +1733,18 @@ const InmueblePortalPage = () => {
                                                     )}
                                                 </div>
 
-                                                {inmueble.destacado && (
+                                                {isPromoted && (
                                                     <div className="position-absolute top-0 end-0 p-3">
                                                         <span className="badge text-bg-warning">
                                                             ★ Destacado
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                {hasVideos && (
+                                                    <div className="position-absolute bottom-0 start-0 p-3">
+                                                        <span className="badge text-bg-danger shadow-sm">
+                                                            🎥 {videoCount} video{videoCount === 1 ? "" : "s"}
                                                         </span>
                                                     </div>
                                                 )}
@@ -1702,6 +1782,12 @@ const InmueblePortalPage = () => {
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                {hasVideos && (
+                                                    <div className="d-flex flex-wrap gap-2 mb-2">
+                                                        <span className="badge text-bg-danger">🎥 Tiene video</span>
+                                                    </div>
+                                                )}
 
                                                 <Link
                                                     to={detalleUrl}
@@ -1759,9 +1845,11 @@ const InmueblePortalPage = () => {
                                                         className="btn btn-primary"
                                                         onClick={saveCurrentSearchUrl}
                                                     >
-                                                        {inmueble.sourceType === "particular"
-                                                            ? "Ver publicación"
-                                                            : "Ver inmueble"}
+                                                        {hasVideos
+                                                            ? "Ver video y detalle"
+                                                            : inmueble.sourceType === "particular"
+                                                                ? "Ver publicación"
+                                                                : "Ver inmueble"}
                                                     </Link>
 
                                                     {inmueble.sourceType === "inmobiliaria" &&

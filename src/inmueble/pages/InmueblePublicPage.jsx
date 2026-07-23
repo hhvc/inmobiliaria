@@ -5,6 +5,8 @@ import SEO from "../../components/SEO";
 import { getPublicInmuebleBySlug } from "../services/inmueble.service";
 import { createInmuebleConsulta } from "../services/inmuebleConsulta.service";
 import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
+import InmuebleVideoSection from "../components/InmuebleVideoSection";
+import { getVisibleInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 
 const INITIAL_CONSULTA = {
   nombre: "",
@@ -374,6 +376,8 @@ const InmueblePublicPage = () => {
   }, [inmueble]);
 
   const selectedImage = sortedImages[selectedImageIndex] || sortedImages[0];
+  const visibleVideos = getVisibleInmuebleVideos(inmueble?.videos || []);
+  const hasVideos = visibleVideos.length > 0;
   const address = buildAddress(inmueble);
   const featureItems = getFeatureItems(inmueble || {});
   const contactoInmobiliaria = useMemo(() => {
@@ -726,6 +730,9 @@ const InmueblePublicPage = () => {
                     {inmueble.destacado && (
                       <span className="badge text-bg-warning">Destacado</span>
                     )}
+                    {hasVideos && (
+                      <span className="badge text-bg-success">🎥 Tiene video</span>
+                    )}
                   </div>
 
                   <h1 className="display-6 fw-bold mb-3">{inmueble.titulo}</h1>
@@ -781,6 +788,12 @@ const InmueblePublicPage = () => {
                       </a>
                     )}
 
+                    {hasVideos && (
+                      <a href="#videos" className="btn btn-outline-primary">
+                        Ver videos
+                      </a>
+                    )}
+
                     <a href="#consulta" className="btn btn-primary">
                       Enviar consulta
                     </a>
@@ -813,6 +826,7 @@ const InmueblePublicPage = () => {
                 Información principal
                ========================= */}
             <section className="col-lg-8">
+              <InmuebleVideoSection videos={visibleVideos} />
               {featureItems.length > 0 && (
                 <div className="card border-0 shadow-sm mb-4">
                   <div className="card-body p-4">

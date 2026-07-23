@@ -67,13 +67,13 @@ service firebase.storage {
 
     function isValidImageSize() {
       return request.resource != null
-        && request.resource.size < 10 * 1024 * 1024;
+        && request.resource.size <= 10 * 1024 * 1024;
     }
-
+    
     function isValidParticularRequestImage() {
       return request.resource != null
-        && request.resource.size < 8 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.size <= 10 * 1024 * 1024;
     }
 
     function isValidVerificationFile() {
@@ -195,22 +195,24 @@ service firebase.storage {
     */
 
     match /particular_publication_requests/{requestId}/{userId}/{fileName} {
+    
+      allow get: if isSignedIn();
 
-      allow read: if isSignedIn();
+      allow list: if false;
 
       allow create: if
         isSignedIn()
         && request.auth.uid == userId
         && isValidParticularRequestImage();
 
-      allow update: if false;
+     allow update: if false;
 
-      allow delete: if
-        isRoot()
-        || (
-          isSignedIn()
-          && request.auth.uid == userId
-        );
+     allow delete: if
+       isRoot()
+       || (
+         isSignedIn()
+         && request.auth.uid == userId
+       );
     }
 
     /* ================= Fallback ================= */

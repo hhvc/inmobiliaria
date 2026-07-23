@@ -17,6 +17,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
+import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+
 import { validateInmuebleEstado } from "../../domain/inmueble/inmueble.validators";
 import {
   assertInmobiliariaActiva,
@@ -422,6 +424,9 @@ export const createInmueble = async (
 
       // 🖼️ Imágenes
       images: Array.isArray(data.images) ? data.images : [],
+
+      // 🎥 Videos
+      videos: normalizeInmuebleVideos(data.videos || []),
 
       // 🤝 Compartir
       sharedWith:
@@ -838,6 +843,7 @@ export const updateInmueble = async (
     payload.publicarEnPortal = Boolean(payload.publicarEnPortal);
     payload.noIndex = Boolean(payload.noIndex);
     payload.images = Array.isArray(payload.images) ? payload.images : [];
+    payload.videos = normalizeInmuebleVideos(payload.videos || []);
     payload.sharing = sharing;
 
     const ref = inmuebleDoc(inmobiliariaId, inmuebleId);

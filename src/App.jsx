@@ -33,6 +33,9 @@ import ReservationManagement from "./components/admin/ReservationManagement";
 import TestimonialManagement from "./components/admin/TestimonialManagement";
 import UserAdminPage from "./pages/UserAdminPage";
 
+import PortalPublicationsPage from "./admin/pages/PortalPublicationsPage";
+import PortalRankingConfigPage from "./admin/pages/PortalRankingConfigPage";
+
 import ParticularPublicationRequestsAdminPage from "./particular/pages/ParticularPublicationRequestsAdminPage";
 import ParticularPublicationPublicPage from "./particular/pages/ParticularPublicationPublicPage";
 
@@ -420,6 +423,23 @@ function App() {
                   element={
                     <ProtectedRoute role="root">
                       <UserAdminPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/portal/publicaciones"
+                  element={
+                    <ProtectedRoute role="root">
+                      <PortalPublicationsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/portal/ranking"
+                  element={
+                    <ProtectedRoute role="root">
+                      <PortalRankingConfigPage />
                     </ProtectedRoute>
                   }
                 />

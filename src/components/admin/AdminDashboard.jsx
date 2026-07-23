@@ -1,775 +1,618 @@
-// src/components/admin/AdminDashboard.jsx
 import { Link } from "react-router-dom";
+
 import { useAuth } from "../../context/auth/useAuth";
 import { useDashboardStats } from "../../hooks/useDashboardStats";
+
+const getStatValue = (stats, key) => {
+  if (!stats) return 0;
+
+  const value = stats[key];
+
+  if (value === null || value === undefined) return 0;
+
+  return value;
+};
+
+const userIsRoot = (user, hasRole) => {
+  if (typeof hasRole === "function" && hasRole("root")) return true;
+  if (!user) return false;
+  if (user.role === "root") return true;
+  if (user.primaryRole === "root") return true;
+  if (Array.isArray(user.roles) && user.roles.includes("root")) return true;
+
+  return false;
+};
+
+const userIsAdmin = (user, hasRole) => {
+  if (userIsRoot(user, hasRole)) return true;
+  if (typeof hasRole === "function" && hasRole("admin")) return true;
+  if (!user) return false;
+  if (user.role === "admin") return true;
+  if (user.primaryRole === "admin") return true;
+  if (Array.isArray(user.roles) && user.roles.includes("admin")) return true;
+
+  return false;
+};
+
+const StatCard = ({
+  title,
+  value,
+  icon = "fa fa-chart-simple",
+  loading = false,
+  className = "text-bg-primary",
+}) => {
+  return (
+    <div className="col-6 col-md-4 col-xl-2">
+      <div className={`card h-100 border-0 shadow-sm ${className}`}>
+        <div className="card-body text-center">
+          <i className={`${icon} fa-2x mb-2`}></i>
+
+          {loading ? (
+            <div className="spinner-border spinner-border-sm" role="status">
+              <span className="visually-hidden">Cargando...</span>
+            </div>
+          ) : (
+            <>
+              <div className="h4 mb-0">{value}</div>
+              <div className="small">{title}</div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ModuleCard = ({
+  title,
+  text,
+  to,
+  buttonLabel,
+  icon = "fa fa-circle",
+  color = "#0d6efd",
+  badge = "",
+  disabled = false,
+}) => {
+  return (
+    <div className="col-md-6 col-xl-4">
+      <div className="card h-100 border-0 shadow-sm">
+        <div className="card-body p-4 d-flex flex-column">
+          <div className="d-flex align-items-start gap-3 mb-3">
+            <div
+              className="rounded-3 d-flex align-items-center justify-content-center flex-shrink-0"
+              style={{
+                width: 48,
+                height: 48,
+                backgroundColor: `${color}18`,
+                color,
+              }}
+            >
+              <i className={`${icon} fa-lg`}></i>
+            </div>
+
+            <div>
+              <h2 className="h5 mb-1">{title}</h2>
+              {badge && <span className="badge text-bg-light border">{badge}</span>}
+            </div>
+          </div>
+
+          <p className="text-muted small flex-grow-1">{text}</p>
+
+          {disabled ? (
+            <button type="button" className="btn btn-outline-secondary" disabled>
+              Próximamente
+            </button>
+          ) : (
+            <Link to={to} className="btn btn-primary">
+              {buttonLabel}
+            </Link>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const QuickLink = ({ to, children, className = "btn btn-outline-primary" }) => {
+  return (
+    <Link to={to} className={className}>
+      {children}
+    </Link>
+  );
+};
 
 const AdminDashboard = () => {
   const { user, hasRole } = useAuth();
   const { stats, loading, error } = useDashboardStats();
 
-  if (!hasRole("admin")) {
+  const isRootUser = userIsRoot(user, hasRole);
+  const isAdminUser = userIsAdmin(user, hasRole);
+
+  if (!isAdminUser) {
     return (
-      <div className="container mt-4">
+      <main className="container py-4">
         <div className="alert alert-danger text-center">
-          <h4>🚫 Acceso Denegado</h4>
-          <p>No tienes permisos para acceder a esta sección.</p>
+          <h1 className="h4">🚫 Acceso denegado</h1>
+          <p className="mb-0">No tenés permisos para acceder a esta sección.</p>
         </div>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div className="container mt-4">
-      <div className="row">
-        <div className="col-md-12">
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <div>
-              <h1>🛠️ Panel de Administración</h1>
-              <p className="text-muted mb-0">
-                Bienvenido, <strong>{user?.displayName || user?.email}</strong>
-              </p>
-            </div>
-            <div className="text-end">
-              <small className="text-muted">
-                Rol: <strong>{user?.role}</strong>
-              </small>
-            </div>
+    <main className="container py-4">
+      <div className="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-4">
+        <div>
+          <p className="text-uppercase text-muted small mb-1">
+            Administración ONO Prop
+          </p>
+
+          <h1 className="mb-2">🛠️ Panel de Administración</h1>
+
+          <p className="text-muted mb-0">
+            Bienvenido, <strong>{user?.displayName || user?.email}</strong>
+          </p>
+        </div>
+
+        <div className="text-lg-end">
+          <div className="badge text-bg-dark mb-2">
+            {isRootUser ? "Root" : "Admin"}
           </div>
 
-          {/* Mostrar error si existe */}
-          {error && (
-            <div
-              className="alert alert-warning alert-dismissible fade show"
-              role="alert"
-            >
-              <strong>Advertencia:</strong> {error}
-              <button
-                type="button"
-                className="btn-close"
-                data-bs-dismiss="alert"
-              ></button>
-            </div>
-          )}
-
-          {/* Tarjetas de estadísticas rápidas */}
-          <div className="row mb-5">
-            {/* Tarjeta de Total Inmobiliarias */}
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#6610f2" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-building fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.totalInmobiliarias}</h4>
-                      <small>Total Inmobiliarias</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Tarjeta de Inmobiliarias Activas */}
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#20c997" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-check-circle fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.inmobiliariasActivas}</h4>
-                      <small>Inmobiliarias Activas</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Tarjeta de Inmobiliarias Hoy */}
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#fd7e14" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-calendar-day fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.inmobiliariasHoy}</h4>
-                      <small>Inmobiliarias Hoy</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Tarjeta de Total Inmuebles */}
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#17a2b8" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-building fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.totalInmuebles}</h4>
-                      <small>Total Inmuebles</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Tarjeta de Inmuebles Activos */}
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#28a745" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-check-circle fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.inmueblesActivos}</h4>
-                      <small>Inmuebles Activos</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Tarjeta de Inmuebles Hoy */}
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#6f42c1" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-calendar-day fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.inmueblesHoy}</h4>
-                      <small>Inmuebles Hoy</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="row mb-5">
-            {/* Inmuebles Destacados */}
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#ffc107" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-star fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.inmueblesDestacados}</h4>
-                      <small>Inmuebles Destacados</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Cabañas */}
-            <div className="col-md-2">
-              <div className="card bg-primary text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-home fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.totalCabanas}</h4>
-                      <small>Total Cabañas</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2">
-              <div className="card bg-success text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-check-circle fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.cabanasDisponibles}</h4>
-                      <small>Disponibles</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2">
-              <div className="card bg-warning text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-star fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.cabanasDestacadas}</h4>
-                      <small>Destacadas</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Reservas */}
-            <div className="col-md-2">
-              <div className="card bg-info text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-calendar-check fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.totalReservas}</h4>
-                      <small>Total Reservas</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2">
-              <div className="card bg-success text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-check fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.reservasConfirmadas}</h4>
-                      <small>Confirmadas</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2">
-              <div className="card bg-warning text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-clock fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.reservasPendientes}</h4>
-                      <small>Pendientes</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Segunda fila de estadísticas */}
-            <div className="col-md-2 mt-3">
-              <div className="card bg-danger text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-times fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.reservasCanceladas}</h4>
-                      <small>Canceladas</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2 mt-3">
-              <div
-                className="card text-white"
-                style={{ backgroundColor: "#6f42c1" }}
-              >
-                <div className="card-body text-center">
-                  <i className="fa fa-envelope fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.totalContactos}</h4>
-                      <small>Total Contactos</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2 mt-3">
-              <div className="card bg-info text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-calendar-day fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.contactosHoy}</h4>
-                      <small>Contactos Hoy</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2 mt-3">
-              <div className="card bg-warning text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-bell fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.contactosNoLeidos}</h4>
-                      <small>Contactos Por Leer</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2 mt-3">
-              <div className="card bg-secondary text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-users fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">{stats.totalUsuarios}</h4>
-                      <small>Usuarios</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-2 mt-3">
-              <div className="card bg-dark text-white">
-                <div className="card-body text-center">
-                  <i className="fa fa-chart-line fa-2x mb-2"></i>
-                  {loading ? (
-                    <div
-                      className="spinner-border spinner-border-sm"
-                      role="status"
-                    >
-                      <span className="visually-hidden">Cargando...</span>
-                    </div>
-                  ) : (
-                    <>
-                      <h4 className="mb-0">
-                        {stats.totalContactos > 0
-                          ? `${Math.round(
-                              (stats.contactosHoy / stats.totalContactos) * 100
-                            )}%`
-                          : "0%"}
-                      </h4>
-                      <small>Hoy vs Total</small>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Módulos de administración */}
-          <div className="row">
-            {/* Gestión de Inmobiliarias */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i
-                    className="fa fa-city fa-3x mb-3"
-                    style={{ color: "#6610f2" }}
-                  ></i>
-                  <h5 className="card-title">🏢 Gestión de Inmobiliarias</h5>
-                  <p className="card-text">
-                    Administra todas las inmobiliarias asociadas: crear, editar,
-                    activar/desactivar y configurar propiedades.
-                  </p>
-                  <Link
-                    to="/admin/inmobiliarias"
-                    className="btn"
-                    style={{ backgroundColor: "#6610f2", color: "white" }}
-                  >
-                    Gestionar Inmobiliarias
-                    {stats.inmobiliariasActivas > 0 && (
-                      <span className="badge bg-success ms-1">
-                        {stats.inmobiliariasActivas} activas
-                      </span>
-                    )}
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Gestión de Inmuebles - NUEVA TARJETA */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i
-                    className="fa fa-home fa-3x mb-3"
-                    style={{ color: "#17a2b8" }}
-                  ></i>
-                  <h5 className="card-title">🏠 Gestión de Inmuebles</h5>
-                  <p className="card-text">
-                    Administra propiedades: casas, departamentos, terrenos.
-                    Crear, editar, destacar y gestionar imágenes.
-                  </p>
-                  <Link
-                    to="/admin/inmuebles"
-                    className="btn"
-                    style={{ backgroundColor: "#17a2b8", color: "white" }}
-                  >
-                    Gestionar Inmuebles
-                    {stats.totalInmuebles > 0 && (
-                      <span className="badge bg-success ms-1">
-                        {stats.totalInmuebles} propiedades
-                      </span>
-                    )}
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Gestión de Reservas */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-calendar-check fa-3x text-success mb-3"></i>
-                  <h5 className="card-title">📅 Gestión de Reservas</h5>
-                  <p className="card-text">
-                    Gestiona reservas, confirmaciones, check-ins y calendario de
-                    disponibilidad.
-                  </p>
-                  <Link to="/admin/reservas" className="btn btn-success">
-                    Gestionar Reservas
-                    {stats.reservasPendientes > 0 && (
-                      <span className="badge bg-warning ms-1">
-                        {stats.reservasPendientes}
-                      </span>
-                    )}
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Gestión de Cabañas */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-campground fa-3x text-primary mb-3"></i>
-                  <h5 className="card-title">⛺ Gestión de Cabañas</h5>
-                  <p className="card-text">
-                    Administra todas las cabañas: crear, editar, eliminar y
-                    configurar precios.
-                  </p>
-                  <Link to="/admin/cabanas" className="btn btn-primary">
-                    Gestionar Cabañas
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Gestión de Contactos */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-envelope fa-3x text-info mb-3"></i>
-                  <h5 className="card-title">📨 Gestión de Contactos</h5>
-                  <p className="card-text">
-                    Revisa y gestiona todos los mensajes de contacto de
-                    prospectos y clientes.
-                  </p>
-                  <Link to="/admin/contactos" className="btn btn-info">
-                    Gestionar Contactos
-                    {stats.contactosNoLeidos > 0 && (
-                      <span className="badge bg-danger ms-1">
-                        {stats.contactosNoLeidos}
-                      </span>
-                    )}
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Calendario de Seguimientos */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-calendar fa-3x text-warning mb-3"></i>
-                  <h5 className="card-title">📅 Calendario de Seguimientos</h5>
-                  <p className="card-text">
-                    Gestiona seguimientos y eventos programados con contactos.
-                  </p>
-                  <Link to="/admin/calendar" className="btn btn-warning">
-                    Ver Calendario
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-comments fa-3x text-info mb-3"></i>
-                  <h5 className="card-title">💬 Gestión de Comentarios</h5>
-                  <p className="card-text">
-                    Revisa, aprueba o rechaza comentarios de huéspedes para
-                    mostrar en el sitio.
-                  </p>
-                  <Link to="/admin/testimonios" className="btn btn-info">
-                    Gestionar Comentarios
-                    {/* Puedes agregar un badge con la cantidad pendiente si quieres */}
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Gestión de Galería */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-image fa-3x text-purple mb-3"></i>
-                  <h5 className="card-title">🖼️ Gestión de Galería</h5>
-                  <p className="card-text">
-                    Administra las imágenes de la galería del sitio web.
-                  </p>
-                  <Link
-                    to="/admin/gallery"
-                    className="btn"
-                    style={{
-                      backgroundColor: "var(--bs-purple)",
-                      color: "white",
-                    }}
-                  >
-                    Gestionar Galería
-                  </Link>
-                </div>
-              </div>
-            </div>
-
-            {/* Reportes y Analytics */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-chart-bar fa-3x text-danger mb-3"></i>
-                  <h5 className="card-title">📊 Reportes y Analytics</h5>
-                  <p className="card-text">
-                    Reportes detallados, estadísticas y análisis del negocio.
-                  </p>
-                  <button className="btn btn-outline-secondary" disabled>
-                    Próximamente
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Gestión de Usuarios */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-users fa-3x text-dark mb-3"></i>
-                  <h5 className="card-title">👥 Gestión de Usuarios</h5>
-                  <p className="card-text">
-                    Administra usuarios, roles y permisos del sistema.
-                  </p>
-                  <button className="btn btn-outline-secondary" disabled>
-                    Próximamente
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Configuración */}
-            <div className="col-md-6 col-lg-4 mb-4">
-              <div className="card h-100 shadow-sm">
-                <div className="card-body text-center">
-                  <i className="fa fa-cog fa-3x text-secondary mb-3"></i>
-                  <h5 className="card-title">⚙️ Configuración</h5>
-                  <p className="card-text">
-                    Configuración general del sitio web y preferencias.
-                  </p>
-                  <button className="btn btn-outline-secondary" disabled>
-                    Próximamente
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Acciones rápidas */}
-          <div className="card mt-4">
-            <div className="card-header bg-light">
-              <h5 className="mb-0">🚀 Acciones Rápidas</h5>
-            </div>
-            <div className="card-body">
-              <div className="d-flex gap-2 flex-wrap">
-                <Link
-                  to="/admin/inmobiliarias/nueva"
-                  className="btn"
-                  style={{ backgroundColor: "#6610f2", color: "white" }}
-                >
-                  ➕ Nueva Inmobiliaria
-                </Link>
-                <Link
-                  to="/admin/inmuebles/nuevo"
-                  className="btn"
-                  style={{ backgroundColor: "#17a2b8", color: "white" }}
-                >
-                  ➕ Nuevo Inmueble
-                </Link>
-                <Link to="/admin/cabanasform" className="btn btn-primary">
-                  ➕ Nueva Cabaña
-                </Link>
-                <Link to="/admin/reservas" className="btn btn-success">
-                  📅 Ver Reservas
-                  {stats.reservasPendientes > 0 && (
-                    <span className="badge bg-warning ms-1">
-                      {stats.reservasPendientes}
-                    </span>
-                  )}
-                </Link>
-                <Link to="/admin/contactos" className="btn btn-info">
-                  📧 Ver Mensajes
-                  {stats.contactosNoLeidos > 0 && (
-                    <span className="badge bg-danger ms-1">
-                      {stats.contactosNoLeidos}
-                    </span>
-                  )}
-                </Link>
-                <button className="btn btn-outline-secondary" disabled>
-                  🔔 Notificaciones
-                </button>
-              </div>
-            </div>
+          <div className="small text-muted">
+            {user?.email}
           </div>
         </div>
       </div>
-    </div>
+
+      {error && (
+        <div className="alert alert-warning" role="alert">
+          <strong>Advertencia:</strong> {error}
+        </div>
+      )}
+
+      <section className="mb-5">
+        <div className="row g-3">
+          <StatCard
+            title="Inmobiliarias"
+            value={getStatValue(stats, "totalInmobiliarias")}
+            icon="fa fa-building"
+            loading={loading}
+            className="text-bg-primary"
+          />
+
+          <StatCard
+            title="Activas"
+            value={getStatValue(stats, "inmobiliariasActivas")}
+            icon="fa fa-check-circle"
+            loading={loading}
+            className="text-bg-success"
+          />
+
+          <StatCard
+            title="Inmuebles"
+            value={getStatValue(stats, "totalInmuebles")}
+            icon="fa fa-house"
+            loading={loading}
+            className="text-bg-info"
+          />
+
+          <StatCard
+            title="Inmuebles activos"
+            value={getStatValue(stats, "inmueblesActivos")}
+            icon="fa fa-circle-check"
+            loading={loading}
+            className="text-bg-success"
+          />
+
+          <StatCard
+            title="Destacados"
+            value={getStatValue(stats, "inmueblesDestacados")}
+            icon="fa fa-star"
+            loading={loading}
+            className="text-bg-warning"
+          />
+
+          <StatCard
+            title="Usuarios"
+            value={getStatValue(stats, "totalUsuarios")}
+            icon="fa fa-users"
+            loading={loading}
+            className="text-bg-dark"
+          />
+        </div>
+      </section>
+
+      {isRootUser && (
+        <section className="mb-5">
+          <div className="d-flex justify-content-between align-items-end gap-3 mb-3">
+            <div>
+              <p className="text-uppercase text-muted small mb-1">
+                Root ONO Prop
+              </p>
+              <h2 className="h4 mb-0">Gobierno del portal</h2>
+            </div>
+          </div>
+
+          <div className="row g-4">
+            <ModuleCard
+              title="🏢 Inmobiliarias"
+              text="Alta, edición, activación y administración general de inmobiliarias adheridas."
+              to="/admin/inmobiliarias"
+              buttonLabel="Gestionar inmobiliarias"
+              icon="fa fa-city"
+              color="#6610f2"
+              badge={`${getStatValue(stats, "inmobiliariasActivas")} activas`}
+            />
+
+            <ModuleCard
+              title="📚 Publicaciones del portal"
+              text="Vista global de publicaciones de inmobiliarias y particulares, con filtros por origen, estado, operación y tipo."
+              to="/admin/portal/publicaciones"
+              buttonLabel="Ver publicaciones"
+              icon="fa fa-table-list"
+              color="#0d6efd"
+            />
+
+            <ModuleCard
+              title="✅ Verificación"
+              text="Revisión de documentación de inmobiliarias y aprobación comercial."
+              to="/admin/inmobiliarias/verificacion"
+              buttonLabel="Revisar verificaciones"
+              icon="fa fa-shield-halved"
+              color="#198754"
+            />
+
+            <ModuleCard
+              title="👥 Usuarios"
+              text="Administración de usuarios, roles, inmobiliarias asociadas y permisos."
+              to="/admin/usuarios"
+              buttonLabel="Gestionar usuarios"
+              icon="fa fa-users-gear"
+              color="#212529"
+            />
+
+            <ModuleCard
+              title="⭐ Relevancia del portal"
+              text="Configuración de ranking: promociones pagas, prioridad por origen, calidad y recencia."
+              to="/admin/portal/ranking"
+              buttonLabel="Configurar ranking"
+              icon="fa fa-star"
+              color="#ffc107"
+            />
+
+            <ModuleCard
+              title="🏠 Publicaciones particulares"
+              text="Solicitudes de dueños particulares para aprobar como publicación ONO Prop o derivar a inmobiliarias."
+              to="/admin/publicaciones/particulares"
+              buttonLabel="Revisar particulares"
+              icon="fa fa-user-tag"
+              color="#0dcaf0"
+            />
+
+            <ModuleCard
+              title="➕ Nueva inmobiliaria"
+              text="Crear manualmente una inmobiliaria desde el panel root."
+              to="/admin/inmobiliarias/nueva"
+              buttonLabel="Crear inmobiliaria"
+              icon="fa fa-plus"
+              color="#6610f2"
+            />
+          </div>
+        </section>
+      )}
+
+      <section className="mb-5">
+        <div className="d-flex justify-content-between align-items-end gap-3 mb-3">
+          <div>
+            <p className="text-uppercase text-muted small mb-1">
+              Panel de inmobiliaria
+            </p>
+            <h2 className="h4 mb-0">Gestión operativa</h2>
+          </div>
+        </div>
+
+        <div className="row g-4">
+          <ModuleCard
+            title="🏠 Inmuebles"
+            text="Panel principal de propiedades: creación, edición, imágenes, videos, estados y publicación."
+            to="/admin/inmuebles"
+            buttonLabel="Gestionar inmuebles"
+            icon="fa fa-house"
+            color="#0d6efd"
+            badge={`${getStatValue(stats, "totalInmuebles")} propiedades`}
+          />
+
+          <ModuleCard
+            title="📋 Listado de inmuebles"
+            text="Listado operativo para filtrar, editar, destacar, marcar vendido/alquilado y revisar calidad."
+            to="/admin/inmuebles/listado"
+            buttonLabel="Ver listado"
+            icon="fa fa-list"
+            color="#17a2b8"
+          />
+
+          <ModuleCard
+            title="➕ Nuevo inmueble"
+            text="Crear una nueva publicación inmobiliaria desde la inmobiliaria activa."
+            to="/admin/inmuebles/nuevo"
+            buttonLabel="Crear inmueble"
+            icon="fa fa-plus"
+            color="#198754"
+          />
+
+          <ModuleCard
+            title="📨 Consultas"
+            text="Gestión de leads y consultas recibidas por publicaciones inmobiliarias."
+            to="/admin/inmuebles/consultas"
+            buttonLabel="Ver consultas"
+            icon="fa fa-envelope"
+            color="#0dcaf0"
+          />
+
+          <ModuleCard
+            title="🏢 Mi inmobiliaria"
+            text="Panel general de la inmobiliaria activa, módulos, accesos y estado de configuración."
+            to="/admin/inmobiliaria"
+            buttonLabel="Ir al panel"
+            icon="fa fa-building-user"
+            color="#6610f2"
+          />
+
+          <ModuleCard
+            title="🎨 Branding"
+            text="Logo, identidad visual, datos públicos y presentación de la inmobiliaria."
+            to="/admin/inmobiliaria/branding"
+            buttonLabel="Editar branding"
+            icon="fa fa-palette"
+            color="#d63384"
+          />
+
+          <ModuleCard
+            title="🌐 Dominios"
+            text="Configuración de dominios públicos asociados a la inmobiliaria."
+            to="/admin/inmobiliaria/dominios"
+            buttonLabel="Gestionar dominios"
+            icon="fa fa-globe"
+            color="#20c997"
+          />
+
+          <ModuleCard
+            title="👤 Usuarios de inmobiliaria"
+            text="Administración de usuarios internos y permisos por módulo."
+            to="/admin/inmobiliaria/usuarios"
+            buttonLabel="Gestionar usuarios"
+            icon="fa fa-user-lock"
+            color="#6f42c1"
+          />
+
+          <ModuleCard
+            title="📄 Documentación"
+            text="Carga de documentación para verificación de la inmobiliaria."
+            to="/admin/inmobiliaria/documentacion"
+            buttonLabel="Ver documentación"
+            icon="fa fa-file-lines"
+            color="#fd7e14"
+          />
+
+          <ModuleCard
+            title="🔗 Vinculaciones"
+            text="Solicitudes de vinculación de usuarios con inmobiliarias."
+            to="/admin/inmobiliaria/vinculaciones"
+            buttonLabel="Ver vinculaciones"
+            icon="fa fa-link"
+            color="#198754"
+          />
+
+          <ModuleCard
+            title="🙋 Solicitudes particulares"
+            text="Solicitudes de particulares dirigidas a la inmobiliaria activa."
+            to="/admin/inmobiliaria/solicitudes-particulares"
+            buttonLabel="Ver solicitudes"
+            icon="fa fa-user-check"
+            color="#0dcaf0"
+          />
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <div className="d-flex justify-content-between align-items-end gap-3 mb-3">
+          <div>
+            <p className="text-uppercase text-muted small mb-1">
+              Red ONO Prop
+            </p>
+            <h2 className="h4 mb-0">Colaboración entre inmobiliarias</h2>
+          </div>
+        </div>
+
+        <div className="row g-4">
+          <ModuleCard
+            title="🤝 Inmuebles compartidos"
+            text="Red de propiedades compartidas entre inmobiliarias adheridas."
+            to="/admin/red/inmuebles-compartidos"
+            buttonLabel="Ver red"
+            icon="fa fa-handshake"
+            color="#0d6efd"
+          />
+
+          <ModuleCard
+            title="📬 Solicitudes de red"
+            text="Solicitudes, contactos y pedidos de colaboración entre inmobiliarias."
+            to="/admin/red/solicitudes"
+            buttonLabel="Ver solicitudes"
+            icon="fa fa-inbox"
+            color="#6f42c1"
+          />
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <div className="d-flex justify-content-between align-items-end gap-3 mb-3">
+          <div>
+            <p className="text-uppercase text-muted small mb-1">
+              Accesos públicos
+            </p>
+            <h2 className="h4 mb-0">Portal</h2>
+          </div>
+        </div>
+
+        <div className="row g-4">
+          <ModuleCard
+            title="🔎 Portal de inmuebles"
+            text="Vista pública del buscador de publicaciones de inmobiliarias y particulares."
+            to="/inmuebles"
+            buttonLabel="Ver portal"
+            icon="fa fa-magnifying-glass"
+            color="#0d6efd"
+          />
+
+          <ModuleCard
+            title="📝 Publicar como particular"
+            text="Formulario público para que un dueño solicite publicar su inmueble."
+            to="/publicar"
+            buttonLabel="Ver formulario"
+            icon="fa fa-pen-to-square"
+            color="#198754"
+          />
+
+          <ModuleCard
+            title="📌 Mis publicaciones"
+            text="Panel del usuario particular para revisar solicitudes y publicaciones aprobadas."
+            to="/mis-publicaciones"
+            buttonLabel="Ver mis publicaciones"
+            icon="fa fa-user"
+            color="#212529"
+          />
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <div className="d-flex justify-content-between align-items-end gap-3 mb-3">
+          <div>
+            <p className="text-uppercase text-muted small mb-1">
+              Legado La Docta Prop
+            </p>
+            <h2 className="h4 mb-0">Módulos heredados</h2>
+          </div>
+        </div>
+
+        <div className="row g-4">
+          <ModuleCard
+            title="⛺ Cabañas"
+            text="Gestión heredada de cabañas, previa al módulo inmobiliario."
+            to="/admin/cabanas"
+            buttonLabel="Gestionar cabañas"
+            icon="fa fa-campground"
+            color="#0d6efd"
+          />
+
+          <ModuleCard
+            title="➕ Nueva cabaña"
+            text="Formulario heredado de alta de cabañas."
+            to="/admin/cabanasform"
+            buttonLabel="Crear cabaña"
+            icon="fa fa-plus"
+            color="#198754"
+          />
+
+          <ModuleCard
+            title="🖼️ Galería"
+            text="Administración de imágenes de galería del sitio."
+            to="/admin/gallery"
+            buttonLabel="Gestionar galería"
+            icon="fa fa-image"
+            color="#6f42c1"
+          />
+
+          <ModuleCard
+            title="📧 Contactos"
+            text="Mensajes de contacto generales del sitio heredado."
+            to="/admin/contactos"
+            buttonLabel="Ver contactos"
+            icon="fa fa-envelope"
+            color="#0dcaf0"
+            badge={`${getStatValue(stats, "contactosNoLeidos")} por leer`}
+          />
+
+          <ModuleCard
+            title="📅 Reservas"
+            text="Gestión heredada de reservas y estadías."
+            to="/admin/reservas"
+            buttonLabel="Ver reservas"
+            icon="fa fa-calendar-check"
+            color="#198754"
+            badge={`${getStatValue(stats, "reservasPendientes")} pendientes`}
+          />
+
+          <ModuleCard
+            title="💬 Testimonios"
+            text="Moderación de comentarios y testimonios del sitio."
+            to="/admin/testimonios"
+            buttonLabel="Gestionar testimonios"
+            icon="fa fa-comments"
+            color="#fd7e14"
+          />
+
+          <ModuleCard
+            title="🗓️ Calendario"
+            text="Calendario de seguimientos y eventos heredados."
+            to="/admin/calendar"
+            buttonLabel="Ver calendario"
+            icon="fa fa-calendar"
+            color="#ffc107"
+          />
+        </div>
+      </section>
+
+      <section className="card border-0 shadow-sm">
+        <div className="card-header bg-light">
+          <h2 className="h5 mb-0">🚀 Acciones rápidas</h2>
+        </div>
+
+        <div className="card-body">
+          <div className="d-flex flex-wrap gap-2">
+            {isRootUser && (
+              <>
+                <QuickLink to="/admin/portal/publicaciones">
+                  📚 Publicaciones del portal
+                </QuickLink>
+                <QuickLink to="/admin/portal/ranking">
+                  ⭐ Ranking del portal
+                </QuickLink>
+
+                <QuickLink to="/admin/inmobiliarias/nueva">
+                  ➕ Nueva inmobiliaria
+                </QuickLink>
+
+                <QuickLink to="/admin/publicaciones/particulares">
+                  🏠 Revisar particulares
+                </QuickLink>
+              </>
+            )}
+
+            <QuickLink to="/admin/inmuebles/nuevo">
+              ➕ Nuevo inmueble
+            </QuickLink>
+
+            <QuickLink to="/admin/inmuebles/listado">
+              📋 Listado de inmuebles
+            </QuickLink>
+
+            <QuickLink to="/admin/inmuebles/consultas">
+              📨 Consultas
+            </QuickLink>
+
+            <QuickLink to="/admin/red/inmuebles-compartidos">
+              🤝 Red de colegas
+            </QuickLink>
+
+            <QuickLink to="/inmuebles" className="btn btn-outline-secondary">
+              🔎 Ver portal público
+            </QuickLink>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 };
 

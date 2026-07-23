@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 
 import { auth, db } from "../../firebase/config";
+import { normalizeInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 
 const REQUESTS_COLLECTION = "particular_publication_requests";
 const PUBLICATIONS_COLLECTION = "particular_publications";
@@ -38,6 +39,12 @@ const normalizeTimestamp = (value) => {
     const parsed = new Date(value);
 
     return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const toFiniteNumber = (value, fallback = 0) => {
+    const number = Number(value);
+
+    return Number.isFinite(number) ? number : fallback;
 };
 
 const createLogId = () => {
@@ -73,17 +80,51 @@ const normalizeImages = (images = []) => {
     if (!Array.isArray(images)) return [];
 
     return images
-        .map((image, index) => ({
-            id: image.id || `${index}`,
-            url: image.url || "",
-            storagePath: image.storagePath || "",
-            order: Number.isFinite(Number(image.order)) ? Number(image.order) : index,
-            name: image.name || "",
-            size: Number.isFinite(Number(image.size)) ? Number(image.size) : 0,
-            contentType: image.contentType || "",
-        }))
+        .map((image, index) => {
+            const order = toFiniteNumber(image?.order, index);
+
+            return {
+                id: image?.id || `${index}`,
+                url: image?.url || "",
+                storagePath: image?.storagePath || "",
+
+                thumbnailUrl: image?.thumbnailUrl || "",
+                thumbnailPath: image?.thumbnailPath || "",
+
+                order,
+
+                name: image?.name || image?.filename || "",
+                filename: image?.filename || image?.name || "",
+
+                size: toFiniteNumber(image?.size, 0),
+                type: image?.type || "",
+                contentType: image?.contentType || image?.type || "",
+
+                width: toFiniteNumber(image?.width, 0),
+                height: toFiniteNumber(image?.height, 0),
+                thumbnailWidth: toFiniteNumber(image?.thumbnailWidth, 0),
+                thumbnailHeight: toFiniteNumber(image?.thumbnailHeight, 0),
+
+                portalReady: image?.portalReady === true,
+                qualityWarnings: Array.isArray(image?.qualityWarnings)
+                    ? image.qualityWarnings
+                    : [],
+
+                source:
+                    image?.source && typeof image.source === "object"
+                        ? image.source
+                        : null,
+
+                copiedFrom: image?.copiedFrom || "",
+                createdAt: image?.createdAt || "",
+            };
+        })
         .filter((image) => image.url || image.storagePath)
-        .sort((a, b) => a.order - b.order);
+        .sort((a, b) => a.order - b.order)
+        .map((image, index) => ({
+            ...image,
+            order: index,
+        }));
 };
 
 const buildPublicationTitle = (requestData = {}) => {
@@ -128,10 +169,15 @@ const mapParticularPublication = (docSnap) => {
         id: docSnap.id,
         ...data,
         images: normalizeImages(data.images),
+        videos: normalizeInmuebleVideos(data.videos || []),
         createdAt: normalizeTimestamp(data.createdAt),
         updatedAt: normalizeTimestamp(data.updatedAt),
         approvedAt: normalizeTimestamp(data.approvedAt),
         statusUpdatedAt: normalizeTimestamp(data.statusUpdatedAt),
+        pausedAt: normalizeTimestamp(data.pausedAt),
+        deletedAt: normalizeTimestamp(data.deletedAt),
+        soldAt: normalizeTimestamp(data.soldAt),
+        rentedAt: normalizeTimestamp(data.rentedAt),
     };
 };
 
@@ -185,6 +231,9 @@ export const approvePublicationRequestAsParticular = async (
         }
 
         const titulo = buildPublicationTitle(requestData);
+        const images = normalizeImages(requestData.images);
+        const videos = normalizeInmuebleVideos(requestData.videos || []);
+
         const cleanNote =
             normalizeText(internalNote) ||
             `Solicitud aprobada como publicación particular: ${titulo}.`;
@@ -203,7 +252,9 @@ export const approvePublicationRequestAsParticular = async (
             ubicacion: requestData.ubicacion || "",
             descripcion: requestData.descripcion || "",
             precioEstimado: requestData.precioEstimado || "",
-            images: normalizeImages(requestData.images),
+
+            images,
+            videos,
 
             contact: {
                 nombre: requestData.nombre || "",
@@ -229,6 +280,9 @@ export const approvePublicationRequestAsParticular = async (
                     metadata: {
                         sourceRequestId: requestId,
                         publicationId: publicationRef.id,
+                        publicationPath,
+                        imagesCount: images.length,
+                        videosCount: videos.length,
                     },
                 }),
             ],
@@ -261,6 +315,8 @@ export const approvePublicationRequestAsParticular = async (
                     metadata: {
                         publicationId: publicationRef.id,
                         publicationPath,
+                        imagesCount: images.length,
+                        videosCount: videos.length,
                     },
                 }),
             ),

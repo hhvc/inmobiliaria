@@ -12,6 +12,8 @@ import { db } from "../../firebase/config";
 
 import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
+import InmuebleVideos from "./InmuebleVideos";
+import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 
 import {
   AMENITIES_LABELS,
@@ -257,6 +259,8 @@ const InmuebleForm = ({
     handleNestedChange("networkData", field, value);
   };
 
+  const videoValues = normalizeInmuebleVideos(values?.videos || []);
+
   const onSubmit = (e) => {
     e.preventDefault();
 
@@ -295,6 +299,7 @@ const InmuebleForm = ({
       ...normalizedDetails,
 
       images: isEditMode ? images : values?.images || [],
+      videos: videoValues,
 
       inmobiliariaId: finalInmobiliariaId,
       ownerInmobiliariaId: values?.ownerInmobiliariaId || finalInmobiliariaId,
@@ -1062,6 +1067,29 @@ const InmuebleForm = ({
               imágenes desde la edición.
             </div>
           )}
+        </div>
+      </div>
+
+      {/* =========================
+    Videos
+   ========================= */}
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Videos</div>
+        <div className="card-body">
+          <InmuebleVideos
+            videos={videoValues}
+            onChange={(nextVideos) => {
+              if (typeof handleChange === "function") {
+                handleChange({
+                  target: {
+                    name: "videos",
+                    value: nextVideos,
+                    type: "custom",
+                  },
+                });
+              }
+            }}
+          />
         </div>
       </div>
 

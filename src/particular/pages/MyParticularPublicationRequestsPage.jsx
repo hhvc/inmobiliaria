@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import SEO from "../../components/SEO";
+import InmuebleVideoSection from "../../inmueble/components/InmuebleVideoSection";
+import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import PublicationRequestActivityLog from "../components/PublicationRequestActivityLog";
 import PublicationRequestImages from "../components/PublicationRequestImages";
 import { getMyParticularPublicationRequests } from "../services/particularPublication.service";
@@ -54,6 +56,32 @@ const PUBLIC_STATUS_BADGES = {
     rented: "text-bg-info",
 };
 
+const OPERATION_LABELS = {
+    venta: "Venta",
+    alquiler: "Alquiler",
+    alquiler_temporal: "Alquiler temporal",
+    tasacion: "Tasación",
+};
+
+const TYPE_LABELS = {
+    casa: "Casa",
+    departamento: "Departamento",
+    terreno: "Terreno",
+    local: "Local",
+    oficina: "Oficina",
+    cochera: "Cochera",
+    campo: "Campo",
+    otro: "Inmueble",
+};
+
+const PUBLIC_STATUS_HELP = {
+    active: "Tu publicación está visible públicamente en ONO Prop.",
+    paused: "Tu publicación está pausada. No se muestra públicamente hasta que la reactives.",
+    deleted: "Tu publicación fue dada de baja.",
+    sold: "Tu publicación fue marcada como vendida.",
+    rented: "Tu publicación fue marcada como alquilada.",
+};
+
 const formatDate = (value) => {
     if (!value) return "Sin fecha";
 
@@ -95,7 +123,7 @@ const getStatusHelp = (request) => {
     const ownerName = getReviewOwnerName(request);
 
     if (request?.particularPublicationId) {
-        return "Tu solicitud ya fue aprobada como publicación particular. Ahora podés administrar la publicación desde la sección de publicaciones aprobadas.";
+        return "Tu solicitud ya fue aprobada como publicación particular. Ahora podés administrarla desde la sección de publicaciones aprobadas.";
     }
 
     if (request?.convertedInmuebleId) {
@@ -125,9 +153,7 @@ const isConvertedPublicationVisible = (request) => {
 };
 
 const getConvertedPublicPath = (request) => {
-    if (!isConvertedPublicationVisible(request)) {
-        return "";
-    }
+    if (!isConvertedPublicationVisible(request)) return "";
 
     return request.convertedPublicPath;
 };
@@ -136,6 +162,61 @@ const getParticularPublicationPublicUrl = (publication) => {
     if (!publication?.id) return "";
 
     return `/particulares/${publication.id}`;
+};
+
+const getRequestParticularPublicationUrl = (request) => {
+    if (request?.particularPublicationPath) {
+        return request.particularPublicationPath;
+    }
+
+    if (request?.particularPublicationId) {
+        return `/particulares/${request.particularPublicationId}`;
+    }
+
+    return "";
+};
+
+const getOrderedImages = (images = []) => {
+    if (!Array.isArray(images)) return [];
+
+    return [...images]
+        .filter((image) => image?.url)
+        .sort((a, b) => {
+            const orderA = Number.isFinite(Number(a.order)) ? Number(a.order) : 0;
+            const orderB = Number.isFinite(Number(b.order)) ? Number(b.order) : 0;
+
+            return orderA - orderB;
+        });
+};
+
+const getImageCount = (images = []) => {
+    return getOrderedImages(images).length;
+};
+
+const getMainImage = (images = []) => {
+    const orderedImages = getOrderedImages(images);
+
+    return orderedImages[0] || null;
+};
+
+const getOperationLabel = (value = "") => {
+    return OPERATION_LABELS[value] || value || "Operación";
+};
+
+const getTypeLabel = (value = "") => {
+    return TYPE_LABELS[value] || value || "Inmueble";
+};
+
+const getPublicStatusLabel = (value = "") => {
+    return PUBLIC_STATUS_LABELS[value] || value || "Sin estado";
+};
+
+const getPublicStatusBadge = (value = "") => {
+    return PUBLIC_STATUS_BADGES[value] || "text-bg-secondary";
+};
+
+const canManagePublicationStatus = (publication) => {
+    return ["active", "paused"].includes(publication?.publicStatus);
 };
 
 const MyParticularPublicationRequestsPage = () => {
@@ -164,7 +245,7 @@ const MyParticularPublicationRequestsPage = () => {
                 }
 
                 if (item.convertedInmuebleId || item.particularPublicationId) {
-                    acc.convertidas += 1;
+                    acc.aprobadas += 1;
                 }
 
                 return acc;
@@ -173,7 +254,7 @@ const MyParticularPublicationRequestsPage = () => {
                 total: 0,
                 onoprop: 0,
                 inmobiliaria: 0,
-                convertidas: 0,
+                aprobadas: 0,
             },
         );
     }, [items]);
@@ -239,7 +320,7 @@ const MyParticularPublicationRequestsPage = () => {
 
     const handleUpdatePublicationStatus = async (publication, publicStatus) => {
         try {
-            const label = PUBLIC_STATUS_LABELS[publicStatus] || publicStatus;
+            const label = getPublicStatusLabel(publicStatus);
 
             const confirmed = window.confirm(
                 `¿Confirmás cambiar esta publicación a "${label}"?`,
@@ -268,6 +349,8 @@ const MyParticularPublicationRequestsPage = () => {
 
     const handleRefreshAll = async () => {
         setSuccess("");
+        setError("");
+
         await Promise.all([fetchItems(), fetchPublications()]);
     };
 
@@ -324,7 +407,9 @@ const MyParticularPublicationRequestsPage = () => {
                         <div className="card-body p-3 p-md-4">
                             <div className="d-flex flex-column flex-md-row justify-content-between gap-2 mb-3">
                                 <div>
-                                    <h2 className="h4 mb-1">Mis publicaciones aprobadas</h2>
+                                    <h2 className="h4 mb-1">
+                                        Mis publicaciones aprobadas
+                                    </h2>
 
                                     <p className="text-muted mb-0">
                                         Administrá las publicaciones particulares que ya fueron
@@ -345,7 +430,9 @@ const MyParticularPublicationRequestsPage = () => {
                             <div className="row g-3 mb-4">
                                 <div className="col-6 col-md-3">
                                     <div className="border rounded-3 p-3">
-                                        <div className="h5 mb-0">{publicationCounters.total}</div>
+                                        <div className="h5 mb-0">
+                                            {publicationCounters.total}
+                                        </div>
                                         <div className="small text-muted">Total</div>
                                     </div>
                                 </div>
@@ -388,6 +475,12 @@ const MyParticularPublicationRequestsPage = () => {
                             {!loadingPublications && publications.length === 0 && (
                                 <div className="alert alert-info mb-0">
                                     Todavía no tenés publicaciones particulares aprobadas.
+
+                                    <div className="mt-3">
+                                        <Link to="/publicar" className="btn btn-primary">
+                                            Crear solicitud
+                                        </Link>
+                                    </div>
                                 </div>
                             )}
 
@@ -396,191 +489,273 @@ const MyParticularPublicationRequestsPage = () => {
                                     {publications.map((publication) => {
                                         const publicUrl =
                                             getParticularPublicationPublicUrl(publication);
-                                        const statusLabel =
-                                            PUBLIC_STATUS_LABELS[publication.publicStatus] ||
-                                            publication.publicStatus ||
-                                            "Sin estado";
-                                        const statusBadge =
-                                            PUBLIC_STATUS_BADGES[publication.publicStatus] ||
-                                            "text-bg-secondary";
+
+                                        const statusLabel = getPublicStatusLabel(
+                                            publication.publicStatus,
+                                        );
+                                        const statusBadge = getPublicStatusBadge(
+                                            publication.publicStatus,
+                                        );
+
+                                        const visibleVideos = getVisibleInmuebleVideos(
+                                            publication?.videos || [],
+                                        );
+                                        const hasVideos = visibleVideos.length > 0;
+                                        const imageCount = getImageCount(publication.images);
+                                        const mainImage = getMainImage(publication.images);
+                                        const isUpdating =
+                                            updatingPublicationId === publication.id;
+                                        const canManage =
+                                            canManagePublicationStatus(publication);
 
                                         return (
                                             <article
                                                 className="border rounded-3 p-3"
                                                 key={publication.id}
                                             >
-                                                <div className="d-flex flex-column flex-lg-row justify-content-between gap-3">
-                                                    <div>
-                                                        <div className="d-flex flex-wrap gap-2 mb-2">
-                                                            <span className={`badge ${statusBadge}`}>
-                                                                {statusLabel}
-                                                            </span>
+                                                <div className="row g-3">
+                                                    <div className="col-md-4 col-lg-3">
+                                                        {mainImage?.url ? (
+                                                            <img
+                                                                src={
+                                                                    mainImage.thumbnailUrl ||
+                                                                    mainImage.url
+                                                                }
+                                                                alt={
+                                                                    publication.titulo ||
+                                                                    "Publicación particular"
+                                                                }
+                                                                className="rounded-3 border"
+                                                                style={{
+                                                                    width: "100%",
+                                                                    height: "180px",
+                                                                    objectFit: "cover",
+                                                                }}
+                                                            />
+                                                        ) : (
+                                                            <div
+                                                                className="rounded-3 border bg-light text-muted d-flex align-items-center justify-content-center text-center small"
+                                                                style={{ height: "180px" }}
+                                                            >
+                                                                Sin foto principal
+                                                            </div>
+                                                        )}
+                                                    </div>
 
-                                                            <span className="badge text-bg-light border">
-                                                                {publication.operacion || "operación"}
-                                                            </span>
+                                                    <div className="col-md-8 col-lg-9">
+                                                        <div className="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                                                            <div>
+                                                                <div className="d-flex flex-wrap gap-2 mb-2">
+                                                                    <span
+                                                                        className={`badge ${statusBadge}`}
+                                                                    >
+                                                                        {statusLabel}
+                                                                    </span>
 
-                                                            <span className="badge text-bg-light border">
-                                                                {publication.tipo || "inmueble"}
-                                                            </span>
+                                                                    <span className="badge text-bg-dark">
+                                                                        Particular
+                                                                    </span>
 
-                                                            <span className="badge text-bg-dark">
-                                                                Particular
-                                                            </span>
+                                                                    <span className="badge text-bg-light border">
+                                                                        {getOperationLabel(
+                                                                            publication.operacion,
+                                                                        )}
+                                                                    </span>
+
+                                                                    <span className="badge text-bg-light border">
+                                                                        {getTypeLabel(
+                                                                            publication.tipo,
+                                                                        )}
+                                                                    </span>
+
+                                                                    {imageCount > 0 && (
+                                                                        <span className="badge text-bg-light border">
+                                                                            📷 {imageCount} foto
+                                                                            {imageCount === 1
+                                                                                ? ""
+                                                                                : "s"}
+                                                                        </span>
+                                                                    )}
+
+                                                                    {hasVideos && (
+                                                                        <span className="badge text-bg-danger">
+                                                                            🎥 {visibleVideos.length} video
+                                                                            {visibleVideos.length ===
+                                                                                1
+                                                                                ? ""
+                                                                                : "s"}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+
+                                                                <h3 className="h5 mb-1">
+                                                                    {publication.titulo ||
+                                                                        publication.ubicacion ||
+                                                                        "Publicación"}
+                                                                </h3>
+
+                                                                <p className="text-muted mb-2">
+                                                                    {publication.ubicacion ||
+                                                                        "Sin ubicación"}
+                                                                </p>
+
+                                                                {publication.precioEstimado && (
+                                                                    <p className="mb-2">
+                                                                        <strong>
+                                                                            {
+                                                                                publication.precioEstimado
+                                                                            }
+                                                                        </strong>
+                                                                    </p>
+                                                                )}
+
+                                                                <div className="alert alert-light border small py-2 mb-0">
+                                                                    {PUBLIC_STATUS_HELP[
+                                                                        publication.publicStatus
+                                                                    ] ||
+                                                                        "Estado de publicación actualizado."}
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="text-lg-end small text-muted">
+                                                                <div>
+                                                                    Aprobada:{" "}
+                                                                    {formatDate(
+                                                                        publication.approvedAt,
+                                                                    )}
+                                                                </div>
+
+                                                                <div>
+                                                                    Actualizada:{" "}
+                                                                    {formatDate(
+                                                                        publication.updatedAt,
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
 
-                                                        <h3 className="h5 mb-1">
-                                                            {publication.titulo ||
-                                                                publication.ubicacion ||
-                                                                "Publicación"}
-                                                        </h3>
+                                                        {hasVideos && (
+                                                            <div className="mt-3">
+                                                                <InmuebleVideoSection
+                                                                    videos={visibleVideos}
+                                                                    title="Videos de tu publicación"
+                                                                />
+                                                            </div>
+                                                        )}
 
-                                                        <p className="text-muted mb-2">
-                                                            {publication.ubicacion || "Sin ubicación"}
-                                                        </p>
-
-                                                        {publication.precioEstimado && (
-                                                            <p className="mb-0">
-                                                                <strong>{publication.precioEstimado}</strong>
+                                                        {publication.descripcion && (
+                                                            <p
+                                                                className="text-muted mt-3 mb-0"
+                                                                style={{
+                                                                    whiteSpace: "pre-line",
+                                                                }}
+                                                            >
+                                                                {publication.descripcion}
                                                             </p>
                                                         )}
-                                                    </div>
 
-                                                    <div className="text-lg-end small text-muted">
-                                                        <div>
-                                                            Aprobada: {formatDate(publication.approvedAt)}
+                                                        <div className="mt-3 d-flex flex-wrap gap-2">
+                                                            {publication.publicStatus ===
+                                                                "active" && (
+                                                                    <Link
+                                                                        to={publicUrl}
+                                                                        className="btn btn-outline-primary"
+                                                                    >
+                                                                        Ver publicación
+                                                                    </Link>
+                                                                )}
+
+                                                            {publication.publicStatus ===
+                                                                "active" && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-outline-warning"
+                                                                        disabled={isUpdating}
+                                                                        onClick={() =>
+                                                                            handleUpdatePublicationStatus(
+                                                                                publication,
+                                                                                "paused",
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        Pausar
+                                                                    </button>
+                                                                )}
+
+                                                            {publication.publicStatus ===
+                                                                "paused" && (
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-success"
+                                                                        disabled={isUpdating}
+                                                                        onClick={() =>
+                                                                            handleUpdatePublicationStatus(
+                                                                                publication,
+                                                                                "active",
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        Reactivar
+                                                                    </button>
+                                                                )}
+
+                                                            {canManage && (
+                                                                <>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-outline-primary"
+                                                                        disabled={isUpdating}
+                                                                        onClick={() =>
+                                                                            handleUpdatePublicationStatus(
+                                                                                publication,
+                                                                                "sold",
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        Marcar vendida
+                                                                    </button>
+
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-outline-info"
+                                                                        disabled={isUpdating}
+                                                                        onClick={() =>
+                                                                            handleUpdatePublicationStatus(
+                                                                                publication,
+                                                                                "rented",
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        Marcar alquilada
+                                                                    </button>
+
+                                                                    <button
+                                                                        type="button"
+                                                                        className="btn btn-outline-danger"
+                                                                        disabled={isUpdating}
+                                                                        onClick={() =>
+                                                                            handleUpdatePublicationStatus(
+                                                                                publication,
+                                                                                "deleted",
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        Dar de baja
+                                                                    </button>
+                                                                </>
+                                                            )}
+
+                                                            {publication.publicStatus !==
+                                                                "active" && (
+                                                                    <Link
+                                                                        to="/publicar"
+                                                                        className="btn btn-outline-secondary"
+                                                                    >
+                                                                        Crear nueva solicitud
+                                                                    </Link>
+                                                                )}
                                                         </div>
-
-                                                        <div>
-                                                            Actualizada: {formatDate(publication.updatedAt)}
-                                                        </div>
                                                     </div>
-                                                </div>
-
-                                                {publication.images?.[0]?.url && (
-                                                    <div className="mt-3">
-                                                        <img
-                                                            src={publication.images[0].url}
-                                                            alt={publication.titulo || "Publicación particular"}
-                                                            className="rounded-3 border"
-                                                            style={{
-                                                                width: "100%",
-                                                                maxWidth: "260px",
-                                                                height: "150px",
-                                                                objectFit: "cover",
-                                                            }}
-                                                        />
-                                                    </div>
-                                                )}
-
-                                                {publication.descripcion && (
-                                                    <p
-                                                        className="text-muted mt-3 mb-0"
-                                                        style={{ whiteSpace: "pre-line" }}
-                                                    >
-                                                        {publication.descripcion}
-                                                    </p>
-                                                )}
-
-                                                <div className="mt-3 d-flex flex-wrap gap-2">
-                                                    {publication.publicStatus === "active" && (
-                                                        <Link
-                                                            to={publicUrl}
-                                                            className="btn btn-outline-primary"
-                                                        >
-                                                            Ver publicación
-                                                        </Link>
-                                                    )}
-
-                                                    {publication.publicStatus === "active" && (
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-outline-warning"
-                                                            disabled={
-                                                                updatingPublicationId === publication.id
-                                                            }
-                                                            onClick={() =>
-                                                                handleUpdatePublicationStatus(
-                                                                    publication,
-                                                                    "paused",
-                                                                )
-                                                            }
-                                                        >
-                                                            Pausar
-                                                        </button>
-                                                    )}
-
-                                                    {publication.publicStatus === "paused" && (
-                                                        <button
-                                                            type="button"
-                                                            className="btn btn-success"
-                                                            disabled={
-                                                                updatingPublicationId === publication.id
-                                                            }
-                                                            onClick={() =>
-                                                                handleUpdatePublicationStatus(
-                                                                    publication,
-                                                                    "active",
-                                                                )
-                                                            }
-                                                        >
-                                                            Reactivar
-                                                        </button>
-                                                    )}
-
-                                                    {["active", "paused"].includes(
-                                                        publication.publicStatus,
-                                                    ) && (
-                                                            <>
-                                                                <button
-                                                                    type="button"
-                                                                    className="btn btn-outline-primary"
-                                                                    disabled={
-                                                                        updatingPublicationId === publication.id
-                                                                    }
-                                                                    onClick={() =>
-                                                                        handleUpdatePublicationStatus(
-                                                                            publication,
-                                                                            "sold",
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    Marcar vendida
-                                                                </button>
-
-                                                                <button
-                                                                    type="button"
-                                                                    className="btn btn-outline-info"
-                                                                    disabled={
-                                                                        updatingPublicationId === publication.id
-                                                                    }
-                                                                    onClick={() =>
-                                                                        handleUpdatePublicationStatus(
-                                                                            publication,
-                                                                            "rented",
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    Marcar alquilada
-                                                                </button>
-
-                                                                <button
-                                                                    type="button"
-                                                                    className="btn btn-outline-danger"
-                                                                    disabled={
-                                                                        updatingPublicationId === publication.id
-                                                                    }
-                                                                    onClick={() =>
-                                                                        handleUpdatePublicationStatus(
-                                                                            publication,
-                                                                            "deleted",
-                                                                        )
-                                                                    }
-                                                                >
-                                                                    Dar de baja
-                                                                </button>
-                                                            </>
-                                                        )}
                                                 </div>
                                             </article>
                                         );
@@ -630,8 +805,12 @@ const MyParticularPublicationRequestsPage = () => {
 
                                 <div className="col-6 col-md-3">
                                     <div className="border rounded-3 p-3">
-                                        <div className="h5 mb-0">{counters.convertidas || 0}</div>
-                                        <div className="small text-muted">Aprobadas / convertidas</div>
+                                        <div className="h5 mb-0">
+                                            {counters.aprobadas || 0}
+                                        </div>
+                                        <div className="small text-muted">
+                                            Aprobadas / convertidas
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -657,15 +836,34 @@ const MyParticularPublicationRequestsPage = () => {
                             {!loading && items.length > 0 && (
                                 <div className="d-flex flex-column gap-4">
                                     {items.map((request) => {
-                                        const isConverted = Boolean(request.convertedInmuebleId);
+                                        const isConverted = Boolean(
+                                            request.convertedInmuebleId,
+                                        );
                                         const isParticularPublicationApproved = Boolean(
                                             request.particularPublicationId,
                                         );
+
                                         const publicPath = getConvertedPublicPath(request);
                                         const isPublicVisible = Boolean(publicPath);
-                                        const targetDescription = getTargetDescription(request);
-                                        const reviewOwnerName = getReviewOwnerName(request);
+
+                                        const particularPublicationUrl =
+                                            getRequestParticularPublicationUrl(request);
+
+                                        const targetDescription =
+                                            getTargetDescription(request);
+                                        const reviewOwnerName =
+                                            getReviewOwnerName(request);
                                         const statusHelp = getStatusHelp(request);
+
+                                        const requestVisibleVideos =
+                                            getVisibleInmuebleVideos(
+                                                request?.videos || [],
+                                            );
+                                        const requestHasVideos =
+                                            requestVisibleVideos.length > 0;
+                                        const requestImageCount = getImageCount(
+                                            request.images,
+                                        );
 
                                         return (
                                             <article
@@ -676,12 +874,14 @@ const MyParticularPublicationRequestsPage = () => {
                                                     <div>
                                                         <div className="d-flex flex-wrap gap-2 mb-2">
                                                             <span
-                                                                className={`badge ${STATUS_BADGE[request.estado] ||
-                                                                    "text-bg-secondary"
+                                                                className={`badge ${STATUS_BADGE[
+                                                                    request.estado
+                                                                ] || "text-bg-secondary"
                                                                     }`}
                                                             >
-                                                                {STATUS_LABELS[request.estado] ||
-                                                                    request.estado}
+                                                                {STATUS_LABELS[
+                                                                    request.estado
+                                                                ] || request.estado}
                                                             </span>
 
                                                             {isConverted && (
@@ -701,33 +901,67 @@ const MyParticularPublicationRequestsPage = () => {
                                                             </span>
 
                                                             <span className="badge text-bg-light border">
-                                                                {request.operacion || "operación"}
+                                                                {getOperationLabel(
+                                                                    request.operacion,
+                                                                )}
                                                             </span>
 
                                                             <span className="badge text-bg-light border">
-                                                                {request.tipo || "inmueble"}
+                                                                {getTypeLabel(request.tipo)}
                                                             </span>
+
+                                                            {requestImageCount > 0 && (
+                                                                <span className="badge text-bg-light border">
+                                                                    📷 {requestImageCount} foto
+                                                                    {requestImageCount === 1
+                                                                        ? ""
+                                                                        : "s"}
+                                                                </span>
+                                                            )}
+
+                                                            {requestHasVideos && (
+                                                                <span className="badge text-bg-danger">
+                                                                    🎥{" "}
+                                                                    {
+                                                                        requestVisibleVideos.length
+                                                                    }{" "}
+                                                                    video
+                                                                    {requestVisibleVideos.length ===
+                                                                        1
+                                                                        ? ""
+                                                                        : "s"}
+                                                                </span>
+                                                            )}
                                                         </div>
 
                                                         <h3 className="h5 mb-1">
-                                                            {request.ubicacion || "Propiedad sin ubicación"}
+                                                            {request.ubicacion ||
+                                                                "Propiedad sin ubicación"}
                                                         </h3>
 
                                                         <p className="text-muted mb-0">
-                                                            {request.precioEstimado || "Sin precio estimado"}
+                                                            {request.precioEstimado ||
+                                                                "Sin precio estimado"}
                                                         </p>
                                                     </div>
 
                                                     <div className="text-lg-end small text-muted">
-                                                        <div>Creada: {formatDate(request.createdAt)}</div>
+                                                        <div>
+                                                            Creada:{" "}
+                                                            {formatDate(request.createdAt)}
+                                                        </div>
 
                                                         <div>
-                                                            Actualizada: {formatDate(request.updatedAt)}
+                                                            Actualizada:{" "}
+                                                            {formatDate(request.updatedAt)}
                                                         </div>
 
                                                         {request.convertedAt && (
                                                             <div>
-                                                                Convertida: {formatDate(request.convertedAt)}
+                                                                Convertida:{" "}
+                                                                {formatDate(
+                                                                    request.convertedAt,
+                                                                )}
                                                             </div>
                                                         )}
 
@@ -743,7 +977,8 @@ const MyParticularPublicationRequestsPage = () => {
                                                 </div>
 
                                                 <div
-                                                    className={`alert ${isConverted || isParticularPublicationApproved
+                                                    className={`alert ${isConverted ||
+                                                        isParticularPublicationApproved
                                                         ? "alert-success"
                                                         : request.estado === "descartado"
                                                             ? "alert-danger"
@@ -755,22 +990,25 @@ const MyParticularPublicationRequestsPage = () => {
                                                     {isConverted && request.convertedTitle && (
                                                         <div className="small mt-2">
                                                             Publicación creada:{" "}
-                                                            <strong>{request.convertedTitle}</strong>
+                                                            <strong>
+                                                                {request.convertedTitle}
+                                                            </strong>
                                                         </div>
                                                     )}
 
                                                     {isConverted && !isPublicVisible && (
                                                         <div className="small mt-2">
-                                                            La publicación ya fue creada, pero todavía está en
-                                                            revisión interna antes de mostrarse públicamente.
+                                                            La publicación ya fue creada, pero todavía
+                                                            está en revisión interna antes de mostrarse
+                                                            públicamente.
                                                         </div>
                                                     )}
 
                                                     {isParticularPublicationApproved &&
-                                                        request.particularPublicationPath && (
+                                                        particularPublicationUrl && (
                                                             <div className="mt-3">
                                                                 <Link
-                                                                    to={request.particularPublicationPath}
+                                                                    to={particularPublicationUrl}
                                                                     className="btn btn-sm btn-success"
                                                                 >
                                                                     Ver publicación particular
@@ -803,7 +1041,9 @@ const MyParticularPublicationRequestsPage = () => {
 
                                                     <div>
                                                         <strong>Tipo de destino:</strong>{" "}
-                                                        {TARGET_TYPE_LABELS[request.targetType] ||
+                                                        {TARGET_TYPE_LABELS[
+                                                            request.targetType
+                                                        ] ||
                                                             request.targetType ||
                                                             "Sin definir"}
                                                     </div>
@@ -821,7 +1061,8 @@ const MyParticularPublicationRequestsPage = () => {
                                                         <strong>Servicio:</strong>{" "}
                                                         {request.billingStatus === "free"
                                                             ? "Gratuito por ahora"
-                                                            : request.billingStatus || "Sin definir"}
+                                                            : request.billingStatus ||
+                                                            "Sin definir"}
                                                     </div>
                                                 </div>
 
@@ -834,7 +1075,8 @@ const MyParticularPublicationRequestsPage = () => {
                                                         className="mb-0 text-muted"
                                                         style={{ whiteSpace: "pre-line" }}
                                                     >
-                                                        {request.descripcion}
+                                                        {request.descripcion ||
+                                                            "No se cargó descripción."}
                                                     </p>
                                                 </div>
 
@@ -843,6 +1085,13 @@ const MyParticularPublicationRequestsPage = () => {
                                                     title="Fotos enviadas"
                                                     emptyMessage="No cargaste fotos en esta solicitud."
                                                 />
+
+                                                {requestHasVideos && (
+                                                    <InmuebleVideoSection
+                                                        videos={requestVisibleVideos}
+                                                        title="Videos enviados"
+                                                    />
+                                                )}
 
                                                 <PublicationRequestActivityLog
                                                     activityLog={request.activityLog}
@@ -863,9 +1112,9 @@ const MyParticularPublicationRequestsPage = () => {
                                                     )}
 
                                                     {isParticularPublicationApproved &&
-                                                        request.particularPublicationPath && (
+                                                        particularPublicationUrl && (
                                                             <Link
-                                                                to={request.particularPublicationPath}
+                                                                to={particularPublicationUrl}
                                                                 className="btn btn-success btn-sm"
                                                             >
                                                                 Ver publicación particular

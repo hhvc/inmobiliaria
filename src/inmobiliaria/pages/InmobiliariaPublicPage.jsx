@@ -6,6 +6,7 @@ import {
   getInmobiliariaBySlug,
 } from "../services/inmobiliaria.service";
 import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueble.service";
+import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import { getAgencySlugFromDomain } from "../utils/domainRouting";
 import { useDomainAgency } from "../context/useDomainAgency";
 import {
@@ -528,6 +529,10 @@ const InmueblePublicCard = ({ inmueble }) => {
   const address = buildAddress(inmueble);
   const photoCount = getPhotoCount(inmueble);
 
+  const visibleVideos = getVisibleInmuebleVideos(inmueble?.videos || []);
+  const videoCount = visibleVideos.length;
+  const hasVideos = videoCount > 0;
+
   return (
     <article className="card h-100 shadow-sm border-0 overflow-hidden portal-listing-card">
       <div className="position-relative portal-listing-image-wrap">
@@ -552,13 +557,23 @@ const InmueblePublicCard = ({ inmueble }) => {
           )}
 
           {inmueble.tipo && (
-            <span className="badge text-bg-dark">{capitalize(inmueble.tipo)}</span>
+            <span className="badge text-bg-dark">
+              {capitalize(inmueble.tipo)}
+            </span>
           )}
         </div>
 
         {inmueble.destacado && (
           <div className="position-absolute top-0 end-0 p-3">
             <span className="badge text-bg-warning">★ Destacado</span>
+          </div>
+        )}
+
+        {hasVideos && (
+          <div className="position-absolute bottom-0 start-0 p-3">
+            <span className="badge text-bg-danger shadow-sm">
+              🎥 {videoCount} video{videoCount === 1 ? "" : "s"}
+            </span>
           </div>
         )}
 
@@ -572,6 +587,16 @@ const InmueblePublicCard = ({ inmueble }) => {
       </div>
 
       <div className="card-body d-flex flex-column p-4">
+        <div className="d-flex flex-wrap gap-2 mb-2">
+          {hasVideos && (
+            <span className="badge text-bg-danger">🎥 Tiene video</span>
+          )}
+
+          {inmueble.destacado && (
+            <span className="badge text-bg-warning">Destacado</span>
+          )}
+        </div>
+
         <Link to={detailUrl} className="text-decoration-none text-dark">
           <h3 className="h5 mb-2 portal-listing-title">
             {inmueble.titulo || "Inmueble publicado"}
@@ -581,7 +606,9 @@ const InmueblePublicCard = ({ inmueble }) => {
         {address && <p className="text-muted small mb-2">📍 {address}</p>}
 
         {getOperationTypeLabel(inmueble) && (
-          <p className="text-muted small mb-2">{getOperationTypeLabel(inmueble)}</p>
+          <p className="text-muted small mb-2">
+            {getOperationTypeLabel(inmueble)}
+          </p>
         )}
 
         <div className="h4 mb-3 portal-listing-price">
@@ -622,7 +649,7 @@ const InmueblePublicCard = ({ inmueble }) => {
 
         <div className="mt-auto d-grid">
           <Link to={detailUrl} className="btn btn-primary">
-            Ver inmueble
+            {hasVideos ? "Ver video y detalle" : "Ver inmueble"}
           </Link>
         </div>
       </div>

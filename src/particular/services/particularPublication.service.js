@@ -16,14 +16,15 @@ import {
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
 import { auth, db, storage } from "../../firebase/config";
+import { normalizeInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 
 const COLLECTION_NAME = "particular_publication_requests";
 
 const publicationRequestsRef = collection(db, COLLECTION_NAME);
 const inmobiliariasRef = collection(db, "inmobiliarias");
 
-const MAX_IMAGES = 10;
-const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGES = 50;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 const REQUEST_STATUSES = [
     "nuevo",
@@ -121,7 +122,7 @@ const validateImageFiles = (files = []) => {
 
         if (file.size > MAX_IMAGE_SIZE_BYTES) {
             throw new Error(
-                `La imagen "${file.name}" supera el máximo permitido de 8 MB.`,
+                `La imagen "${file.name}" supera el máximo permitido de 10 MB.`,
             );
         }
     });
@@ -197,6 +198,7 @@ const mapPublicationRequest = (docSnap) => {
         id: docSnap.id,
         ...data,
         images: normalizeImages(data.images),
+        videos: normalizeInmuebleVideos(data.videos || []),
         createdAt: normalizeTimestamp(data.createdAt),
         updatedAt: normalizeTimestamp(data.updatedAt),
         reviewedAt: normalizeTimestamp(data.reviewedAt),
@@ -252,6 +254,7 @@ export const createParticularPublicationRequest = async (formData = {}) => {
     );
 
     const imageFiles = validateImageFiles(formData.images || []);
+    const videos = normalizeInmuebleVideos(formData.videos || []);
 
     if (!nombre) {
         throw new Error("Ingresá tu nombre.");
@@ -309,6 +312,7 @@ export const createParticularPublicationRequest = async (formData = {}) => {
         descripcion,
         precioEstimado,
         images,
+        videos,
 
         targetType,
         targetInmobiliariaId: isTargetOnoProp ? "" : targetInmobiliariaId,
@@ -336,6 +340,7 @@ export const createParticularPublicationRequest = async (formData = {}) => {
                     targetType,
                     targetInmobiliariaId: isTargetOnoProp ? "" : targetInmobiliariaId,
                     imagesCount: images.length,
+                    videosCount: videos.length,
                 },
             }),
         ],

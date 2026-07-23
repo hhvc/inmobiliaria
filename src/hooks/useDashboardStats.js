@@ -1,65 +1,314 @@
 // hooks/useDashboardStats.js
-import { useState, useEffect } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { useEffect, useState } from "react";
+import {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 
-// Función auxiliar para manejar fechas de Firestore
+import { db } from "../firebase/config";
+import { useAuth } from "../context/auth/useAuth";
+
+const INITIAL_STATS = {
+  // Cabañas
+  totalCabanas: 0,
+  cabanasDisponibles: 0,
+  cabanasDestacadas: 0,
+
+  // Reservas
+  totalReservas: 0,
+  reservasPendientes: 0,
+  reservasConfirmadas: 0,
+  reservasCanceladas: 0,
+  reservasHoy: 0,
+  ingresosTotales: 0,
+  ingresosPendientes: 0,
+
+  // Contactos
+  totalContactos: 0,
+  contactosNoLeidos: 0,
+  contactosHoy: 0,
+
+  // Usuarios
+  totalUsuarios: 0,
+
+  // Inmobiliarias
+  totalInmobiliarias: 0,
+  inmobiliariasActivas: 0,
+  inmobiliariasHoy: 0,
+
+  // Inmuebles / publicaciones
+  totalInmuebles: 0,
+  inmueblesActivos: 0,
+  inmueblesHoy: 0,
+  inmueblesDestacados: 0,
+  inmueblesPorTipo: {},
+  inmueblesPorOperacion: {},
+
+  // Detalle nuevo
+  totalInmueblesInmobiliarias: 0,
+  inmueblesInmobiliariasActivos: 0,
+  totalPublicacionesParticulares: 0,
+  publicacionesParticularesActivas: 0,
+};
+
 const getFirestoreDate = (firestoreTimestamp) => {
   if (!firestoreTimestamp) return null;
+
   if (typeof firestoreTimestamp.toDate === "function") {
     return firestoreTimestamp.toDate();
   }
+
   if (firestoreTimestamp.seconds !== undefined) {
     return new Date(firestoreTimestamp.seconds * 1000);
   }
+
   if (firestoreTimestamp instanceof Date) {
     return firestoreTimestamp;
   }
+
   if (typeof firestoreTimestamp === "string") {
-    return new Date(firestoreTimestamp);
+    const date = new Date(firestoreTimestamp);
+    return Number.isFinite(date.getTime()) ? date : null;
   }
-  console.warn("Formato de fecha no reconocido:", firestoreTimestamp);
+
   return null;
 };
 
-export const useDashboardStats = () => {
-  const [stats, setStats] = useState({
-    // Cabañas
-    totalCabanas: 0,
-    cabanasDisponibles: 0,
-    cabanasDestacadas: 0,
+const isToday = (value) => {
+  const date = getFirestoreDate(value);
 
-    // Reservas
-    totalReservas: 0,
-    reservasPendientes: 0,
-    reservasConfirmadas: 0,
-    reservasCanceladas: 0,
-    reservasHoy: 0,
-    ingresosTotales: 0,
-    ingresosPendientes: 0,
+  if (!date) return false;
 
-    // Contactos
-    totalContactos: 0,
-    contactosNoLeidos: 0,
-    contactosHoy: 0,
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-    // Usuarios
-    totalUsuarios: 0,
+  return date >= today;
+};
 
-    // Inmobiliarias
-    totalInmobiliarias: 0,
-    inmobiliariasActivas: 0,
-    inmobiliariasHoy: 0,
+const userHasRole = (user, hasRole, roleName) => {
+  if (typeof hasRole === "function" && hasRole(roleName)) return true;
+  if (!user) return false;
+  if (user.role === roleName) return true;
+  if (user.primaryRole === roleName) return true;
 
-    // Inmuebles (nuevas estadísticas)
-    totalInmuebles: 0,
-    inmueblesActivos: 0,
-    inmueblesHoy: 0,
-    inmueblesDestacados: 0,
-    inmueblesPorTipo: {},
-    inmueblesPorOperacion: {},
+  return Array.isArray(user.roles) && user.roles.includes(roleName);
+};
+
+const getUserInmobiliariaIds = (user = {}) => {
+  const ids = [];
+
+  if (Array.isArray(user.inmobiliarias)) {
+    ids.push(...user.inmobiliarias);
+  }
+
+  if (user.activeInmobiliariaId) {
+    ids.push(user.activeInmobiliariaId);
+  }
+
+  if (
+    user.inmobiliariaRoles &&
+    typeof user.inmobiliariaRoles === "object" &&
+    !Array.isArray(user.inmobiliariaRoles)
+  ) {
+    ids.push(...Object.keys(user.inmobiliariaRoles));
+  }
+
+  return Array.from(
+    new Set(
+      ids
+        .filter(Boolean)
+        .map((id) => id.toString().trim())
+        .filter(Boolean),
+    ),
+  );
+};
+
+const safeGetCollection = async (pathParts, label) => {
+  try {
+    const ref = collection(db, ...pathParts);
+    const snapshot = await getDocs(ref);
+
+    return snapshot.docs.map((item) => ({
+      id: item.id,
+      ...item.data(),
+    }));
+  } catch (err) {
+    console.debug(`${label} no disponible para estadísticas:`, err);
+    return [];
+  }
+};
+
+const safeGetQuery = async (queryRef, label) => {
+  try {
+    const snapshot = await getDocs(queryRef);
+
+    return snapshot.docs.map((item) => ({
+      id: item.id,
+      ...item.data(),
+    }));
+  } catch (err) {
+    console.debug(`${label} no disponible para estadísticas:`, err);
+    return [];
+  }
+};
+
+const fetchReadableInmobiliarias = async ({ user, hasRole }) => {
+  const isRoot = userHasRole(user, hasRole, "root");
+
+  if (isRoot) {
+    return safeGetCollection(["inmobiliarias"], "Colección de inmobiliarias");
+  }
+
+  const inmobiliariaIds = getUserInmobiliariaIds(user);
+
+  const entries = await Promise.all(
+    inmobiliariaIds.map(async (inmobiliariaId) => {
+      try {
+        const snap = await getDoc(doc(db, "inmobiliarias", inmobiliariaId));
+
+        if (!snap.exists()) return null;
+
+        return {
+          id: snap.id,
+          ...snap.data(),
+        };
+      } catch (err) {
+        console.debug(
+          `Inmobiliaria ${inmobiliariaId} no disponible para estadísticas:`,
+          err,
+        );
+
+        return null;
+      }
+    }),
+  );
+
+  return entries.filter(Boolean);
+};
+
+const fetchInmueblesByInmobiliarias = async (inmobiliarias = []) => {
+  const entries = await Promise.all(
+    inmobiliarias.map(async (inmobiliaria) => {
+      const inmobiliariaId = inmobiliaria.id;
+
+      const inmuebles = await safeGetCollection(
+        ["inmobiliarias", inmobiliariaId, "inmuebles"],
+        `Inmuebles de inmobiliaria ${inmobiliariaId}`,
+      );
+
+      return inmuebles.map((inmueble) => ({
+        ...inmueble,
+        inmobiliariaId:
+          inmueble.inmobiliariaId ||
+          inmueble.ownerInmobiliariaId ||
+          inmobiliariaId,
+        sourceType: "inmobiliaria",
+      }));
+    }),
+  );
+
+  return entries.flat();
+};
+
+const fetchParticularPublications = async ({ user, hasRole }) => {
+  const isRoot = userHasRole(user, hasRole, "root");
+
+  if (isRoot) {
+    return safeGetCollection(
+      ["particular_publications"],
+      "Publicaciones particulares",
+    );
+  }
+
+  const publicParticularQuery = query(
+    collection(db, "particular_publications"),
+    where("publicationType", "==", "particular"),
+    where("publicStatus", "==", "active"),
+    where("moderationStatus", "==", "approved"),
+  );
+
+  return safeGetQuery(
+    publicParticularQuery,
+    "Publicaciones particulares públicas",
+  );
+};
+
+const isDeletedInmueble = (inmueble = {}) => {
+  return (
+    inmueble.deleted === true ||
+    inmueble.isDeleted === true ||
+    inmueble.estado === "eliminado" ||
+    inmueble.estado === "borrado"
+  );
+};
+
+const isActiveInmueble = (inmueble = {}) => {
+  if (isDeletedInmueble(inmueble)) return false;
+
+  if (inmueble.estado) {
+    return inmueble.estado === "activo";
+  }
+
+  return inmueble.activo !== false;
+};
+
+const isFeaturedInmueble = (inmueble = {}) => {
+  if (inmueble.destacado === true) return true;
+
+  const promotion = inmueble.promotion || inmueble.promo || {};
+
+  return Boolean(
+    promotion.active === true ||
+    promotion.type === "premium" ||
+    promotion.type === "destacado" ||
+    promotion.plan === "premium" ||
+    promotion.plan === "destacado",
+  );
+};
+
+const isActiveParticularPublication = (publication = {}) => {
+  return (
+    publication.publicationType === "particular" &&
+    publication.publicStatus === "active" &&
+    publication.moderationStatus === "approved"
+  );
+};
+
+const mapParticularPublicationToStatsItem = (publication = {}) => {
+  return {
+    id: publication.id,
+    sourceType: "particular",
+    tipo: publication.tipo || "sin_tipo",
+    operacion: publication.operacion || "sin_operacion",
+    estado: publication.publicStatus || "",
+    deleted: publication.publicStatus === "deleted",
+    destacado: publication.destacado === true,
+    promotion: publication.promotion || publication.promo || null,
+    createdAt:
+      publication.approvedAt || publication.createdAt || publication.updatedAt,
+    updatedAt: publication.updatedAt || publication.approvedAt,
+  };
+};
+
+const accumulateBreakdowns = ({ items, inmueblesPorTipo, inmueblesPorOperacion }) => {
+  items.forEach((item) => {
+    const tipo = item.tipo || "sin_tipo";
+    const operacion = item.operacion || "sin_operacion";
+
+    inmueblesPorTipo[tipo] = (inmueblesPorTipo[tipo] || 0) + 1;
+    inmueblesPorOperacion[operacion] =
+      (inmueblesPorOperacion[operacion] || 0) + 1;
   });
+};
 
+export const useDashboardStats = () => {
+  const { user, hasRole } = useAuth();
+
+  const [stats, setStats] = useState(INITIAL_STATS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -67,218 +316,162 @@ export const useDashboardStats = () => {
     const fetchStats = async () => {
       try {
         setLoading(true);
+        setError(null);
 
-        // ====================================================
-        // 1. Obtener estadísticas de cabañas
-        // ====================================================
-        let totalCabanas = 0;
-        let cabanasDisponibles = 0;
-        let cabanasDestacadas = 0;
-
-        try {
-          const cabanasRef = collection(db, "cabanas");
-          const cabanasSnapshot = await getDocs(cabanasRef);
-          const cabanasData = cabanasSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-
-          totalCabanas = cabanasData.length;
-          cabanasDisponibles = cabanasData.filter(
-            (cabana) => cabana.disponible
-          ).length;
-          cabanasDestacadas = cabanasData.filter(
-            (cabana) => cabana.destacada
-          ).length;
-        } catch (cabanasError) {
-          console.log("Colección de cabañas no disponible:", cabanasError);
+        if (!user) {
+          setStats(INITIAL_STATS);
+          return;
         }
 
         // ====================================================
-        // 2. Obtener estadísticas de usuarios
+        // 1. Estadísticas legadas de cabañas
         // ====================================================
-        let totalUsuarios = 0;
-        try {
-          const usuariosRef = collection(db, "users");
-          const usuariosSnapshot = await getDocs(usuariosRef);
-          totalUsuarios = usuariosSnapshot.size;
-        } catch (userError) {
-          console.log("Colección de usuarios no disponible:", userError);
-        }
+        const cabanasData = await safeGetCollection(
+          ["cabanas"],
+          "Colección de cabañas",
+        );
 
-        // ====================================================
-        // 3. Obtener estadísticas de contactos
-        // ====================================================
-        let totalContactos = 0;
-        let contactosNoLeidos = 0;
-        let contactosHoy = 0;
-
-        try {
-          const contactosRef = collection(db, "contactMessages");
-          const contactosSnapshot = await getDocs(contactosRef);
-          const contactosData = contactosSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-
-          totalContactos = contactosData.length;
-
-          // Contactos no leídos (donde read es false o no existe)
-          contactosNoLeidos = contactosData.filter(
-            (contacto) => !contacto.read
-          ).length;
-
-          // Contactos de hoy
-          const hoy = new Date();
-          hoy.setHours(0, 0, 0, 0); // Inicio del día de hoy
-
-          contactosHoy = contactosData.filter((contacto) => {
-            const fechaCreacion = getFirestoreDate(contacto.createdAt);
-            return fechaCreacion && fechaCreacion >= hoy;
-          }).length;
-        } catch (contactosError) {
-          console.log("Colección de contactos no disponible:", contactosError);
-        }
+        const totalCabanas = cabanasData.length;
+        const cabanasDisponibles = cabanasData.filter(
+          (cabana) => cabana.disponible === true,
+        ).length;
+        const cabanasDestacadas = cabanasData.filter(
+          (cabana) => cabana.destacada === true,
+        ).length;
 
         // ====================================================
-        // 4. Obtener estadísticas de reservas
+        // 2. Usuarios
         // ====================================================
-        let totalReservas = 0;
-        let reservasPendientes = 0;
-        let reservasConfirmadas = 0;
-        let reservasCanceladas = 0;
-        let reservasHoy = 0;
-        let ingresosTotales = 0;
-        let ingresosPendientes = 0;
+        const usuariosData = await safeGetCollection(
+          ["users"],
+          "Colección de usuarios",
+        );
 
-        try {
-          const reservasRef = collection(db, "reservations");
-          const reservasSnapshot = await getDocs(reservasRef);
-          const reservasData = reservasSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-
-          totalReservas = reservasData.length;
-          reservasPendientes = reservasData.filter(
-            (r) => r.status === "pending"
-          ).length;
-          reservasConfirmadas = reservasData.filter(
-            (r) => r.status === "confirmed"
-          ).length;
-          reservasCanceladas = reservasData.filter(
-            (r) => r.status === "cancelled"
-          ).length;
-
-          // Reservas de hoy (creadas hoy)
-          const hoy = new Date();
-          hoy.setHours(0, 0, 0, 0);
-          reservasHoy = reservasData.filter((reserva) => {
-            const fechaCreacion = getFirestoreDate(reserva.createdAt);
-            return fechaCreacion && fechaCreacion >= hoy;
-          }).length;
-
-          // Cálculo de ingresos
-          ingresosTotales = reservasData
-            .filter((r) => r.status === "confirmed")
-            .reduce((total, reserva) => total + (reserva.total || 0), 0);
-
-          ingresosPendientes = reservasData
-            .filter((r) => r.status === "pending")
-            .reduce((total, reserva) => total + (reserva.total || 0), 0);
-        } catch (reservasError) {
-          console.log("Colección de reservas no disponible:", reservasError);
-        }
+        const totalUsuarios = usuariosData.length;
 
         // ====================================================
-        // 5. Obtener estadísticas de inmobiliarias
+        // 3. Contactos legados
         // ====================================================
-        let totalInmobiliarias = 0;
-        let inmobiliariasActivas = 0;
-        let inmobiliariasHoy = 0;
+        const contactosData = await safeGetCollection(
+          ["contactMessages"],
+          "Colección de contactos",
+        );
 
-        try {
-          const inmobiliariasRef = collection(db, "inmobiliarias");
-          const inmobiliariasSnapshot = await getDocs(inmobiliariasRef);
-          const inmobiliariasData = inmobiliariasSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
-
-          totalInmobiliarias = inmobiliariasData.length;
-          inmobiliariasActivas = inmobiliariasData.filter(
-            (inmobiliaria) => inmobiliaria.activa === true
-          ).length;
-
-          // Inmobiliarias creadas hoy
-          const hoy = new Date();
-          hoy.setHours(0, 0, 0, 0);
-          inmobiliariasHoy = inmobiliariasData.filter((inmobiliaria) => {
-            const fechaCreacion = getFirestoreDate(inmobiliaria.createdAt);
-            return fechaCreacion && fechaCreacion >= hoy;
-          }).length;
-        } catch (inmobiliariasError) {
-          console.log(
-            "Colección de inmobiliarias no disponible:",
-            inmobiliariasError
-          );
-        }
+        const totalContactos = contactosData.length;
+        const contactosNoLeidos = contactosData.filter(
+          (contacto) => contacto.read !== true,
+        ).length;
+        const contactosHoy = contactosData.filter((contacto) =>
+          isToday(contacto.createdAt),
+        ).length;
 
         // ====================================================
-        // 6. Obtener estadísticas de inmuebles (NUEVO)
+        // 4. Reservas legadas
         // ====================================================
-        let totalInmuebles = 0;
-        let inmueblesActivos = 0;
-        let inmueblesHoy = 0;
-        let inmueblesDestacados = 0;
+        const reservasData = await safeGetCollection(
+          ["reservations"],
+          "Colección de reservas",
+        );
+
+        const totalReservas = reservasData.length;
+        const reservasPendientes = reservasData.filter(
+          (reserva) => reserva.status === "pending",
+        ).length;
+        const reservasConfirmadas = reservasData.filter(
+          (reserva) => reserva.status === "confirmed",
+        ).length;
+        const reservasCanceladas = reservasData.filter(
+          (reserva) => reserva.status === "cancelled",
+        ).length;
+        const reservasHoy = reservasData.filter((reserva) =>
+          isToday(reserva.createdAt),
+        ).length;
+
+        const ingresosTotales = reservasData
+          .filter((reserva) => reserva.status === "confirmed")
+          .reduce((total, reserva) => total + (Number(reserva.total) || 0), 0);
+
+        const ingresosPendientes = reservasData
+          .filter((reserva) => reserva.status === "pending")
+          .reduce((total, reserva) => total + (Number(reserva.total) || 0), 0);
+
+        // ====================================================
+        // 5. Inmobiliarias
+        // ====================================================
+        const inmobiliariasData = await fetchReadableInmobiliarias({
+          user,
+          hasRole,
+        });
+
+        const totalInmobiliarias = inmobiliariasData.length;
+        const inmobiliariasActivas = inmobiliariasData.filter(
+          (inmobiliaria) => inmobiliaria.activa === true,
+        ).length;
+        const inmobiliariasHoy = inmobiliariasData.filter((inmobiliaria) =>
+          isToday(inmobiliaria.createdAt),
+        ).length;
+
+        // ====================================================
+        // 6. Inmuebles reales:
+        //    /inmobiliarias/{id}/inmuebles
+        //    + /particular_publications
+        // ====================================================
+        const inmueblesInmobiliariasData =
+          await fetchInmueblesByInmobiliarias(inmobiliariasData);
+
+        const particularPublicationsData = await fetchParticularPublications({
+          user,
+          hasRole,
+        });
+
+        const activeParticularPublicationsData =
+          particularPublicationsData.filter(isActiveParticularPublication);
+
+        const particularItemsForStats = activeParticularPublicationsData.map(
+          mapParticularPublicationToStatsItem,
+        );
+
+        const inmueblesNoDeleted = inmueblesInmobiliariasData.filter(
+          (inmueble) => !isDeletedInmueble(inmueble),
+        );
+
+        const inmueblesActivosData =
+          inmueblesInmobiliariasData.filter(isActiveInmueble);
+
+        const allStatsItems = [
+          ...inmueblesNoDeleted,
+          ...particularItemsForStats,
+        ];
+
+        const activeStatsItems = [
+          ...inmueblesActivosData,
+          ...particularItemsForStats,
+        ];
+
         const inmueblesPorTipo = {};
         const inmueblesPorOperacion = {};
 
-        try {
-          const inmueblesRef = collection(db, "inmuebles");
-          const inmueblesSnapshot = await getDocs(inmueblesRef);
-          const inmueblesData = inmueblesSnapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-          }));
+        accumulateBreakdowns({
+          items: activeStatsItems,
+          inmueblesPorTipo,
+          inmueblesPorOperacion,
+        });
 
-          totalInmuebles = inmueblesData.length;
+        const totalInmueblesInmobiliarias = inmueblesNoDeleted.length;
+        const inmueblesInmobiliariasActivos = inmueblesActivosData.length;
+        const totalPublicacionesParticulares = particularPublicationsData.length;
+        const publicacionesParticularesActivas =
+          activeParticularPublicationsData.length;
 
-          // Para determinar si un inmueble está activo, asumimos que está activo a menos que tenga un campo 'activo' en false
-          // O podríamos considerar todos los inmuebles como activos si no hay campo de estado
-          inmueblesActivos = inmueblesData.filter(
-            (inmueble) => inmueble.activo !== false
-          ).length;
+        const totalInmuebles = allStatsItems.length;
+        const inmueblesActivos = activeStatsItems.length;
 
-          // Inmuebles destacados
-          inmueblesDestacados = inmueblesData.filter(
-            (inmueble) => inmueble.destacado === true
-          ).length;
+        const inmueblesHoy = allStatsItems.filter((item) =>
+          isToday(item.createdAt),
+        ).length;
 
-          // Inmuebles creados hoy
-          const hoy = new Date();
-          hoy.setHours(0, 0, 0, 0);
-          inmueblesHoy = inmueblesData.filter((inmueble) => {
-            const fechaCreacion = getFirestoreDate(inmueble.createdAt);
-            return fechaCreacion && fechaCreacion >= hoy;
-          }).length;
+        const inmueblesDestacados = allStatsItems.filter(isFeaturedInmueble).length;
 
-          // Estadísticas por tipo
-          inmueblesData.forEach((inmueble) => {
-            const tipo = inmueble.tipo || "sin_tipo";
-            inmueblesPorTipo[tipo] = (inmueblesPorTipo[tipo] || 0) + 1;
-
-            const operacion = inmueble.operacion || "sin_operacion";
-            inmueblesPorOperacion[operacion] =
-              (inmueblesPorOperacion[operacion] || 0) + 1;
-          });
-        } catch (inmueblesError) {
-          console.log("Colección de inmuebles no disponible:", inmueblesError);
-        }
-
-        // ====================================================
-        // 7. Actualizar estado con todas las estadísticas
-        // ====================================================
         setStats({
           // Cabañas
           totalCabanas,
@@ -307,24 +500,30 @@ export const useDashboardStats = () => {
           inmobiliariasActivas,
           inmobiliariasHoy,
 
-          // Inmuebles (nuevo)
+          // Inmuebles / publicaciones
           totalInmuebles,
           inmueblesActivos,
           inmueblesHoy,
           inmueblesDestacados,
           inmueblesPorTipo,
           inmueblesPorOperacion,
+
+          // Detalle nuevo
+          totalInmueblesInmobiliarias,
+          inmueblesInmobiliariasActivos,
+          totalPublicacionesParticulares,
+          publicacionesParticularesActivas,
         });
       } catch (err) {
         console.error("Error fetching dashboard stats:", err);
-        setError(err.message);
+        setError(err.message || "No se pudieron cargar las estadísticas.");
       } finally {
         setLoading(false);
       }
     };
 
     fetchStats();
-  }, []);
+  }, [user, hasRole]);
 
   return { stats, loading, error };
 };

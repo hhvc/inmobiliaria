@@ -2,13 +2,13 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://onoprop.com/</loc>
-    <lastmod>2026-07-22</lastmod>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmuebles</loc>
-    <lastmod>2026-07-22</lastmod>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -26,19 +26,19 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-a-estrenar-en-cuesta-de-manantiales-1j1A7SeP9UNRKcank6FV</loc>
-    <lastmod>2026-07-21</lastmod>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/hermosa-casa-con-pileta-quincho-2955-mts2-5tM00s2uRf2DMB7EAGaJ</loc>
-    <lastmod>2026-07-21</lastmod>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-amplio-dpto-3-dorm-cochera-balcon-nueva-cba-KIhLZkltZoZOHnTT6Lta</loc>
-    <lastmod>2026-07-21</lastmod>
+    <lastmod>2026-07-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -47,6 +47,12 @@
     <lastmod>2026-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-universitario-de-horizonte-1-dorm-u59-mil-Tv5AyAweS3pfwu960mTV</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-casa-dos-dorm-con-galpon-garage-6-autos-y-2-dptos-b-pueyrredon-Y70MQNA85fxtRbmqpodo</loc>
@@ -59,6 +65,12 @@
     <lastmod>2026-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-casa-b-las-palmas-zona-tranquila-xPjIGBHcExcUxcUcLYDl</loc>
+    <lastmod>2026-07-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmobiliaria/hvc</loc>

@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 
 import Login from "../../components/auth/Login";
 import SEO from "../../components/SEO";
+import InmuebleVideos from "../../inmueble/components/InmuebleVideos";
+import { normalizeInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import { useAuth } from "../../context/auth/useAuth";
 import {
     createParticularPublicationRequest,
@@ -11,8 +13,8 @@ import {
 
 const MIN_DESCRIPTION_LENGTH = 20;
 const MAX_DESCRIPTION_LENGTH = 1000;
-const MAX_IMAGES = 10;
-const MAX_IMAGE_SIZE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGES = 50;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 const INITIAL_FORM = {
     nombre: "",
@@ -26,6 +28,7 @@ const INITIAL_FORM = {
     targetType: "onoprop",
     targetInmobiliariaId: "",
     targetInmobiliariaNombre: "",
+    videos: [],
 };
 
 const OPERACIONES = [
@@ -107,6 +110,9 @@ const ParticularPublicationRequestPage = () => {
     }, [formData.targetInmobiliariaId, inmobiliarias]);
 
     const remainingImages = MAX_IMAGES - imageFiles.length;
+    const videoValues = useMemo(() => {
+        return normalizeInmuebleVideos(formData.videos || []);
+    }, [formData.videos]);
 
     useEffect(() => {
         if (!user) return;
@@ -259,6 +265,7 @@ const ParticularPublicationRequestPage = () => {
             await createParticularPublicationRequest({
                 ...formData,
                 images: imageFiles,
+                videos: videoValues,
             });
 
             setSuccess(
@@ -267,7 +274,10 @@ const ParticularPublicationRequestPage = () => {
                     : `Recibimos tu solicitud. ${formData.targetInmobiliariaNombre} podrá revisarla y contactarte para validar los datos.`,
             );
 
-            setFormData(getInitialFormForUser(user));
+            setFormData({
+                ...getInitialFormForUser(user),
+                videos: [],
+            });
             setImageFiles([]);
             setImageError("");
         } catch (err) {
@@ -787,6 +797,23 @@ const ParticularPublicationRequestPage = () => {
                                                         ))}
                                                     </div>
                                                 )}
+                                            </div>
+
+                                            <div className="col-12">
+                                                <div className="border rounded-3 p-3">
+                                                    <InmuebleVideos
+                                                        videos={videoValues}
+                                                        onChange={(nextVideos) => {
+                                                            setFormData((prev) => ({
+                                                                ...prev,
+                                                                videos: normalizeInmuebleVideos(nextVideos),
+                                                            }));
+
+                                                            setError("");
+                                                            setSuccess("");
+                                                        }}
+                                                    />
+                                                </div>
                                             </div>
 
                                             <div className="col-12">

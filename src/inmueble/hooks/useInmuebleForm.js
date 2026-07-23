@@ -11,6 +11,8 @@ import {
   updateInmueble,
 } from "../services/inmueble.service";
 
+import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+
 const buildInitialValues = ({ inmobiliariaId, initialValues }) => ({
   ...inmuebleInitialValues,
   ...(initialValues || {}),
@@ -238,10 +240,13 @@ export const useInmuebleForm = ({
     setLoading(true);
 
     try {
-      const normalizedData = normalizeInmuebleData({
-        ...values,
-        inmobiliariaId: values.inmobiliariaId || inmobiliariaId,
-      });
+      const normalizedData = {
+        ...normalizeInmuebleData({
+          ...values,
+          inmobiliariaId: values.inmobiliariaId || inmobiliariaId,
+        }),
+        videos: normalizeInmuebleVideos(values.videos || []),
+      };
 
       let result = null;
       let createdInmuebleId = inmuebleId || "";
