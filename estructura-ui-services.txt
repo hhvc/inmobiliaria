@@ -1,6 +1,8 @@
 
 FullName
 --------
+C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\admin\pages\PortalPublicationsPage.jsx
+C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\admin\pages\PortalRankingConfigPage.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\components\About.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\components\AccessDenied.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\components\Activities.jsx
@@ -65,6 +67,8 @@ C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\comp
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\components\InmuebleForm.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\components\InmuebleGallery.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\components\InmuebleList.jsx
+C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\components\InmuebleVideos.jsx
+C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\components\InmuebleVideoSection.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\pages\InmuebleAdminPage.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\pages\InmuebleConsultasPage.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\pages\InmuebleCreatePage.jsx
@@ -80,6 +84,7 @@ C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\page
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\services\deleteInmuebleImage.js
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\services\inmueble.service.js
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\services\inmuebleConsulta.service.js
+C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\inmueble\services\portalRankingConfig.service.js
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\pages\HomePage.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\pages\LoginPage.jsx
 C:\Users\hecto\Programación\ProyectoInmobiliarias\LaDoctaProp\src\pages\PublicHomeRoute.jsx
