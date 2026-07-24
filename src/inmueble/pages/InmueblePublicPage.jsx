@@ -593,7 +593,7 @@ const InmueblePublicPage = () => {
 
   if (loading) {
     return (
-      <main className="portal-home">
+      <main className="portal-home" style={{ paddingBottom: "88px" }}>
         <SEO
           title="Cargando inmueble | LaDoctaProp"
           description="Cargando ficha pública del inmueble."
@@ -973,6 +973,40 @@ const InmueblePublicPage = () => {
           </div>
         </div>
       </section>
+      <div
+        className="d-lg-none position-fixed bottom-0 start-0 end-0 bg-white border-top shadow-lg"
+        style={{
+          zIndex: 1040,
+          padding: "0.65rem 0.85rem calc(0.65rem + env(safe-area-inset-bottom))",
+        }}
+      >
+        <div className="d-flex align-items-center gap-2">
+          <div className="flex-grow-1 overflow-hidden">
+            <div className="fw-bold text-truncate">
+              {formatPrice(inmueble)}
+            </div>
+
+            <div className="small text-muted text-truncate">
+              {address || inmueble.titulo || "Inmueble publicado"}
+            </div>
+          </div>
+
+          {whatsappUrl ? (
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-success"
+            >
+              WhatsApp
+            </a>
+          ) : (
+            <a href="#consulta" className="btn btn-primary">
+              Consultar
+            </a>
+          )}
+        </div>
+      </div>
     </main>
   );
 };
