@@ -8,6 +8,9 @@ import {
     markConsultaAsUnread,
     archiveConsulta,
     restoreConsulta,
+    updateConsultaEstado,
+    CONSULTA_ESTADOS,
+    CONSULTA_ESTADO_LABELS,
 } from "../services/inmuebleConsulta.service";
 
 const formatDate = (timestamp) => {
@@ -159,14 +162,71 @@ const buildConsultasCsv = (consultas) => {
 };
 
 const CONSULTA_FILTERS = [
-    { value: "activas", label: "Todas" },
-    { value: "nuevas", label: "Nuevas" },
-    { value: "leidas", label: "Leídas" },
-    { value: "archivadas", label: "Archivadas" },
+    { value: "activas", label: "Activas" },
+    { value: CONSULTA_ESTADOS.NUEVA, label: "Nuevas" },
+    { value: CONSULTA_ESTADOS.CONTACTADA, label: "Contactadas" },
+    { value: CONSULTA_ESTADOS.VISITA, label: "Visitas" },
+    { value: CONSULTA_ESTADOS.INTERESADA, label: "Interesadas" },
+    { value: CONSULTA_ESTADOS.CERRADA, label: "Cerradas" },
+    { value: CONSULTA_ESTADOS.DESCARTADA, label: "Descartadas" },
+    { value: CONSULTA_ESTADOS.ARCHIVADA, label: "Archivadas" },
 ];
 
 const isArchivedConsulta = (consulta) => {
-    return consulta.archivada === true || consulta.estado === "archivada";
+    return (
+        consulta.archivada === true ||
+        consulta.estado === CONSULTA_ESTADOS.ARCHIVADA
+    );
+};
+
+const normalizeConsultaEstado = (consulta = {}) => {
+    if (isArchivedConsulta(consulta)) {
+        return CONSULTA_ESTADOS.ARCHIVADA;
+    }
+
+    if (consulta.estado === "leida") {
+        return CONSULTA_ESTADOS.CONTACTADA;
+    }
+
+    if (CONSULTA_ESTADO_LABELS[consulta.estado]) {
+        return consulta.estado;
+    }
+
+    return consulta.leida
+        ? CONSULTA_ESTADOS.CONTACTADA
+        : CONSULTA_ESTADOS.NUEVA;
+};
+
+const getConsultaEstadoBadgeClass = (estado) => {
+    if (estado === CONSULTA_ESTADOS.NUEVA) {
+        return "badge text-bg-primary";
+    }
+
+    if (estado === CONSULTA_ESTADOS.CONTACTADA) {
+        return "badge text-bg-info";
+    }
+
+    if (estado === CONSULTA_ESTADOS.VISITA) {
+        return "badge text-bg-warning";
+    }
+
+    if (estado === CONSULTA_ESTADOS.INTERESADA) {
+        return "badge text-bg-success";
+    }
+
+    if (estado === CONSULTA_ESTADOS.CERRADA) {
+        return "badge text-bg-dark";
+    }
+
+    if (estado === CONSULTA_ESTADOS.DESCARTADA) {
+        return "badge text-bg-secondary";
+    }
+
+    if (estado === CONSULTA_ESTADOS.ARCHIVADA) {
+        return "badge text-bg-dark";
+    }
+
+    return "badge text-bg-secondary";
 };
 
 const normalizeText = (value = "") => {
@@ -202,28 +262,31 @@ const consultaMatchesSearch = (consulta, searchTerm) => {
 const getConsultaStats = (consultas) => {
     return consultas.reduce(
         (acc, consulta) => {
-            const isArchived = isArchivedConsulta(consulta);
+            const estado = normalizeConsultaEstado(consulta);
+            const isArchived = estado === CONSULTA_ESTADOS.ARCHIVADA;
 
             if (isArchived) {
-                acc.archivadas += 1;
+                acc[CONSULTA_ESTADOS.ARCHIVADA] += 1;
                 return acc;
             }
 
             acc.activas += 1;
 
-            if (consulta.leida) {
-                acc.leidas += 1;
-            } else {
-                acc.nuevas += 1;
+            if (acc[estado] !== undefined) {
+                acc[estado] += 1;
             }
 
             return acc;
         },
         {
             activas: 0,
-            nuevas: 0,
-            leidas: 0,
-            archivadas: 0,
+            [CONSULTA_ESTADOS.NUEVA]: 0,
+            [CONSULTA_ESTADOS.CONTACTADA]: 0,
+            [CONSULTA_ESTADOS.VISITA]: 0,
+            [CONSULTA_ESTADOS.INTERESADA]: 0,
+            [CONSULTA_ESTADOS.CERRADA]: 0,
+            [CONSULTA_ESTADOS.DESCARTADA]: 0,
+            [CONSULTA_ESTADOS.ARCHIVADA]: 0,
         },
     );
 };
@@ -287,9 +350,10 @@ const InmuebleConsultasPage = () => {
                 return false;
             }
 
-            const isArchived = isArchivedConsulta(consulta);
+            const estado = normalizeConsultaEstado(consulta);
+            const isArchived = estado === CONSULTA_ESTADOS.ARCHIVADA;
 
-            if (consultaFilter === "archivadas") {
+            if (consultaFilter === CONSULTA_ESTADOS.ARCHIVADA) {
                 return isArchived;
             }
 
@@ -297,12 +361,8 @@ const InmuebleConsultasPage = () => {
                 return false;
             }
 
-            if (consultaFilter === "nuevas") {
-                return !consulta.leida;
-            }
-
-            if (consultaFilter === "leidas") {
-                return consulta.leida;
+            if (consultaFilter !== "activas") {
+                return estado === consultaFilter;
             }
 
             return true;
@@ -318,6 +378,36 @@ const InmuebleConsultasPage = () => {
     const archivableVisibleConsultas = useMemo(() => {
         return filteredConsultas.filter((consulta) => !isArchivedConsulta(consulta));
     }, [filteredConsultas]);
+
+    const handleUpdateEstado = async (consulta, nextEstado) => {
+        const currentEstado = normalizeConsultaEstado(consulta);
+
+        if (!nextEstado || nextEstado === currentEstado) return;
+
+        try {
+            setActionLoadingId(consulta.id);
+
+            await updateConsultaEstado(consulta.id, nextEstado);
+
+            setConsultas((prev) =>
+                prev.map((item) =>
+                    item.id === consulta.id
+                        ? {
+                            ...item,
+                            estado: nextEstado,
+                            leida: nextEstado !== CONSULTA_ESTADOS.NUEVA,
+                            archivada: nextEstado === CONSULTA_ESTADOS.ARCHIVADA,
+                        }
+                        : item,
+                ),
+            );
+        } catch (err) {
+            console.error("Error actualizando etapa de consulta:", err);
+            alert(err.message || "No se pudo actualizar la etapa de la consulta");
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
 
     const handleMarkAsRead = async (consulta) => {
         try {
@@ -674,6 +764,9 @@ const InmuebleConsultasPage = () => {
                         const emailReplyUrl = buildEmailReplyUrl(consulta);
                         const isLoading = actionLoadingId === consulta.id;
                         const isArchived = isArchivedConsulta(consulta);
+                        const normalizedEstado = normalizeConsultaEstado(consulta);
+                        const estadoLabel =
+                            CONSULTA_ESTADO_LABELS[normalizedEstado] || normalizedEstado || "Nueva";
 
                         return (
                             <article className="col-12" key={consulta.id}>
@@ -693,16 +786,8 @@ const InmuebleConsultasPage = () => {
                                                         {consulta.nombre || "Consulta sin nombre"}
                                                     </h2>
 
-                                                    <span
-                                                        className={
-                                                            isArchived
-                                                                ? "badge bg-dark"
-                                                                : consulta.leida
-                                                                    ? "badge bg-secondary"
-                                                                    : "badge bg-primary"
-                                                        }
-                                                    >
-                                                        {isArchived ? "Archivada" : consulta.leida ? "Leída" : "Nueva"}
+                                                    <span className={getConsultaEstadoBadgeClass(normalizedEstado)}>
+                                                        {estadoLabel}
                                                     </span>
                                                 </div>
 
@@ -787,8 +872,22 @@ const InmuebleConsultasPage = () => {
                                             </div>
 
                                             <div className="col-md-4">
-                                                <div className="small text-muted">Estado</div>
-                                                <span>{consulta.estado || "nueva"}</span>
+                                                <label className="small text-muted">Etapa comercial</label>
+
+                                                <select
+                                                    className="form-select form-select-sm"
+                                                    value={normalizedEstado}
+                                                    disabled={isLoading}
+                                                    onChange={(e) => handleUpdateEstado(consulta, e.target.value)}
+                                                >
+                                                    <option value={CONSULTA_ESTADOS.NUEVA}>Nueva</option>
+                                                    <option value={CONSULTA_ESTADOS.CONTACTADA}>Contactada</option>
+                                                    <option value={CONSULTA_ESTADOS.VISITA}>Visita coordinada</option>
+                                                    <option value={CONSULTA_ESTADOS.INTERESADA}>Interesada</option>
+                                                    <option value={CONSULTA_ESTADOS.CERRADA}>Cerrada</option>
+                                                    <option value={CONSULTA_ESTADOS.DESCARTADA}>Descartada</option>
+                                                    <option value={CONSULTA_ESTADOS.ARCHIVADA}>Archivada</option>
+                                                </select>
                                             </div>
                                         </div>
 

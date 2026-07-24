@@ -14,6 +14,28 @@ import { db } from "../../firebase/config";
 
 const CONSULTAS_COLLECTION = "inmueble_consultas";
 
+export const CONSULTA_ESTADOS = {
+    NUEVA: "nueva",
+    CONTACTADA: "contactada",
+    VISITA: "visita",
+    INTERESADA: "interesada",
+    CERRADA: "cerrada",
+    DESCARTADA: "descartada",
+    ARCHIVADA: "archivada",
+};
+
+export const CONSULTA_ESTADOS_ARRAY = Object.values(CONSULTA_ESTADOS);
+
+export const CONSULTA_ESTADO_LABELS = {
+    [CONSULTA_ESTADOS.NUEVA]: "Nueva",
+    [CONSULTA_ESTADOS.CONTACTADA]: "Contactada",
+    [CONSULTA_ESTADOS.VISITA]: "Visita coordinada",
+    [CONSULTA_ESTADOS.INTERESADA]: "Interesada",
+    [CONSULTA_ESTADOS.CERRADA]: "Cerrada",
+    [CONSULTA_ESTADOS.DESCARTADA]: "Descartada",
+    [CONSULTA_ESTADOS.ARCHIVADA]: "Archivada",
+};
+
 const consultasCollection = () => collection(db, CONSULTAS_COLLECTION);
 
 const consultaDoc = (consultaId) =>
@@ -157,6 +179,23 @@ export const getConsultasByInmobiliaria = async (
    UPDATE ADMIN
    ========================================================= */
 
+export const updateConsultaEstado = async (consultaId, estado) => {
+    if (!consultaId) {
+        throw new Error("consultaId es requerido");
+    }
+
+    if (!CONSULTA_ESTADOS_ARRAY.includes(estado)) {
+        throw new Error("Estado de consulta inválido");
+    }
+
+    await updateDoc(consultaDoc(consultaId), {
+        estado,
+        leida: estado !== CONSULTA_ESTADOS.NUEVA,
+        archivada: estado === CONSULTA_ESTADOS.ARCHIVADA,
+        updatedAt: serverTimestamp(),
+    });
+};
+
 export const markConsultaAsRead = async (consultaId) => {
     if (!consultaId) {
         throw new Error("consultaId es requerido");
@@ -164,7 +203,7 @@ export const markConsultaAsRead = async (consultaId) => {
 
     await updateDoc(consultaDoc(consultaId), {
         leida: true,
-        estado: "leida",
+        estado: CONSULTA_ESTADOS.CONTACTADA,
         updatedAt: serverTimestamp(),
     });
 };
@@ -176,7 +215,7 @@ export const markConsultaAsUnread = async (consultaId) => {
 
     await updateDoc(consultaDoc(consultaId), {
         leida: false,
-        estado: "nueva",
+        estado: CONSULTA_ESTADOS.NUEVA,
         updatedAt: serverTimestamp(),
     });
 };
@@ -188,7 +227,8 @@ export const archiveConsulta = async (consultaId) => {
 
     await updateDoc(consultaDoc(consultaId), {
         archivada: true,
-        estado: "archivada",
+        leida: true,
+        estado: CONSULTA_ESTADOS.ARCHIVADA,
         updatedAt: serverTimestamp(),
     });
 };
@@ -200,7 +240,8 @@ export const restoreConsulta = async (consultaId) => {
 
     await updateDoc(consultaDoc(consultaId), {
         archivada: false,
-        estado: "leida",
+        leida: true,
+        estado: CONSULTA_ESTADOS.CONTACTADA,
         updatedAt: serverTimestamp(),
     });
 };
