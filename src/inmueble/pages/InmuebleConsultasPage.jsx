@@ -177,6 +177,15 @@ const CONSULTA_FILTERS = [
     { value: CONSULTA_ESTADOS.ARCHIVADA, label: "Archivadas" },
 ];
 
+const KANBAN_COLUMNS = [
+    CONSULTA_ESTADOS.NUEVA,
+    CONSULTA_ESTADOS.CONTACTADA,
+    CONSULTA_ESTADOS.VISITA,
+    CONSULTA_ESTADOS.INTERESADA,
+    CONSULTA_ESTADOS.CERRADA,
+    CONSULTA_ESTADOS.DESCARTADA,
+];
+
 const isArchivedConsulta = (consulta) => {
     return (
         consulta.archivada === true ||
@@ -304,6 +313,7 @@ const InmuebleConsultasPage = () => {
     const [actionLoadingId, setActionLoadingId] = useState(null);
     const [consultaFilter, setConsultaFilter] = useState("activas");
     const [searchTerm, setSearchTerm] = useState("");
+    const [viewMode, setViewMode] = useState("list");
     const [seguimientoValues, setSeguimientoValues] = useState({});
     const [error, setError] = useState(null);
 
@@ -374,6 +384,16 @@ const InmuebleConsultasPage = () => {
             return true;
         });
     }, [consultas, consultaFilter, searchTerm]);
+
+    const kanbanConsultas = useMemo(() => {
+        return KANBAN_COLUMNS.reduce((acc, estado) => {
+            acc[estado] = filteredConsultas.filter((consulta) => {
+                return normalizeConsultaEstado(consulta) === estado;
+            });
+
+            return acc;
+        }, {});
+    }, [filteredConsultas]);
 
     const unreadVisibleConsultas = useMemo(() => {
         return filteredConsultas.filter(
@@ -710,6 +730,33 @@ const InmuebleConsultasPage = () => {
                 </div>
 
                 <div className="d-flex flex-wrap gap-2">
+
+                    <div className="btn-group" role="group" aria-label="Modo de vista">
+                        <button
+                            type="button"
+                            className={
+                                viewMode === "list"
+                                    ? "btn btn-primary"
+                                    : "btn btn-outline-primary"
+                            }
+                            onClick={() => setViewMode("list")}
+                        >
+                            Lista
+                        </button>
+
+                        <button
+                            type="button"
+                            className={
+                                viewMode === "kanban"
+                                    ? "btn btn-primary"
+                                    : "btn btn-outline-primary"
+                            }
+                            onClick={() => setViewMode("kanban")}
+                        >
+                            Kanban
+                        </button>
+                    </div>
+
                     <button
                         type="button"
                         className="btn btn-outline-primary"
@@ -819,6 +866,244 @@ const InmuebleConsultasPage = () => {
             ) : filteredConsultas.length === 0 ? (
                 <div className="alert alert-info">
                     No hay consultas para el filtro seleccionado.
+                </div>
+            ) : viewMode === "kanban" ? (
+                <div className="row g-3 align-items-start">
+                    {KANBAN_COLUMNS.map((estado) => {
+                        const columnConsultas = kanbanConsultas[estado] || [];
+                        const columnLabel = CONSULTA_ESTADO_LABELS[estado] || estado;
+
+                        return (
+                            <section className="col-12 col-xl-4 col-xxl-2" key={estado}>
+                                <div className="card border-0 shadow-sm h-100">
+                                    <div className="card-header bg-white d-flex justify-content-between align-items-center gap-2">
+                                        <div>
+                                            <div className="fw-semibold">{columnLabel}</div>
+                                            <div className="small text-muted">
+                                                {columnConsultas.length} consulta
+                                                {columnConsultas.length === 1 ? "" : "s"}
+                                            </div>
+                                        </div>
+
+                                        <span className={getConsultaEstadoBadgeClass(estado)}>
+                                            {columnConsultas.length}
+                                        </span>
+                                    </div>
+
+                                    <div
+                                        className="card-body bg-light"
+                                        style={{ minHeight: 280 }}
+                                    >
+                                        {columnConsultas.length === 0 ? (
+                                            <div className="text-muted small">
+                                                Sin consultas en esta etapa.
+                                            </div>
+                                        ) : (
+                                            <div className="d-flex flex-column gap-3">
+                                                {columnConsultas.map((consulta) => {
+                                                    const publicUrl = buildPublicUrl(
+                                                        consulta.inmuebleSlug,
+                                                    );
+                                                    const whatsappReplyUrl =
+                                                        buildWhatsappReplyUrl(consulta);
+                                                    const emailReplyUrl =
+                                                        buildEmailReplyUrl(consulta);
+                                                    const isLoading =
+                                                        actionLoadingId === consulta.id;
+                                                    const normalizedEstado =
+                                                        normalizeConsultaEstado(consulta);
+                                                    const seguimientoValue =
+                                                        getSeguimientoValue(consulta);
+
+                                                    return (
+                                                        <article
+                                                            className="card border-0 shadow-sm"
+                                                            key={consulta.id}
+                                                        >
+                                                            <div className="card-body p-3">
+                                                                <div className="d-flex justify-content-between gap-2 mb-2">
+                                                                    <div className="overflow-hidden">
+                                                                        <h3 className="h6 mb-1 text-truncate">
+                                                                            {consulta.nombre ||
+                                                                                "Consulta sin nombre"}
+                                                                        </h3>
+
+                                                                        <div className="small text-muted">
+                                                                            {formatDate(
+                                                                                consulta.createdAt,
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <span
+                                                                        className={getConsultaEstadoBadgeClass(
+                                                                            normalizedEstado,
+                                                                        )}
+                                                                    >
+                                                                        {
+                                                                            CONSULTA_ESTADO_LABELS[
+                                                                            normalizedEstado
+                                                                            ]
+                                                                        }
+                                                                    </span>
+                                                                </div>
+
+                                                                <div className="small mb-2">
+                                                                    <strong>Inmueble:</strong>{" "}
+                                                                    {consulta.inmuebleTitulo ||
+                                                                        "Sin título"}
+                                                                </div>
+
+                                                                {(consulta.telefono ||
+                                                                    consulta.email) && (
+                                                                        <div className="small text-muted mb-2">
+                                                                            {consulta.telefono ||
+                                                                                consulta.email}
+                                                                        </div>
+                                                                    )}
+
+                                                                {consulta.mensaje && (
+                                                                    <p
+                                                                        className="small mb-2"
+                                                                        style={{
+                                                                            display: "-webkit-box",
+                                                                            WebkitLineClamp: 3,
+                                                                            WebkitBoxOrient:
+                                                                                "vertical",
+                                                                            overflow: "hidden",
+                                                                        }}
+                                                                    >
+                                                                        {consulta.mensaje}
+                                                                    </p>
+                                                                )}
+
+                                                                {seguimientoValue && (
+                                                                    <div className="border rounded-3 bg-light p-2 small mb-2">
+                                                                        <div className="text-muted mb-1">
+                                                                            Último seguimiento
+                                                                        </div>
+                                                                        <div
+                                                                            style={{
+                                                                                display:
+                                                                                    "-webkit-box",
+                                                                                WebkitLineClamp: 3,
+                                                                                WebkitBoxOrient:
+                                                                                    "vertical",
+                                                                                overflow:
+                                                                                    "hidden",
+                                                                            }}
+                                                                        >
+                                                                            {seguimientoValue}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                <select
+                                                                    className="form-select form-select-sm mb-2"
+                                                                    value={normalizedEstado}
+                                                                    disabled={isLoading}
+                                                                    onChange={(e) =>
+                                                                        handleUpdateEstado(
+                                                                            consulta,
+                                                                            e.target.value,
+                                                                        )
+                                                                    }
+                                                                >
+                                                                    <option
+                                                                        value={
+                                                                            CONSULTA_ESTADOS.NUEVA
+                                                                        }
+                                                                    >
+                                                                        Nueva
+                                                                    </option>
+                                                                    <option
+                                                                        value={
+                                                                            CONSULTA_ESTADOS.CONTACTADA
+                                                                        }
+                                                                    >
+                                                                        Contactada
+                                                                    </option>
+                                                                    <option
+                                                                        value={
+                                                                            CONSULTA_ESTADOS.VISITA
+                                                                        }
+                                                                    >
+                                                                        Visita coordinada
+                                                                    </option>
+                                                                    <option
+                                                                        value={
+                                                                            CONSULTA_ESTADOS.INTERESADA
+                                                                        }
+                                                                    >
+                                                                        Interesada
+                                                                    </option>
+                                                                    <option
+                                                                        value={
+                                                                            CONSULTA_ESTADOS.CERRADA
+                                                                        }
+                                                                    >
+                                                                        Cerrada
+                                                                    </option>
+                                                                    <option
+                                                                        value={
+                                                                            CONSULTA_ESTADOS.DESCARTADA
+                                                                        }
+                                                                    >
+                                                                        Descartada
+                                                                    </option>
+                                                                    <option
+                                                                        value={
+                                                                            CONSULTA_ESTADOS.ARCHIVADA
+                                                                        }
+                                                                    >
+                                                                        Archivada
+                                                                    </option>
+                                                                </select>
+
+                                                                <div className="d-flex flex-wrap gap-2">
+                                                                    {whatsappReplyUrl && (
+                                                                        <a
+                                                                            href={
+                                                                                whatsappReplyUrl
+                                                                            }
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            className="btn btn-sm btn-success"
+                                                                        >
+                                                                            WhatsApp
+                                                                        </a>
+                                                                    )}
+
+                                                                    {emailReplyUrl && (
+                                                                        <a
+                                                                            href={emailReplyUrl}
+                                                                            className="btn btn-sm btn-outline-primary"
+                                                                        >
+                                                                            Email
+                                                                        </a>
+                                                                    )}
+
+                                                                    {publicUrl && (
+                                                                        <Link
+                                                                            to={publicUrl}
+                                                                            target="_blank"
+                                                                            className="btn btn-sm btn-outline-secondary"
+                                                                        >
+                                                                            Publicación
+                                                                        </Link>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </article>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </section>
+                        );
+                    })}
                 </div>
             ) : (
                 <div className="row g-3">
