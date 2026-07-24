@@ -6,7 +6,9 @@ import { getPublicInmuebleBySlug } from "../services/inmueble.service";
 import { createInmuebleConsulta } from "../services/inmuebleConsulta.service";
 import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
 import InmuebleVideoSection from "../components/InmuebleVideoSection";
+import InmuebleMediaGallery from "../components/InmuebleMediaGallery";
 import { getVisibleInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+
 
 const INITIAL_CONSULTA = {
   nombre: "",
@@ -662,55 +664,13 @@ const InmueblePublicPage = () => {
             <div className="row g-0">
               <div className="col-lg-7">
                 <div className="p-3 p-lg-4">
-                  {selectedImage ? (
-                    <img
-                      src={selectedImage.url}
-                      alt={inmueble.titulo}
-                      className="img-fluid rounded-4 w-100"
-                      style={{
-                        height: 520,
-                        objectFit: "cover",
-                      }}
-                    />
-                  ) : (
-                    <div
-                      className="bg-light rounded-4 d-flex align-items-center justify-content-center text-muted"
-                      style={{ height: 520 }}
-                    >
-                      Sin imagen disponible
-                    </div>
-                  )}
-
-                  {sortedImages.length > 1 && (
-                    <div className="d-flex gap-2 mt-3 overflow-auto pb-1">
-                      {sortedImages.map((img, index) => (
-                        <button
-                          key={img.storagePath || img.url}
-                          type="button"
-                          className={`border rounded-3 p-0 overflow-hidden ${selectedImageIndex === index
-                            ? "border-primary border-3"
-                            : "border-light"
-                            }`}
-                          onClick={() => setSelectedImageIndex(index)}
-                          style={{
-                            width: 92,
-                            height: 70,
-                            flex: "0 0 auto",
-                            background: "transparent",
-                          }}
-                          aria-label={`Ver imagen ${index + 1}`}
-                        >
-                          <img
-                            src={img.url}
-                            alt={`${inmueble.titulo} - imagen ${index + 1}`}
-                            className="w-100 h-100"
-                            style={{ objectFit: "cover" }}
-                            loading="lazy"
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  <InmuebleMediaGallery
+                    images={sortedImages}
+                    title={inmueble.titulo}
+                    selectedIndex={selectedImageIndex}
+                    onSelectedIndexChange={setSelectedImageIndex}
+                    mainImageHeight={520}
+                  />
                 </div>
               </div>
 
