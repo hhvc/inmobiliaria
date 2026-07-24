@@ -9,6 +9,7 @@ import {
     archiveConsulta,
     restoreConsulta,
     updateConsultaEstado,
+    saveConsultaSeguimiento,
     CONSULTA_ESTADOS,
     CONSULTA_ESTADO_LABELS,
 } from "../services/inmuebleConsulta.service";
@@ -18,6 +19,10 @@ const formatDate = (timestamp) => {
 
     if (typeof timestamp.toDate === "function") {
         return timestamp.toDate().toLocaleString("es-AR");
+    }
+
+    if (timestamp instanceof Date) {
+        return timestamp.toLocaleString("es-AR");
     }
 
     return "Sin fecha";
@@ -299,6 +304,7 @@ const InmuebleConsultasPage = () => {
     const [actionLoadingId, setActionLoadingId] = useState(null);
     const [consultaFilter, setConsultaFilter] = useState("activas");
     const [searchTerm, setSearchTerm] = useState("");
+    const [seguimientoValues, setSeguimientoValues] = useState({});
     const [error, setError] = useState(null);
 
     const fetchConsultas = useCallback(async () => {
@@ -404,6 +410,64 @@ const InmuebleConsultasPage = () => {
         } catch (err) {
             console.error("Error actualizando etapa de consulta:", err);
             alert(err.message || "No se pudo actualizar la etapa de la consulta");
+        } finally {
+            setActionLoadingId(null);
+        }
+    };
+
+    const handleSeguimientoChange = (consultaId, value) => {
+        setSeguimientoValues((prev) => ({
+            ...prev,
+            [consultaId]: value,
+        }));
+    };
+
+    const getSeguimientoValue = (consulta) => {
+        if (!consulta?.id) return "";
+
+        if (Object.prototype.hasOwnProperty.call(seguimientoValues, consulta.id)) {
+            return seguimientoValues[consulta.id];
+        }
+
+        return consulta.notaInterna || "";
+    };
+
+    const handleSaveSeguimiento = async (consulta) => {
+        if (!consulta?.id) return;
+
+        try {
+            setActionLoadingId(`seguimiento-${consulta.id}`);
+
+            const notaInterna = getSeguimientoValue(consulta);
+
+            await saveConsultaSeguimiento(consulta.id, {
+                notaInterna,
+                userId: user.uid,
+            });
+
+            const now = new Date();
+
+            setConsultas((prev) =>
+                prev.map((item) =>
+                    item.id === consulta.id
+                        ? {
+                            ...item,
+                            notaInterna,
+                            lastContactAt: now,
+                            lastContactBy: user.uid,
+                        }
+                        : item,
+                ),
+            );
+
+            setSeguimientoValues((prev) => {
+                const next = { ...prev };
+                delete next[consulta.id];
+                return next;
+            });
+        } catch (err) {
+            console.error("Error guardando seguimiento de consulta:", err);
+            alert(err.message || "No se pudo guardar el seguimiento");
         } finally {
             setActionLoadingId(null);
         }
@@ -763,6 +827,8 @@ const InmuebleConsultasPage = () => {
                         const whatsappReplyUrl = buildWhatsappReplyUrl(consulta);
                         const emailReplyUrl = buildEmailReplyUrl(consulta);
                         const isLoading = actionLoadingId === consulta.id;
+                        const isSavingSeguimiento = actionLoadingId === `seguimiento-${consulta.id}`;
+                        const seguimientoValue = getSeguimientoValue(consulta);
                         const isArchived = isArchivedConsulta(consulta);
                         const normalizedEstado = normalizeConsultaEstado(consulta);
                         const estadoLabel =
@@ -899,6 +965,52 @@ const InmuebleConsultasPage = () => {
                                                 </p>
                                             </div>
                                         )}
+
+                                        <div className="mt-3 border rounded-3 p-3 bg-light">
+                                            <div className="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                                                <div>
+                                                    <label className="form-label fw-semibold mb-1">
+                                                        Seguimiento interno
+                                                    </label>
+
+                                                    <div className="small text-muted">
+                                                        Visible sólo para la inmobiliaria. No se muestra al interesado.
+                                                    </div>
+                                                </div>
+
+                                                {consulta.lastContactAt && (
+                                                    <div className="small text-muted text-md-end">
+                                                        Último seguimiento: {formatDate(consulta.lastContactAt)}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <textarea
+                                                className="form-control"
+                                                rows={3}
+                                                value={seguimientoValue}
+                                                onChange={(e) =>
+                                                    handleSeguimientoChange(consulta.id, e.target.value)
+                                                }
+                                                placeholder="Ej: Se respondió por WhatsApp. Quiere coordinar visita el viernes. Pendiente enviar ubicación exacta..."
+                                                disabled={isSavingSeguimiento}
+                                            />
+
+                                            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-2">
+                                                <div className="small text-muted">
+                                                    Máximo recomendado: 3000 caracteres.
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-sm btn-primary"
+                                                    disabled={isSavingSeguimiento}
+                                                    onClick={() => handleSaveSeguimiento(consulta)}
+                                                >
+                                                    {isSavingSeguimiento ? "Guardando..." : "Guardar seguimiento"}
+                                                </button>
+                                            </div>
+                                        </div>
 
                                         <div className="d-flex flex-wrap gap-2 mt-4">
                                             <button

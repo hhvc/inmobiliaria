@@ -718,8 +718,19 @@ allow delete: if isRoot();
             "estado",
             "leida",
             "archivada",
+            "notaInterna",
+            "lastContactAt",
+            "lastContactBy",
             "updatedAt"
-          ]);
+          ])
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(["notaInterna"])
+            || request.resource.data.notaInterna is string
+          )
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(["lastContactBy"])
+            || request.resource.data.lastContactBy == request.auth.uid
+          );
 
       allow delete: if isRoot();
     }

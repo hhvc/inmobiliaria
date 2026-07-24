@@ -196,6 +196,28 @@ export const updateConsultaEstado = async (consultaId, estado) => {
     });
 };
 
+export const saveConsultaSeguimiento = async (
+    consultaId,
+    { notaInterna = "", userId = "" } = {},
+) => {
+    if (!consultaId) {
+        throw new Error("consultaId es requerido");
+    }
+
+    if (!userId) {
+        throw new Error("userId es requerido para guardar seguimiento");
+    }
+
+    const normalizedNotaInterna = cleanText(notaInterna).slice(0, 3000);
+
+    await updateDoc(consultaDoc(consultaId), {
+        notaInterna: normalizedNotaInterna,
+        lastContactAt: serverTimestamp(),
+        lastContactBy: userId,
+        updatedAt: serverTimestamp(),
+    });
+};
+
 export const markConsultaAsRead = async (consultaId) => {
     if (!consultaId) {
         throw new Error("consultaId es requerido");
