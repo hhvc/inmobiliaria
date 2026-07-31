@@ -8,6 +8,49 @@ Guía de preparación para solicitar acceso avanzado a:
 No solicitar en esta primera revisión permisos de mensajes, comentarios,
 insights, publicidad, Reels o Stories.
 
+## Decisión de acceso
+
+OnoProp presta el mismo servicio a cuentas profesionales pertenecientes a
+distintas inmobiliarias. Por eso Meta la encuadra como **proveedor de
+tecnología que presta servicio a varios negocios**. Para Instagram Login este
+caso requiere:
+
+- Advanced Access para los dos permisos solicitados;
+- App Review aprobado;
+- completar la verificación como proveedor de tecnología y las verificaciones
+  comerciales que el panel muestre como obligatorias.
+
+El acceso estándar sólo alcanza para la cuenta central de Onoprop y otras
+cuentas que el titular de la aplicación posea o administre. No habilita el
+modelo multiempresa previsto.
+
+### Nombre del permiso de publicación
+
+El OAuth implementado y la guía oficial de Business Login actualizada el 13 de
+marzo de 2026 usan `instagram_business_content_publish`. Una tabla de la guía
+de App Review actualizada el 30 de junio de 2026 lo muestra como
+`instagram_business_content_publishing`. Mientras Meta mantenga esa
+inconsistencia documental, seleccionar y solicitar **el permiso que aparece en
+el panel de la aplicación**, sin agregar ambos. La aplicación actualmente
+funciona con `instagram_business_content_publish`.
+
+## Estado del expediente al 31 de julio de 2026
+
+| Requisito | Estado | Acción |
+| --- | --- | --- |
+| Portal cargable desde Internet | Listo | Verificar `https://onoprop.com/login` antes de enviar. |
+| OAuth y publicación con cuenta central | Listo | Ya fueron probados en producción. |
+| Política, términos y eliminación de datos | Listo | Mantener disponibles las tres URLs públicas. |
+| Botón visible para conectar Instagram | Listo | Está en **Inmueble > Difusión**. |
+| Llamada de prueba de `instagram_business_basic` | Lista para repetir | Usar **Probar con Meta** y comprobar el contador del panel. |
+| Llamada de publicación | Ejecutada | Comprobar que el contador del panel la reconozca; si no, repetir una publicación de prueba autorizada. |
+| Ícono de aplicación 1024 × 1024 | Confirmación manual | Revisar en **Configuración de la aplicación**. |
+| Correo electrónico del negocio | Confirmación manual | Usar una dirección activa de `@onoprop.com`. |
+| Proveedor de tecnología y verificaciones | Confirmación manual | Completar todo requisito que el panel mantenga pendiente. |
+| Cuenta profesional externa de demostración | Bloqueado por cuenta faltante | Conseguir una cuenta Business o Creator que no pertenezca a Onoprop. |
+| Usuario y datos de demostración | Pendiente | Crear al conseguir la cuenta externa. |
+| Videos por permiso | Pendiente | Grabar después de completar el piloto externo. |
+
 ## Estado técnico comprobado
 
 - Instagram Login completa correctamente el OAuth.
@@ -15,6 +58,8 @@ insights, publicidad, Reels o Stories.
 - El token se almacena cifrado y nunca se entrega al navegador.
 - Los tokens próximos a vencer se renuevan mediante una función programada.
 - La publicación de una imagen fue completada y se obtuvo su permalink.
+- El botón **Probar con Meta** valida la cuenta conectada mediante una llamada
+  real a `/me` y registra la fecha de comprobación sin crear publicaciones.
 - Están configuradas las URLs de redirección, desautorización y eliminación de
   datos.
 
@@ -46,6 +91,9 @@ Preparar antes de grabar o enviar:
   cuenta central `@ono.prop`.
 - Esa cuenta agregada como tester de la aplicación y con la invitación
   aceptada mientras la aplicación permanezca en modo desarrollo.
+
+Instagram Login no exige que esa cuenta profesional esté vinculada a una
+página de Facebook.
 
 No guardar contraseñas ni tokens de prueba en este archivo o en el
 repositorio. Las credenciales del portal se informan únicamente en el
@@ -100,6 +148,7 @@ be revoked by disconnecting Instagram from OnoProp or through Meta.
 3. Aparece Instagram Login y se autoriza la cuenta profesional.
 4. OnoProp vuelve a la pantalla **Difusión**.
 5. La cuenta aparece **Conectada** y se muestra su `@username`.
+6. El usuario pulsa **Probar con Meta** y OnoProp confirma la conexión.
 
 ## `instagram_business_content_publish`
 
@@ -162,23 +211,35 @@ property and its media are test content prepared specifically for this review.
 If assistance is required, contact [REVIEW_CONTACT_EMAIL].
 ```
 
-## Guion para el video
+## Guiones para los videos
 
-Grabar un único video corto y legible, preferentemente en una ventana privada:
+Meta solicita una captura específica para cada permiso. Grabar en resolución
+legible, preferentemente en una ventana privada. Como la interfaz de OnoProp
+está en español, agregar subtítulos en inglés que expliquen cada acción y el
+significado de los botones principales.
 
-1. Mostrar `https://onoprop.com/login`.
-2. Iniciar sesión con el usuario de revisión.
-3. Abrir **Inmuebles** y pulsar **Difusión** en el inmueble de prueba.
-4. Mostrar **Instagram de la inmobiliaria — Sin conectar**.
-5. Pulsar **Conectar Instagram propio**.
-6. Mostrar la pantalla de autorización alojada por Instagram y aceptar.
-7. Mostrar el regreso a OnoProp y el estado **Conectada**.
-8. Mostrar el caption y la selección de imágenes.
-9. Pulsar **Publicar en mi Instagram**.
-10. Mostrar el estado final y abrir **Ver publicación**.
+### Video 1 — `instagram_business_basic`
 
-Evitar cortes que oculten el OAuth o la acción de publicación. No mostrar
-contraseñas, tokens, secretos, Firebase Console ni código fuente.
+1. Mostrar `https://onoprop.com/login` e iniciar sesión con el usuario de
+   revisión sin exponer la contraseña.
+2. Abrir **Inmuebles** y pulsar **Difusión** en el inmueble de prueba.
+3. Mostrar **Instagram de la inmobiliaria — Sin conectar**.
+4. Pulsar **Conectar Instagram propio**.
+5. Mostrar la autorización alojada por Instagram y aceptar.
+6. Mostrar el regreso a OnoProp, el estado **Conectada** y el `@username`.
+7. Pulsar **Probar con Meta** y mostrar la confirmación exitosa.
+
+### Video 2 — `instagram_business_content_publish`
+
+1. Comenzar en **Difusión** con la cuenta profesional ya conectada.
+2. Mostrar el caption y la selección explícita de imágenes.
+3. Pulsar **Publicar en mi Instagram** y confirmar.
+4. Mostrar el estado final **Publicada**.
+5. Abrir **Ver publicación** y mostrar el post resultante en Instagram.
+
+Evitar cortes que oculten la autorización o la acción de publicación. No
+mostrar contraseñas, tokens, secretos, Firebase Console ni código fuente. Cada
+video debe concentrarse en el permiso correspondiente.
 
 ## URLs públicas
 
@@ -199,8 +260,8 @@ contraseñas, tokens, secretos, Firebase Console ni código fuente.
 - Los dos permisos están añadidos al mismo borrador de revisión.
 - Los contadores o requisitos de llamadas de prueba están completos.
 - La verificación comercial continúa vigente.
-- La verificación como proveedor de tecnología está completada si el panel la
-  exige para acceder a datos de empresas clientes.
+- La verificación como proveedor de tecnología y las verificaciones
+  comerciales exigidas por el panel están completadas.
 - El nombre legal, correo de contacto y datos de la empresa coinciden entre
   OnoProp, las páginas legales y el portfolio empresarial de Meta.
 - Las credenciales privadas del usuario revisor funcionan en una ventana
@@ -208,6 +269,7 @@ contraseñas, tokens, secretos, Firebase Console ni código fuente.
 - El usuario revisor sólo ve datos de demostración.
 - La cuenta profesional usada en la grabación no está conectada simultáneamente
   como cuenta central de Onoprop.
-- El video muestra el OAuth, el uso de ambos permisos y la publicación final.
+- Cada permiso tiene un video específico y los subtítulos necesarios para
+  explicar la interfaz en español.
 - El post de demostración sigue disponible durante la revisión.
 - No se solicitaron permisos que todavía no usa la aplicación.

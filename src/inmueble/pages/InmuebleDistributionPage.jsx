@@ -27,6 +27,7 @@ import {
     publishInstagramAgencyMedia,
     startInstagramAuthorization,
     submitOnopropInstagramPublication,
+    validateInstagramConnection,
 } from "../services/instagram.service";
 import {
     buildMercadoLibreLocationDefaults,
@@ -111,6 +112,16 @@ const getInstagramPublicationBadgeClass = (status = "not_started") => {
     };
 
     return `badge ${classes[status] || "text-bg-secondary"}`;
+};
+
+const formatInstagramVerificationDate = (value) => {
+    const date = new Date(Number(value || 0));
+    if (Number.isNaN(date.getTime())) return "";
+
+    return new Intl.DateTimeFormat("es-AR", {
+        dateStyle: "short",
+        timeStyle: "short",
+    }).format(date);
 };
 
 const getInstagramChannelStatus = (distribution = {}, fallback = "") => {
@@ -672,6 +683,7 @@ const InmuebleDistributionPage = () => {
         onoprop: { status: "not_started" },
     });
     const [instagramError, setInstagramError] = useState("");
+    const [instagramSuccess, setInstagramSuccess] = useState("");
     const [instagramOperation, setInstagramOperation] = useState("");
 
     const channelsState = {
@@ -1031,6 +1043,7 @@ const InmuebleDistributionPage = () => {
         try {
             setInstagramOperation(operationName);
             setInstagramError("");
+            setInstagramSuccess("");
             return await operation();
         } catch (err) {
             console.error(`Error en Instagram (${operationName}):`, err);
@@ -1071,6 +1084,23 @@ const InmuebleDistributionPage = () => {
                         "Instagram no confirmó la conexión. Intentá nuevamente.",
                     );
                 }
+            });
+        } catch {
+            // El mensaje ya se muestra dentro de la pantalla.
+        }
+    };
+
+    const handleInstagramValidate = async (target) => {
+        try {
+            await runInstagramOperation(`validate-${target}`, async () => {
+                const result = await validateInstagramConnection({
+                    inmobiliariaId: activeInmobiliariaId,
+                    target,
+                });
+                await refreshInstagramConnections();
+                setInstagramSuccess(
+                    `Instagram confirmó la conexión de @${result.username || "la cuenta"}.`,
+                );
             });
         } catch {
             // El mensaje ya se muestra dentro de la pantalla.
@@ -1827,7 +1857,7 @@ const InmuebleDistributionPage = () => {
                             }
                             disabled={Boolean(instagramOperation)}
                         >
-                            Verificar conexiones
+                            Actualizar estado
                         </button>
                     </div>
 
@@ -1855,12 +1885,25 @@ const InmuebleDistributionPage = () => {
                                 </div>
 
                                 {instagramConnections.agency?.connected ? (
-                                    <p className="text-muted mb-3">
-                                        @
-                                        {instagramConnections.agency.username ||
-                                            instagramConnections.agency
-                                                .instagramUserId}
-                                    </p>
+                                    <div className="text-muted mb-3">
+                                        <p className="mb-1">
+                                            @
+                                            {instagramConnections.agency
+                                                .username ||
+                                                instagramConnections.agency
+                                                    .instagramUserId}
+                                        </p>
+                                        {instagramConnections.agency
+                                            .lastVerifiedAt && (
+                                            <small>
+                                                Última comprobación: {" "}
+                                                {formatInstagramVerificationDate(
+                                                    instagramConnections.agency
+                                                        .lastVerifiedAt,
+                                                )}
+                                            </small>
+                                        )}
+                                    </div>
                                 ) : instagramConnections.eligibility?.agency ? (
                                     <p className="text-muted mb-3">
                                         Conectá una cuenta profesional Business o
@@ -1874,16 +1917,30 @@ const InmuebleDistributionPage = () => {
                                 )}
 
                                 {instagramConnections.agency?.connected ? (
-                                    <button
-                                        type="button"
-                                        className="btn btn-outline-danger btn-sm"
-                                        onClick={() =>
-                                            handleInstagramDisconnect("agency")
-                                        }
-                                        disabled={Boolean(instagramOperation)}
-                                    >
-                                        Desconectar
-                                    </button>
+                                    <div className="d-flex flex-wrap gap-2">
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline-secondary btn-sm"
+                                            onClick={() =>
+                                                handleInstagramValidate("agency")
+                                            }
+                                            disabled={Boolean(instagramOperation)}
+                                        >
+                                            {instagramOperation === "validate-agency"
+                                                ? "Comprobando..."
+                                                : "Probar con Meta"}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="btn btn-outline-danger btn-sm"
+                                            onClick={() =>
+                                                handleInstagramDisconnect("agency")
+                                            }
+                                            disabled={Boolean(instagramOperation)}
+                                        >
+                                            Desconectar
+                                        </button>
+                                    </div>
                                 ) : (
                                     <button
                                         type="button"
@@ -1937,26 +1994,56 @@ const InmuebleDistributionPage = () => {
                                         }`
                                         : "Las publicaciones se envían a una cola administrada por Onoprop."}
                                 </p>
+                                {instagramConnections.onoprop?.connected &&
+                                    instagramConnections.onoprop
+                                        .lastVerifiedAt && (
+                                    <p className="text-muted small mb-3">
+                                        Última comprobación: {" "}
+                                        {formatInstagramVerificationDate(
+                                            instagramConnections.onoprop
+                                                .lastVerifiedAt,
+                                        )}
+                                    </p>
+                                )}
 
                                 {instagramConnections.eligibility
                                     ?.canManageOnoprop && (
                                     <>
                                         {instagramConnections.onoprop
                                             ?.connected ? (
-                                            <button
-                                                type="button"
-                                                className="btn btn-outline-danger btn-sm"
-                                                onClick={() =>
-                                                    handleInstagramDisconnect(
-                                                        "onoprop",
-                                                    )
-                                                }
-                                                disabled={Boolean(
-                                                    instagramOperation,
-                                                )}
-                                            >
-                                                Desconectar cuenta central
-                                            </button>
+                                            <div className="d-flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-secondary btn-sm"
+                                                    onClick={() =>
+                                                        handleInstagramValidate(
+                                                            "onoprop",
+                                                        )
+                                                    }
+                                                    disabled={Boolean(
+                                                        instagramOperation,
+                                                    )}
+                                                >
+                                                    {instagramOperation ===
+                                                    "validate-onoprop"
+                                                        ? "Comprobando..."
+                                                        : "Probar con Meta"}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-danger btn-sm"
+                                                    onClick={() =>
+                                                        handleInstagramDisconnect(
+                                                            "onoprop",
+                                                        )
+                                                    }
+                                                    disabled={Boolean(
+                                                        instagramOperation,
+                                                    )}
+                                                >
+                                                    Desconectar cuenta central
+                                                </button>
+                                            </div>
                                         ) : (
                                             <button
                                                 type="button"
@@ -1985,6 +2072,11 @@ const InmuebleDistributionPage = () => {
                     {instagramError && (
                         <div className="alert alert-danger mt-3 mb-0">
                             {instagramError}
+                        </div>
+                    )}
+                    {instagramSuccess && (
+                        <div className="alert alert-success mt-3 mb-0">
+                            {instagramSuccess}
                         </div>
                     )}
                 </div>

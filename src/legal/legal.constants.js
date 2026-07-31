@@ -12,5 +12,4 @@ export const LEGAL_FISCAL_ADDRESS =
 export const LEGAL_COUNTRY = "Argentina";
 export const LEGAL_EMAIL = "contacto@onoprop.com";
 export const LEGAL_PRIVACY_EMAIL = "privacidad@onoprop.com";
-export const LEGAL_PHONE = "+54 351 9 5478785";
-export const LEGAL_LAST_UPDATED = "30 de julio de 2026";
+export const LEGAL_LAST_UPDATED = "31 de julio de 2026";

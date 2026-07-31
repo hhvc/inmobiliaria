@@ -529,6 +529,7 @@ const sanitizeConnection = (data = {}) => {
         accountType: data.accountType || "",
         target: data.target || "",
         expiresAtMs: expiresAtMs || null,
+        lastVerifiedAt: data.lastVerifiedAt?.toMillis?.() || null,
         updatedAt: data.updatedAt?.toMillis?.() || null,
     };
 };
@@ -1478,6 +1479,7 @@ export const instagramOAuthCallback = onRequest(
                 expiresAtMs,
                 scope: INSTAGRAM_SCOPES,
                 connectedAt: FieldValue.serverTimestamp(),
+                lastVerifiedAt: FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp(),
             };
             const linkEntries =
@@ -1608,6 +1610,96 @@ export const instagramConnectionStatus = onCall(
             };
         } catch (error) {
             throw toHttpsError(error, "No se pudo consultar la conexión de Instagram.");
+        }
+    },
+);
+
+export const instagramValidateConnection = onCall(
+    {
+        region: REGION,
+        invoker: "public",
+        secrets: [INSTAGRAM_TOKEN_ENCRYPTION_KEY],
+    },
+    async (request) => {
+        try {
+            const target = normalizeTarget(request.data?.target);
+            const { uid, inmobiliariaId, userData, inmobiliaria } =
+                await assertAuthenticatedManager(request);
+
+            if (target === "onoprop") {
+                await assertRoot(uid);
+            } else {
+                assertOwnInstagramEntitlement(userData, inmobiliaria);
+            }
+
+            const connection = await getValidConnection(target, inmobiliariaId);
+            const profile = await instagramApiRequest("/me", {
+                accessToken: connection.accessToken,
+                query: { fields: "id,user_id,username,account_type" },
+            });
+            const storedIdentifiers = new Set(
+                getInstagramConnectionIdentifiers(connection.integration),
+            );
+            const returnedIdentifiers = [profile.id, profile.user_id]
+                .map(normalizeInstagramIdentifier)
+                .filter(Boolean);
+
+            if (
+                returnedIdentifiers.length === 0 ||
+                !returnedIdentifiers.some((identifier) =>
+                    storedIdentifiers.has(identifier),
+                )
+            ) {
+                await connection.ref.set(
+                    {
+                        connected: false,
+                        requiresReconnect: true,
+                        accessTokenEncrypted: FieldValue.delete(),
+                        lastVerificationError:
+                            "Instagram devolvió una cuenta diferente a la vinculada.",
+                        updatedAt: FieldValue.serverTimestamp(),
+                    },
+                    { merge: true },
+                );
+                throw new HttpsError(
+                    "failed-precondition",
+                    "Instagram devolvió una cuenta diferente. Volvé a conectarla.",
+                );
+            }
+
+            const verifiedAt = Date.now();
+            const username = cleanText(
+                profile.username || connection.integration.username,
+                200,
+            );
+            const accountType = cleanText(
+                profile.account_type || connection.integration.accountType,
+                50,
+            );
+
+            await connection.ref.set(
+                {
+                    username,
+                    accountType,
+                    lastVerifiedAt: Timestamp.fromMillis(verifiedAt),
+                    lastVerificationError: FieldValue.delete(),
+                    updatedAt: FieldValue.serverTimestamp(),
+                },
+                { merge: true },
+            );
+
+            return {
+                verified: true,
+                target,
+                username,
+                accountType,
+                verifiedAt,
+            };
+        } catch (error) {
+            throw toHttpsError(
+                error,
+                "No se pudo verificar la conexión con Instagram.",
+            );
         }
     },
 );

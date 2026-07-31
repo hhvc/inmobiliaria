@@ -154,6 +154,8 @@ La pantalla **Difusión** permite:
   inmueble.
 - Publicar en la cuenta propia.
 - Enviar a la cola central de Onoprop.
+- Probar una cuenta conectada mediante una llamada real a Instagram, sin crear
+  contenido, con el botón **Probar con Meta**.
 
 La cola root está en:
 

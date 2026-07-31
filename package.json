@@ -8,6 +8,7 @@
     "build": "npm run seo:sitemap && vite build",
     "lint": "eslint .",
     "test:instagram": "node --test tests/instagram.helpers.test.js",
+    "test:whatsapp": "node --test tests/whatsapp.helpers.test.js",
     "test:mercadolibre": "node --test tests/mercadoLibreDistribution.helpers.test.js tests/mercadoLibreNotifications.helpers.test.js",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy",

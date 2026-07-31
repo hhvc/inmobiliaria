@@ -3,7 +3,6 @@ import {
   LEGAL_EMAIL,
   LEGAL_FISCAL_ADDRESS,
   LEGAL_OPERATOR,
-  LEGAL_PHONE,
   LEGAL_TAX_ID,
   LEGAL_TRADE_NAME,
 } from "./legal.constants";
@@ -220,8 +219,7 @@ const TermsPage = () => {
         </p>
         <p>
           Consultas legales o contractuales:{" "}
-          <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a> o{" "}
-          <a href={`tel:${LEGAL_PHONE.replace(/\s/g, "")}`}>{LEGAL_PHONE}</a>.
+          <a href={`mailto:${LEGAL_EMAIL}`}>{LEGAL_EMAIL}</a>.
         </p>
       </section>
     </LegalPageLayout>

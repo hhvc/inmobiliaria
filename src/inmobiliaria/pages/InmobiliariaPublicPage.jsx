@@ -9,6 +9,7 @@ import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueb
 import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import { getAgencySlugFromDomain } from "../utils/domainRouting";
 import { useDomainAgency } from "../context/useDomainAgency";
+import { buildWhatsappRedirectUrl } from "../../utils/whatsappRedirect";
 import {
   getInmuebleAmenityBadges,
   getInmuebleFeatureBadges,
@@ -178,26 +179,13 @@ const buildInmuebleUrl = (inmueble = {}) => {
   return slugOrId ? `/inmueble/${slugOrId}` : "/inmuebles";
 };
 
-const normalizeWhatsappNumber = (value = "") => {
-  return value.toString().replace(/\D/g, "");
-};
-
 const buildWhatsappUrl = ({ whatsapp, inmobiliaria, slug }) => {
-  const cleanNumber = normalizeWhatsappNumber(whatsapp);
+  if (!whatsapp || !inmobiliaria || !slug) return null;
 
-  if (!cleanNumber) return null;
-
-  const pageUrl = getCurrentInmobiliariaUrl(slug);
-
-  const message = [
-    `Hola, quiero consultar por las propiedades de ${inmobiliaria?.nombre || "la inmobiliaria"
-    }.`,
-    pageUrl ? `Link: ${pageUrl}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-
-  return `https://wa.me/${cleanNumber}?text=${encodeURIComponent(message)}`;
+  return buildWhatsappRedirectUrl({
+    agencySlug: slug,
+    source: "agency-page",
+  });
 };
 
 const getLogoUrl = (inmobiliaria = {}) => {
@@ -466,7 +454,6 @@ const buildSeoDescription = ({ inmobiliaria, contacto, inmueblesCount }) => {
       `Conocé ${inmueblesCount || "las"} propiedades publicadas por ${inmobiliaria?.nombre
       }.`,
       contacto.telefono ? `Teléfono: ${contacto.telefono}.` : "",
-      contacto.whatsapp ? `WhatsApp: ${contacto.whatsapp}.` : "",
     ]
       .filter(Boolean)
       .join(" "),
@@ -489,7 +476,7 @@ const buildInmobiliariaJsonLd = ({
     name: inmobiliaria?.nombre,
     url: seoUrl,
     image: seoImage,
-    telephone: contacto.telefono || contacto.whatsapp || undefined,
+    telephone: contacto.telefono || undefined,
     email: contacto.email || undefined,
     address: {
       "@type": "PostalAddress",
@@ -1477,7 +1464,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                     {contacto.whatsapp && (
                       <div>
                         <div className="small text-muted">WhatsApp</div>
-                        <span>{contacto.whatsapp}</span>
+                        <span>Disponible mediante el botón de contacto</span>
                       </div>
                     )}
                   </div>

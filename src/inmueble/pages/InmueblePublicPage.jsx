@@ -8,6 +8,7 @@ import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobilia
 import InmuebleVideoSection from "../components/InmuebleVideoSection";
 import InmuebleMediaGallery from "../components/InmuebleMediaGallery";
 import { getVisibleInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+import { buildWhatsappRedirectUrl } from "../../utils/whatsappRedirect";
 
 
 const INITIAL_CONSULTA = {
@@ -120,33 +121,13 @@ const getAgencyUrl = (inmobiliaria) => {
   return `${window.location.origin}/inmobiliaria/${inmobiliaria.slug}`;
 };
 
-const normalizeWhatsappNumber = (value = "") => {
-  return value.toString().replace(/\D/g, "");
-};
+const buildWhatsappUrl = ({ whatsapp, agencySlug }) => {
+  if (!whatsapp || !agencySlug) return null;
 
-const buildWhatsappMessage = (inmueble) => {
-  const pageUrl = getCurrentPageUrl(inmueble?.slug);
-
-  const parts = [
-    "Hola, me interesa este inmueble publicado en LaDocTaProp.",
-    inmueble?.titulo ? `Inmueble: ${inmueble.titulo}` : "",
-    inmueble?.operacion ? `Operación: ${inmueble.operacion}` : "",
-    inmueble?.tipo ? `Tipo: ${inmueble.tipo}` : "",
-    inmueble?.precio ? `Precio: ${formatPrice(inmueble)}` : "",
-    pageUrl ? `Link: ${pageUrl}` : "",
-  ].filter(Boolean);
-
-  return parts.join("\n");
-};
-
-const buildWhatsappUrl = ({ whatsapp, inmueble }) => {
-  const cleanNumber = normalizeWhatsappNumber(whatsapp);
-
-  if (!cleanNumber) return null;
-
-  const message = encodeURIComponent(buildWhatsappMessage(inmueble));
-
-  return `https://wa.me/${cleanNumber}?text=${message}`;
+  return buildWhatsappRedirectUrl({
+    agencySlug,
+    source: "property-page",
+  });
 };
 
 const getFeatureItems = (inmueble) => {
@@ -320,10 +301,7 @@ const buildPropertyJsonLd = ({
         "@type": "RealEstateAgent",
         name: inmobiliaria.nombre,
         url: agencyUrl,
-        telephone:
-          contactoInmobiliaria?.telefono ||
-          contactoInmobiliaria?.whatsapp ||
-          undefined,
+        telephone: contactoInmobiliaria?.telefono || undefined,
         email: contactoInmobiliaria?.email || undefined,
       }
       : undefined,
@@ -435,9 +413,13 @@ const InmueblePublicPage = () => {
   const whatsappUrl = useMemo(() => {
     return buildWhatsappUrl({
       whatsapp: contactoInmobiliaria.whatsapp,
-      inmueble,
+      agencySlug:
+        inmobiliaria?.slug ||
+        inmueble?.inmobiliariaSlug ||
+        inmueble?.publisher?.slug ||
+        "",
     });
-  }, [contactoInmobiliaria.whatsapp, inmueble]);
+  }, [contactoInmobiliaria.whatsapp, inmobiliaria?.slug, inmueble]);
 
   useEffect(() => {
     setSelectedImageIndex(0);

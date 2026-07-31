@@ -104,6 +104,7 @@ export {
   instagramAuthStart,
   instagramOAuthCallback,
   instagramConnectionStatus,
+  instagramValidateConnection,
   instagramDisconnect,
   instagramGetDistribution,
   instagramPublishAgencyMedia,
@@ -115,3 +116,5 @@ export {
   instagramDeauthorize,
   instagramDataDeletion,
 } from "./instagram.js";
+
+export { whatsappRedirect } from "./whatsapp.js";

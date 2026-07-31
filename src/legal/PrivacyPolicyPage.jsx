@@ -3,7 +3,6 @@ import {
   LEGAL_COUNTRY,
   LEGAL_FISCAL_ADDRESS,
   LEGAL_OPERATOR,
-  LEGAL_PHONE,
   LEGAL_PRIVACY_EMAIL,
   LEGAL_TAX_ID,
   LEGAL_TRADE_NAME,
@@ -34,9 +33,7 @@ const PrivacyPolicyPage = () => {
         <p>
           Podés realizar consultas sobre privacidad o ejercer tus derechos
           desde {LEGAL_COUNTRY} escribiendo a{" "}
-          <a href={`mailto:${LEGAL_PRIVACY_EMAIL}`}>{LEGAL_PRIVACY_EMAIL}</a> o
-          comunicándote al{" "}
-          <a href={`tel:${LEGAL_PHONE.replace(/\s/g, "")}`}>{LEGAL_PHONE}</a>.
+          <a href={`mailto:${LEGAL_PRIVACY_EMAIL}`}>{LEGAL_PRIVACY_EMAIL}</a>.
         </p>
         <p>
           Esta política se aplica al portal onoprop.com, sus paneles para

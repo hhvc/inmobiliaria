@@ -2,21 +2,9 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 import { useContactForm } from "../hooks/useContactForm";
+import { buildWhatsappRedirectUrl } from "../utils/whatsappRedirect";
 
 const CONTACT_EMAIL = "contacto@onoprop.com";
-const CONTACT_PHONE_DISPLAY = "+54 351 9 5478785";
-const CONTACT_WHATSAPP_NUMBER = "54935195478785";
-
-const buildWhatsappUrl = () => {
-  const message = [
-    "Hola, quiero recibir información sobre ONO Prop.",
-    "Me interesa conocer cómo funciona la plataforma para inmobiliarias.",
-  ].join("\n");
-
-  return `https://wa.me/${CONTACT_WHATSAPP_NUMBER}?text=${encodeURIComponent(
-    message,
-  )}`;
-};
 
 const Contact = () => {
   const location = useLocation();
@@ -40,7 +28,7 @@ const Contact = () => {
     }
   }, [location.state]);
 
-  const whatsappUrl = buildWhatsappUrl();
+  const whatsappUrl = buildWhatsappRedirectUrl({ source: "contact-page" });
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -309,7 +297,7 @@ const Contact = () => {
                       rel="noopener noreferrer"
                       className="fw-semibold text-decoration-none"
                     >
-                      {CONTACT_PHONE_DISPLAY}
+                      Abrir conversación en WhatsApp
                     </a>
                   </div>
 

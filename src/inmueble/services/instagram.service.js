@@ -29,6 +29,13 @@ export const getInstagramConnectionStatus = (inmobiliariaId) => {
     });
 };
 
+export const validateInstagramConnection = ({ inmobiliariaId, target }) => {
+    return callInstagramFunction("instagramValidateConnection", {
+        inmobiliariaId,
+        target,
+    });
+};
+
 export const startInstagramAuthorization = ({
     inmobiliariaId,
     target,
