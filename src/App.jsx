@@ -85,6 +85,13 @@ import InmuebleNetworkDetailPage from "./inmueble/pages/InmuebleNetworkDetailPag
 import InmuebleNetworkRequestsPage from "./inmueble/pages/InmuebleNetworkRequestsPage";
 import InmuebleBulkImportPage from "./inmueble/pages/InmuebleBulkImportPage";
 
+// Emprendimientos
+import EmprendimientoListPage from "./emprendimiento/pages/EmprendimientoListPage";
+import EmprendimientoFormPage from "./emprendimiento/pages/EmprendimientoFormPage";
+import EmprendimientoPortalPage from "./emprendimiento/pages/EmprendimientoPortalPage";
+import EmprendimientoPublicPage from "./emprendimiento/pages/EmprendimientoPublicPage";
+import EmprendimientoUnitsPage from "./emprendimiento/pages/EmprendimientoUnitsPage";
+
 
 function App() {
   useEffect(() => {
@@ -140,6 +147,11 @@ function App() {
                 />
                 <Route path="/inmuebles" element={<InmueblePortalPage />} />
                 <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
+                <Route path="/emprendimientos" element={<EmprendimientoPortalPage />} />
+                <Route
+                  path="/emprendimiento/:slug"
+                  element={<EmprendimientoPublicPage />}
+                />
 
                 <Route
                   path="/inmobiliaria/:slug"
@@ -309,6 +321,58 @@ function App() {
                 {/* =========================
                   Admin - Inmuebles
                  ========================= */}
+
+                <Route
+                  path="/admin/emprendimientos"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canViewInmuebles">
+                          <EmprendimientoListPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/emprendimientos/nuevo"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canCreateInmuebles">
+                          <EmprendimientoFormPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/emprendimientos/:id/editar"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canEditInmuebles">
+                          <EmprendimientoFormPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/emprendimientos/:id/unidades"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canEditInmuebles">
+                          <EmprendimientoUnitsPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
 
                 <Route
                   path="/admin/inmuebles"

@@ -20,6 +20,15 @@ const MODULE_CARDS = [
         icon: "🏠",
     },
     {
+        id: "emprendimientos",
+        title: "Emprendimientos",
+        description: "Administrar edificios, loteos, desarrollos y sus unidades.",
+        route: "/admin/emprendimientos",
+        cta: "Administrar emprendimientos",
+        icon: "🏗️",
+        requiredModules: ["inmuebles"],
+    },
+    {
         id: "consultas",
         title: "Consultas",
         description: "Gestionar leads recibidos desde fichas públicas.",

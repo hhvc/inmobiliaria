@@ -189,6 +189,26 @@ service firebase.storage {
         || belongsToUserInmobiliaria(inmobiliariaId);
     }
 
+    /* ================= Emprendimientos ================= */
+
+    match /emprendimientos/{inmobiliariaId}/{emprendimientoId}/{fileName} {
+
+      allow read: if true;
+
+      allow create, update: if
+        isSignedIn()
+        && (
+          isRoot()
+          || belongsToUserInmobiliaria(inmobiliariaId)
+        )
+        && isImage()
+        && isValidImageSize();
+
+      allow delete: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
+    }
+
     /* ================= Solicitudes particulares - imágenes privadas =================
        Ruta:
        /particular_publication_requests/{requestId}/{userId}/{fileName}

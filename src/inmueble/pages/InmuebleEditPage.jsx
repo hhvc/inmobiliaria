@@ -87,6 +87,16 @@ const EMPTY_VALUES = {
   noIndex: false,
   images: [],
 
+  emprendimientoId: "",
+  emprendimientoNombre: "",
+  emprendimientoSlug: "",
+  unidadEmprendimiento: {
+    codigo: "",
+    tipologia: "",
+    piso: "",
+    disponibilidad: "disponible",
+  },
+
   inmobiliariaId: "",
   ownerInmobiliariaId: "",
   ownerId: "",
@@ -187,6 +197,10 @@ const InmuebleEditPage = () => {
     searchParams.get("fromParticularRequest") === "1";
   const queryParticularRequestId =
     searchParams.get("particularRequestId") || "";
+  const wasDuplicated = searchParams.get("duplicated") === "1";
+  const duplicatedFromId = searchParams.get("duplicatedFrom") || "";
+  const copiedImagesCount = Number(searchParams.get("copiedImages") || 0);
+  const duplicateImageCopyFailed = searchParams.get("imageCopyError") === "1";
 
   const resolvedInmobiliariaIdForLoad =
     queryInmobiliariaId || activeInmobiliariaId || "";
@@ -643,6 +657,30 @@ const InmuebleEditPage = () => {
           </button>
         </div>
       </header>
+
+      {wasDuplicated && (
+        <div
+          className={`alert ${
+            duplicateImageCopyFailed ? "alert-warning" : "alert-success"
+          } border`}
+        >
+          <strong>La copia se creó como borrador independiente.</strong>
+          <div className="small mt-1">
+            Revisá el título, código de unidad, ubicación, precio y demás
+            diferencias. No está publicada ni destacada.
+          </div>
+          <div className="small mt-1">
+            Origen: <code>{duplicatedFromId || "no disponible"}</code> · Fotos
+            copiadas: <strong>{copiedImagesCount}</strong>.
+          </div>
+          {duplicateImageCopyFailed && (
+            <div className="small mt-1">
+              La copia fue creada, pero alguna foto no pudo copiarse. Podés
+              cargarlas nuevamente desde la galería de esta pantalla.
+            </div>
+          )}
+        </div>
+      )}
 
       {originInfo.isFromParticularRequest && (
         <div className="alert alert-success border">

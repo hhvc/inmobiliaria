@@ -96,6 +96,13 @@ function isSelfCreatedInmobiliaria(inmoId) {
         && resource.data.publicarEnPortal == true;
     }
 
+    function isPublicEmprendimiento(resource) {
+      return resource != null
+        && resource.data.estado == "activo"
+        && resource.data.deleted == false
+        && resource.data.publicarEnPortal == true;
+    }
+
     function isPublicInmobiliaria(resource) {
       return resource != null
         && resource.data.activa == true;
@@ -656,6 +663,45 @@ allow delete: if isRoot();
             && canManageInmueblePrivateData(inmoId, inmuebleId);
         }
       }
+
+      /* ============================
+         SUBCOLECCIÓN EMPRENDIMIENTOS
+         ============================ */
+
+      match /emprendimientos/{emprendimientoId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || isOwner(resource)
+          || isPublicEmprendimiento(resource);
+
+        allow create: if
+          isSignedIn()
+          && (
+            isRoot()
+            || (
+              isAdmin()
+              && belongsToUserInmobiliaria(inmoId)
+              && request.resource.data.ownerId == request.auth.uid
+              && request.resource.data.ownerInmobiliariaId == inmoId
+              && request.resource.data.inmobiliariaId == inmoId
+            )
+          );
+
+        allow update: if
+          isSignedIn()
+          && (
+            isRoot()
+            || adminHasInmobiliaria(inmoId)
+            || isOwner(resource)
+          )
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId;
+
+        allow delete: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId);
+      }
     }
 
     /* ============================
@@ -672,6 +718,15 @@ allow delete: if isRoot();
         isPublicInmueble(resource)
         || canReadNetworkInmueble(resource);
 
+      allow create, update, delete: if false;
+    }
+
+    /* ============================
+       COLLECTION GROUP: EMPRENDIMIENTOS
+       ============================ */
+
+    match /{path=**}/emprendimientos/{emprendimientoId} {
+      allow read: if isPublicEmprendimiento(resource);
       allow create, update, delete: if false;
     }
 

@@ -600,14 +600,15 @@ export const uploadInmuebleImages = async ({
 };
 
 /**
- * Copia imágenes cargadas en una solicitud particular hacia
- * la carpeta pública/operativa del inmueble.
+ * Copia imágenes existentes hacia una carpeta propia del nuevo inmueble.
+ * Esto evita que una copia dependa de los archivos del registro original.
  */
-export const copyPublicationRequestImagesToInmueble = async ({
+export const copySourceImagesToInmueble = async ({
   images = [],
   inmuebleId,
   inmobiliariaId,
   startOrder = 0,
+  source = "inmueble_duplicate",
 }) => {
   if (!inmuebleId || !inmobiliariaId) {
     throw new Error("Faltan IDs para copiar imágenes al inmueble");
@@ -649,7 +650,7 @@ export const copyPublicationRequestImagesToInmueble = async ({
       index,
       order: startOrder + index,
       customMetadata: {
-        source: "particular_publication_request",
+        source,
         sourceStoragePath: image.storagePath || "",
       },
       extraImageData: {
@@ -662,3 +663,12 @@ export const copyPublicationRequestImagesToInmueble = async ({
 
   return uploadedImages;
 };
+
+/**
+ * Alias específico mantenido para el flujo de solicitudes particulares.
+ */
+export const copyPublicationRequestImagesToInmueble = (options = {}) =>
+  copySourceImagesToInmueble({
+    ...options,
+    source: "particular_publication_request",
+  });

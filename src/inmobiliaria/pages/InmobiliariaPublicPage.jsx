@@ -6,6 +6,11 @@ import {
   getInmobiliariaBySlug,
 } from "../services/inmobiliaria.service";
 import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueble.service";
+import { getPublicEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
+import {
+  getEmprendimientoStatusLabel,
+  getEmprendimientoTypeLabel,
+} from "../../emprendimiento/utils/emprendimientoSchema";
 import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import { getAgencySlugFromDomain } from "../utils/domainRouting";
 import { useDomainAgency } from "../context/useDomainAgency";
@@ -653,6 +658,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
 
   const [inmobiliaria, setInmobiliaria] = useState(null);
   const [inmuebles, setInmuebles] = useState([]);
+  const [emprendimientos, setEmprendimientos] = useState([]);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
 
   const [loading, setLoading] = useState(true);
@@ -713,6 +719,17 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
         }
       } finally {
         setInmueblesLoading(false);
+      }
+
+      try {
+        const developments =
+          await getPublicEmprendimientosByInmobiliaria(inmobiliariaId, {
+            pageSize: 12,
+          });
+        setEmprendimientos(developments);
+      } catch (err) {
+        console.warn("No se pudieron cargar los emprendimientos públicos:", err);
+        setEmprendimientos([]);
       }
     } catch (err) {
       console.error("Error cargando inmobiliaria:", err);
@@ -1156,6 +1173,89 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                   <InmueblePublicCard inmueble={inmueble} />
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {emprendimientos.length > 0 && (
+        <section className="py-4 bg-light" id="emprendimientos-publicados">
+          <div className="container">
+            <div className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
+              <div>
+                <p className="text-uppercase text-muted small mb-1">
+                  Proyectos y desarrollos
+                </p>
+                <h2 className="h3 mb-0">
+                  Emprendimientos de {inmobiliaria?.nombre}
+                </h2>
+              </div>
+              <Link
+                className="btn btn-outline-primary"
+                to={`/emprendimientos?inmobiliaria=${encodeURIComponent(
+                  inmobiliaria?.id || inmobiliaria?.inmobiliariaId || "",
+                )}`}
+              >
+                Ver todos
+              </Link>
+            </div>
+
+            <div className="row g-4">
+              {emprendimientos.map((development) => {
+                const cover = [...(development.images || [])]
+                  .filter((image) => image?.url)
+                  .sort((a, b) => (a.order || 0) - (b.order || 0))[0];
+
+                return (
+                  <div className="col-12 col-md-6 col-xl-4" key={development.id}>
+                    <article className="card h-100 border-0 shadow-sm overflow-hidden">
+                      {cover?.url ? (
+                        <img
+                          src={cover.url}
+                          alt={development.nombre}
+                          className="card-img-top"
+                          loading="lazy"
+                          style={{ height: 230, objectFit: "cover" }}
+                        />
+                      ) : (
+                        <div
+                          className="bg-white text-muted d-flex align-items-center justify-content-center"
+                          style={{ height: 230 }}
+                        >
+                          Sin imagen
+                        </div>
+                      )}
+                      <div className="card-body d-flex flex-column">
+                        <div className="d-flex flex-wrap gap-2 mb-2">
+                          <span className="badge text-bg-primary">
+                            {getEmprendimientoTypeLabel(development.tipo)}
+                          </span>
+                          <span className="badge text-bg-info">
+                            {getEmprendimientoStatusLabel(
+                              development.estadoObra,
+                            )}
+                          </span>
+                        </div>
+                        <h3 className="h5">{development.nombre}</h3>
+                        <p className="text-muted small">
+                          {[
+                            development.direccion?.barrio,
+                            development.direccion?.ciudad,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                        <Link
+                          className="btn btn-outline-primary mt-auto"
+                          to={`/emprendimiento/${development.slug}`}
+                        >
+                          Ver emprendimiento
+                        </Link>
+                      </div>
+                    </article>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>

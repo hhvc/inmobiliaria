@@ -128,6 +128,17 @@ export const inmuebleInitialValues = {
   destacado: false,
   orden: 0,
 
+  /* ===== Emprendimiento / unidad ===== */
+  emprendimientoId: "",
+  emprendimientoNombre: "",
+  emprendimientoSlug: "",
+  unidadEmprendimiento: {
+    codigo: "",
+    tipologia: "",
+    piso: "",
+    disponibilidad: "disponible",
+  },
+
   /* ===== Auditoría ===== */
   createdAt: null,
   updatedAt: null,

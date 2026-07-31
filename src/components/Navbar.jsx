@@ -128,6 +128,11 @@ const Navbar = () => {
           hash: "#inmuebles-publicados",
         },
         {
+          label: "Emprendimientos",
+          to: `${agencyBasePath}#emprendimientos-publicados`,
+          hash: "#emprendimientos-publicados",
+        },
+        {
           label: "Contacto",
           to: `${agencyBasePath}#contacto`,
           hash: "#contacto",
@@ -143,6 +148,10 @@ const Navbar = () => {
       {
         label: "Inmuebles",
         to: "/inmuebles",
+      },
+      {
+        label: "Emprendimientos",
+        to: "/emprendimientos",
       },
       {
         label: "Inmobiliarias",
@@ -360,15 +369,26 @@ const Navbar = () => {
                           </li>
 
                           {canCreateInmuebles && (
-                            <li>
-                              <Link
-                                className="dropdown-item"
-                                to="/admin/inmuebles/nuevo"
-                                onClick={closeMenus}
-                              >
-                                Nueva publicación
-                              </Link>
-                            </li>
+                            <>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/inmuebles/nuevo"
+                                  onClick={closeMenus}
+                                >
+                                  Nueva publicación
+                                </Link>
+                              </li>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/emprendimientos"
+                                  onClick={closeMenus}
+                                >
+                                  Emprendimientos
+                                </Link>
+                              </li>
+                            </>
                           )}
 
                           <li>

@@ -258,6 +258,17 @@ const InmuebleListPage = () => {
     navigate(`/admin/inmuebles/${id}/difusion`);
   };
 
+  const handleDuplicate = (id) => {
+    const params = new URLSearchParams();
+    params.set("duplicarId", id);
+
+    if (activeInmobiliariaId) {
+      params.set("inmobiliariaId", activeInmobiliariaId);
+    }
+
+    navigate(`/admin/inmuebles/nuevo?${params.toString()}`);
+  };
+
   const handleDelete = async (id) => {
     if (!activeInmobiliariaId) {
       alert("No hay inmobiliaria activa seleccionada");
@@ -546,6 +557,12 @@ const InmuebleListPage = () => {
                               ★ Destacado
                             </span>
                           )}
+
+                          {inmueble.emprendimientoId && (
+                            <span className="badge text-bg-info">
+                              🏗️ {inmueble.emprendimientoNombre || "Unidad de emprendimiento"}
+                            </span>
+                          )}
                         </div>
 
                         <h2 className="h5 mb-2">
@@ -603,6 +620,14 @@ const InmuebleListPage = () => {
                           onClick={() => handleEdit(inmueble.id)}
                         >
                           Editar
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary btn-sm w-100"
+                          onClick={() => handleDuplicate(inmueble.id)}
+                        >
+                          Duplicar como borrador
                         </button>
 
                         <button

@@ -27,6 +27,11 @@ const STATIC_ROUTES = [
         priority: "0.9",
     },
     {
+        path: "/emprendimientos",
+        changefreq: "daily",
+        priority: "0.9",
+    },
+    {
         path: "/privacidad",
         changefreq: "yearly",
         priority: "0.3",
@@ -189,6 +194,16 @@ const isPublicInmueble = (data = {}) => {
     return true;
 };
 
+const isPublicEmprendimiento = (data = {}) => {
+    if (!data.slug) return false;
+    if (data.deleted === true) return false;
+    if (data.estado !== "activo") return false;
+    if (data.publicarEnPortal !== true) return false;
+    if (isNoIndex(data)) return false;
+
+    return true;
+};
+
 const getInmobiliariasPublicas = async (db) => {
     const snapshot = await db.collection("inmobiliarias").get();
 
@@ -214,6 +229,25 @@ const getInmueblesPublicosByInmobiliaria = async (db, inmobiliariaId) => {
             ...docSnap.data(),
         }))
         .filter(isPublicInmueble);
+};
+
+const getEmprendimientosPublicosByInmobiliaria = async (
+    db,
+    inmobiliariaId,
+) => {
+    const snapshot = await db
+        .collection("inmobiliarias")
+        .doc(inmobiliariaId)
+        .collection("emprendimientos")
+        .get();
+
+    return snapshot.docs
+        .map((docSnap) => ({
+            id: docSnap.id,
+            inmobiliariaId,
+            ...docSnap.data(),
+        }))
+        .filter(isPublicEmprendimiento);
 };
 
 const buildSitemapEntry = ({
@@ -300,6 +334,25 @@ const main = async () => {
                 lastmod: toLastmod(inmueble.updatedAt || inmueble.createdAt),
                 changefreq: "weekly",
                 priority: inmueble.destacado ? "0.8" : "0.7",
+            });
+        });
+
+        const emprendimientos =
+            await getEmprendimientosPublicosByInmobiliaria(
+                db,
+                inmobiliaria.id,
+            );
+
+        emprendimientos.forEach((emprendimiento) => {
+            const emprendimientoSlug = normalizeSlug(emprendimiento.slug);
+
+            entries.push({
+                loc: buildUrl(`/emprendimiento/${emprendimientoSlug}`),
+                lastmod: toLastmod(
+                    emprendimiento.updatedAt || emprendimiento.createdAt,
+                ),
+                changefreq: "weekly",
+                priority: emprendimiento.destacado ? "0.8" : "0.7",
             });
         });
     }

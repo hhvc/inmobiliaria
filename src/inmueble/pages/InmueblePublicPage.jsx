@@ -679,6 +679,17 @@ const InmueblePublicPage = () => {
 
                   <h1 className="display-6 fw-bold mb-3">{inmueble.titulo}</h1>
 
+                  {inmueble.emprendimientoSlug && (
+                    <p className="mb-3">
+                      <Link
+                        className="badge text-bg-info text-decoration-none p-2"
+                        to={`/emprendimiento/${inmueble.emprendimientoSlug}`}
+                      >
+                        Parte de {inmueble.emprendimientoNombre || "un emprendimiento"}
+                      </Link>
+                    </p>
+                  )}
+
                   {address && <p className="text-muted mb-3">{address}</p>}
 
                   {inmobiliaria?.nombre && (

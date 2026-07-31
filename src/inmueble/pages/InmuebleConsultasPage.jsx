@@ -28,9 +28,18 @@ const formatDate = (timestamp) => {
     return "Sin fecha";
 };
 
-const buildPublicUrl = (slug) => {
+const buildPublicUrl = (consulta = {}) => {
+    const slug = consulta.emprendimientoSlug || consulta.inmuebleSlug;
     if (!slug) return null;
-    return `/inmueble/${slug}`;
+
+    return consulta.sourceType === "emprendimiento"
+        ? `/emprendimiento/${slug}`
+        : `/inmueble/${slug}`;
+};
+
+const buildAbsolutePublicUrl = (consulta = {}) => {
+    const path = buildPublicUrl(consulta);
+    return path ? `${window.location.origin}${path}` : "";
 };
 
 const normalizeWhatsappNumber = (value = "") => {
@@ -42,14 +51,12 @@ const buildWhatsappReplyUrl = (consulta) => {
 
     if (!phone) return null;
 
-    const publicUrl = consulta.inmuebleSlug
-        ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
-        : "";
+    const publicUrl = buildAbsolutePublicUrl(consulta);
 
     const message = [
         `Hola ${consulta.nombre || ""}, te contacto por tu consulta en LaDocTaProp.`,
         consulta.inmuebleTitulo
-            ? `Inmueble: ${consulta.inmuebleTitulo}`
+            ? `Publicación: ${consulta.inmuebleTitulo}`
             : "",
         consulta.inmuebleOperacion || consulta.inmuebleTipo
             ? `Referencia: ${consulta.inmuebleOperacion || ""} ${consulta.inmuebleTipo || ""}`.trim()
@@ -63,18 +70,16 @@ const buildWhatsappReplyUrl = (consulta) => {
 };
 
 const buildLeadClipboardText = (consulta) => {
-    const publicUrl = consulta.inmuebleSlug
-        ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
-        : "";
+    const publicUrl = buildAbsolutePublicUrl(consulta);
 
     return [
-        "Consulta de inmueble - LaDocTaProp",
+        "Consulta de publicación - ONO Prop",
         "",
         `Nombre: ${consulta.nombre || "Sin nombre"}`,
         `Email: ${consulta.email || "Sin email"}`,
         `Teléfono / WhatsApp: ${consulta.telefono || "Sin teléfono"}`,
         "",
-        `Inmueble: ${consulta.inmuebleTitulo || "Sin título"}`,
+        `Publicación: ${consulta.inmuebleTitulo || "Sin título"}`,
         `Operación: ${consulta.inmuebleOperacion || "Sin operación"}`,
         `Tipo: ${consulta.inmuebleTipo || "Sin tipo"}`,
         publicUrl ? `Link: ${publicUrl}` : "",
@@ -88,9 +93,7 @@ const buildLeadClipboardText = (consulta) => {
 const buildEmailReplyUrl = (consulta) => {
     if (!consulta.email) return null;
 
-    const publicUrl = consulta.inmuebleSlug
-        ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
-        : "";
+    const publicUrl = buildAbsolutePublicUrl(consulta);
 
     const subject = consulta.inmuebleTitulo
         ? `Consulta por ${consulta.inmuebleTitulo}`
@@ -102,7 +105,7 @@ const buildEmailReplyUrl = (consulta) => {
         "Te contacto por tu consulta en LaDocTaProp.",
         "",
         consulta.inmuebleTitulo
-            ? `Inmueble: ${consulta.inmuebleTitulo}`
+            ? `Publicación: ${consulta.inmuebleTitulo}`
             : "",
         consulta.inmuebleOperacion || consulta.inmuebleTipo
             ? `Referencia: ${consulta.inmuebleOperacion || ""} ${consulta.inmuebleTipo || ""}`.trim()
@@ -143,9 +146,7 @@ const buildConsultasCsv = (consultas) => {
     ];
 
     const rows = consultas.map((consulta) => {
-        const publicUrl = consulta.inmuebleSlug
-            ? `${window.location.origin}/inmueble/${consulta.inmuebleSlug}`
-            : "";
+        const publicUrl = buildAbsolutePublicUrl(consulta);
 
         return [
             formatDate(consulta.createdAt),
@@ -901,9 +902,7 @@ const InmuebleConsultasPage = () => {
                                         ) : (
                                             <div className="d-flex flex-column gap-3">
                                                 {columnConsultas.map((consulta) => {
-                                                    const publicUrl = buildPublicUrl(
-                                                        consulta.inmuebleSlug,
-                                                    );
+                                                    const publicUrl = buildPublicUrl(consulta);
                                                     const whatsappReplyUrl =
                                                         buildWhatsappReplyUrl(consulta);
                                                     const emailReplyUrl =
@@ -1108,7 +1107,7 @@ const InmuebleConsultasPage = () => {
             ) : (
                 <div className="row g-3">
                     {filteredConsultas.map((consulta) => {
-                        const publicUrl = buildPublicUrl(consulta.inmuebleSlug);
+                        const publicUrl = buildPublicUrl(consulta);
                         const whatsappReplyUrl = buildWhatsappReplyUrl(consulta);
                         const emailReplyUrl = buildEmailReplyUrl(consulta);
                         const isLoading = actionLoadingId === consulta.id;

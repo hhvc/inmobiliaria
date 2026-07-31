@@ -57,6 +57,16 @@ const buildPageUrl = (slug) => {
     return `${window.location.origin}/inmueble/${slug}`;
 };
 
+const buildEmprendimientoPageUrl = (slug) => {
+    if (!slug) return "";
+
+    if (typeof window === "undefined") {
+        return `/emprendimiento/${slug}`;
+    }
+
+    return `${window.location.origin}/emprendimiento/${slug}`;
+};
+
 const sortConsultasByDateDesc = (consultas = []) => {
     return [...consultas].sort((a, b) => {
         const aTime =
@@ -140,6 +150,56 @@ export const createInmuebleConsulta = async ({
 
     const docRef = await addDoc(consultasCollection(), consulta);
 
+    return docRef.id;
+};
+
+export const createEmprendimientoConsulta = async ({
+    emprendimiento,
+    nombre,
+    email,
+    telefono,
+    mensaje,
+}) => {
+    if (!emprendimiento?.id || !emprendimiento?.inmobiliariaId) {
+        throw new Error("No se pudo identificar el emprendimiento");
+    }
+
+    const normalizedNombre = cleanText(nombre);
+    const normalizedEmail = normalizeEmail(email);
+    const normalizedTelefono = normalizePhone(telefono);
+    const normalizedMensaje = cleanText(mensaje);
+
+    if (!normalizedNombre) throw new Error("El nombre es obligatorio");
+    if (!normalizedEmail && !normalizedTelefono) {
+        throw new Error("Ingresá un email o un teléfono de contacto");
+    }
+
+    const consulta = {
+        inmuebleId: emprendimiento.id,
+        inmuebleSlug: emprendimiento.slug || "",
+        inmuebleTitulo: emprendimiento.nombre || "",
+        inmuebleOperacion: "emprendimiento",
+        inmuebleTipo: emprendimiento.tipo || "",
+        sourceType: "emprendimiento",
+        emprendimientoId: emprendimiento.id,
+        emprendimientoSlug: emprendimiento.slug || "",
+        inmobiliariaId: emprendimiento.inmobiliariaId,
+        ownerInmobiliariaId:
+            emprendimiento.ownerInmobiliariaId || emprendimiento.inmobiliariaId,
+        nombre: normalizedNombre,
+        email: normalizedEmail,
+        telefono: normalizedTelefono,
+        mensaje: normalizedMensaje,
+        source: "emprendimiento_public_page",
+        pageUrl: buildEmprendimientoPageUrl(emprendimiento.slug),
+        estado: "nueva",
+        leida: false,
+        archivada: false,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+    };
+
+    const docRef = await addDoc(consultasCollection(), consulta);
     return docRef.id;
 };
 

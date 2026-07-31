@@ -5,9 +5,10 @@ import InmuebleForm from "../components/InmuebleForm";
 import { useAuth } from "../../context/auth/useAuth";
 import {
   createInmueble,
+  getInmuebleById,
   updateInmuebleImages,
 } from "../services/inmueble.service";
-import { copyPublicationRequestImagesToInmueble } from "../helpers/uploadInmuebleImages";
+import { copySourceImagesToInmueble } from "../helpers/uploadInmuebleImages";
 import { canCreateInmueble } from "../helpers/permissions";
 import {
   getParticularPublicationRequestById,
@@ -19,6 +20,7 @@ import { approvePublicationRequestAsParticular } from "../../particular/services
 import PublicationRequestImages from "../../particular/components/PublicationRequestImages";
 import InmuebleVideoSection from "../components/InmuebleVideoSection";
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+import { buildInmuebleDuplicateValues } from "../utils/inmuebleDuplicate.helpers";
 import {
   DEFAULT_AMENITIES,
   DEFAULT_CARACTERISTICAS,
@@ -97,6 +99,16 @@ const INITIAL_VALUES = {
   noIndex: false,
   images: [],
   videos: [],
+
+  emprendimientoId: "",
+  emprendimientoNombre: "",
+  emprendimientoSlug: "",
+  unidadEmprendimiento: {
+    codigo: "",
+    tipologia: "",
+    piso: "",
+    disponibilidad: "disponible",
+  },
 
   inmobiliariaId: "",
   ownerInmobiliariaId: "",
@@ -433,10 +445,20 @@ const InmuebleCreatePage = () => {
     "";
 
   const queryInmobiliariaId = searchParams.get("inmobiliariaId") || "";
+  const duplicateInmuebleId = searchParams.get("duplicarId") || "";
+  const queryEmprendimientoId = searchParams.get("emprendimientoId") || "";
+  const queryEmprendimientoNombre =
+    searchParams.get("emprendimientoNombre") || "";
+  const queryEmprendimientoSlug =
+    searchParams.get("emprendimientoSlug") || "";
 
   const [values, setValues] = useState(INITIAL_VALUES);
   const [sourceRequest, setSourceRequest] = useState(null);
+  const [duplicateSource, setDuplicateSource] = useState(null);
   const [loadingRequest, setLoadingRequest] = useState(false);
+  const [loadingDuplicate, setLoadingDuplicate] = useState(
+    Boolean(duplicateInmuebleId),
+  );
   const [loading, setLoading] = useState(false);
   const [approvingParticular, setApprovingParticular] = useState(false);
   const [error, setError] = useState(null);
@@ -527,6 +549,110 @@ const InmuebleCreatePage = () => {
   }, [activeInmobiliariaId, particularRequestId, queryInmobiliariaId]);
 
   /* =========================
+     Precargar duplicado
+     ========================= */
+
+  useEffect(() => {
+    if (!duplicateInmuebleId || particularRequestId) return;
+
+    const targetInmobiliariaId =
+      queryInmobiliariaId || activeInmobiliariaId || "";
+
+    if (!targetInmobiliariaId) {
+      setLoadingDuplicate(false);
+      setError("No hay una inmobiliaria activa para preparar la copia");
+      return;
+    }
+
+    let isMounted = true;
+
+    const fetchDuplicateSource = async () => {
+      try {
+        setLoadingDuplicate(true);
+        setError(null);
+
+        const source = await getInmuebleById(
+          targetInmobiliariaId,
+          duplicateInmuebleId,
+        );
+
+        if (!source) {
+          throw new Error("No se encontró el inmueble que querés duplicar");
+        }
+
+        if (!isMounted) return;
+
+        const duplicateValues = buildInmuebleDuplicateValues({
+          source,
+          inmobiliariaId: targetInmobiliariaId,
+        });
+
+        setDuplicateSource(source);
+        setValues({
+          ...INITIAL_VALUES,
+          ...duplicateValues,
+          direccion: {
+            ...INITIAL_VALUES.direccion,
+            ...(duplicateValues.direccion || {}),
+          },
+          superficie: {
+            ...DEFAULT_SUPERFICIE,
+            ...(duplicateValues.superficie || {}),
+          },
+          caracteristicas: {
+            ...DEFAULT_CARACTERISTICAS,
+            ...(duplicateValues.caracteristicas || {}),
+          },
+          amenities: {
+            ...DEFAULT_AMENITIES,
+            ...(duplicateValues.amenities || {}),
+          },
+          servicios: {
+            ...DEFAULT_SERVICIOS,
+            ...(duplicateValues.servicios || {}),
+          },
+          medidas: {
+            ...DEFAULT_MEDIDAS,
+            ...(duplicateValues.medidas || {}),
+          },
+          unidadEmprendimiento: {
+            ...INITIAL_VALUES.unidadEmprendimiento,
+            ...(duplicateValues.unidadEmprendimiento || {}),
+          },
+          sharing: {
+            ...DEFAULT_SHARING,
+            ...(duplicateValues.sharing || {}),
+            enabled: false,
+          },
+          networkData: {
+            ...DEFAULT_NETWORK_DATA,
+            ...(duplicateValues.networkData || {}),
+          },
+        });
+      } catch (err) {
+        console.error("Error cargando inmueble para duplicar:", err);
+
+        if (isMounted) {
+          setError(err.message || "No se pudo preparar la copia del inmueble");
+        }
+      } finally {
+        if (isMounted) setLoadingDuplicate(false);
+      }
+    };
+
+    fetchDuplicateSource();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    activeInmobiliariaId,
+    duplicateInmuebleId,
+    particularRequestId,
+    queryInmobiliariaId,
+  ]);
+
+  /* =========================
      Asegurar inmobiliaria activa
      ========================= */
 
@@ -534,15 +660,25 @@ const InmuebleCreatePage = () => {
     if (!activeInmobiliariaId) return;
 
     setValues((prev) => {
-      if (prev.inmobiliariaId) return prev;
-
       return {
         ...prev,
-        inmobiliariaId: activeInmobiliariaId,
-        ownerInmobiliariaId: activeInmobiliariaId,
+        inmobiliariaId: prev.inmobiliariaId || activeInmobiliariaId,
+        ownerInmobiliariaId:
+          prev.ownerInmobiliariaId || activeInmobiliariaId,
+        emprendimientoId:
+          prev.emprendimientoId || queryEmprendimientoId || "",
+        emprendimientoNombre:
+          prev.emprendimientoNombre || queryEmprendimientoNombre || "",
+        emprendimientoSlug:
+          prev.emprendimientoSlug || queryEmprendimientoSlug || "",
       };
     });
-  }, [activeInmobiliariaId]);
+  }, [
+    activeInmobiliariaId,
+    queryEmprendimientoId,
+    queryEmprendimientoNombre,
+    queryEmprendimientoSlug,
+  ]);
 
   /* =========================
      Handlers
@@ -626,6 +762,7 @@ const InmuebleCreatePage = () => {
   const handleCreate = async (formValues) => {
     let conversionReserved = false;
     let createdInmuebleId = "";
+    const isDuplicateCreation = Boolean(duplicateSource?.id);
 
     try {
       setLoading(true);
@@ -713,19 +850,30 @@ const InmuebleCreatePage = () => {
         deleted: false,
 
         estado: formValues?.estado || "activo",
-        destacado: Boolean(formValues?.destacado),
-        publicarEnPortal: Boolean(formValues?.publicarEnPortal),
+        destacado: isDuplicateCreation
+          ? false
+          : Boolean(formValues?.destacado),
+        publicarEnPortal: isDuplicateCreation
+          ? false
+          : Boolean(formValues?.publicarEnPortal),
         noIndex:
-          sourceRequest && formValues?.noIndex !== false
+          isDuplicateCreation
+            ? true
+            : sourceRequest && formValues?.noIndex !== false
             ? true
             : Boolean(formValues?.noIndex),
 
         sharing: normalizedSharing,
 
-        sourceType: sourceRequest
-          ? "particular_publication_request"
-          : publicFormValues.sourceType || "",
+        sourceType: isDuplicateCreation
+          ? "duplicate"
+          : sourceRequest
+            ? "particular_publication_request"
+            : publicFormValues.sourceType || "",
         particularPublicationRequestId: sourceRequest?.id || "",
+        duplicatedFromInmuebleId: isDuplicateCreation
+          ? duplicateSource.id
+          : "",
       };
 
       const result = await createInmueble(
@@ -750,14 +898,18 @@ const InmuebleCreatePage = () => {
 
       let copiedImages = [];
       let imageCopyError = "";
+      const sourceImages = sourceRequest?.images || duplicateSource?.images || [];
 
-      if (sourceRequest?.images?.length > 0 && inmuebleId) {
+      if (sourceImages.length > 0 && inmuebleId) {
         try {
-          copiedImages = await copyPublicationRequestImagesToInmueble({
-            images: sourceRequest.images,
+          copiedImages = await copySourceImagesToInmueble({
+            images: sourceImages,
             inmuebleId,
             inmobiliariaId: selectedInmobiliariaId,
             startOrder: 0,
+            source: sourceRequest
+              ? "particular_publication_request"
+              : "inmueble_duplicate",
           });
 
           if (copiedImages.length > 0) {
@@ -769,7 +921,7 @@ const InmuebleCreatePage = () => {
           }
         } catch (imageError) {
           console.error(
-            "Error copiando fotos de solicitud particular:",
+            "Error copiando fotos al nuevo inmueble:",
             imageError,
           );
 
@@ -816,6 +968,23 @@ const InmuebleCreatePage = () => {
       console.log("✅ Inmueble creado:", inmuebleId || result);
 
       if (inmuebleId) {
+        if (isDuplicateCreation) {
+          const duplicateParams = new URLSearchParams();
+          duplicateParams.set("inmobiliariaId", selectedInmobiliariaId);
+          duplicateParams.set("duplicated", "1");
+          duplicateParams.set("duplicatedFrom", duplicateSource.id);
+          duplicateParams.set("copiedImages", `${copiedImages.length}`);
+
+          if (imageCopyError) {
+            duplicateParams.set("imageCopyError", "1");
+          }
+
+          navigate(
+            `/admin/inmuebles/${inmuebleId}/editar?${duplicateParams.toString()}`,
+          );
+          return;
+        }
+
         navigate(
           convertedPaths.editPath ||
           `/admin/inmuebles/${inmuebleId}/editar?inmobiliariaId=${encodeURIComponent(
@@ -854,10 +1023,12 @@ const InmuebleCreatePage = () => {
   return (
     <section className="page-container">
       <header className="page-header">
-        <h1>Nuevo inmueble</h1>
+        <h1>{duplicateSource ? "Duplicar inmueble" : "Nuevo inmueble"}</h1>
 
         <p>
-          {sourceRequest
+          {duplicateSource
+            ? "Revisá la copia precargada y editá sus diferencias antes de crearla."
+            : sourceRequest
             ? "Revisá y completá la información precargada desde la solicitud particular."
             : "Cargá la información básica para publicar el inmueble."}
         </p>
@@ -868,6 +1039,26 @@ const InmuebleCreatePage = () => {
       {loadingRequest && (
         <div className="alert alert-light border">
           Cargando datos de la solicitud particular...
+        </div>
+      )}
+
+      {loadingDuplicate && (
+        <div className="alert alert-light border">
+          Preparando una copia editable del inmueble...
+        </div>
+      )}
+
+      {duplicateSource && (
+        <div className="alert alert-info border">
+          <strong>Copia preparada desde “{duplicateSource.titulo || "Inmueble sin título"}”.</strong>
+          <div className="small mt-1">
+            Todavía no se creó ningún registro. Al guardar se generará un inmueble
+            independiente, no publicado y no destacado. Se copiarán sus datos,
+            videos y {duplicateSource.images?.length || 0} foto(s) a archivos propios.
+          </div>
+          <div className="small mt-1">
+            La configuración de difusión y las publicaciones externas no se copian.
+          </div>
         </div>
       )}
 
@@ -1058,7 +1249,14 @@ const InmuebleCreatePage = () => {
         </div>
       )}
 
-      {sourceRequestConversionBlocked ? (
+      {duplicateInmuebleId && !duplicateSource ? (
+        !loadingDuplicate && (
+          <div className="alert alert-light border">
+            No se muestra el formulario porque no fue posible cargar el inmueble
+            de origen. Volvé al listado e intentá nuevamente.
+          </div>
+        )
+      ) : sourceRequestConversionBlocked ? (
         <div className="alert alert-light border">
           {sourceRequestAlreadyApprovedAsParticular
             ? "No se muestra el formulario de creación porque esta solicitud ya fue aprobada como publicación particular de ONO Prop."
@@ -1070,13 +1268,19 @@ const InmuebleCreatePage = () => {
         <InmuebleForm
           values={values}
           errors={{}}
-          loading={loading || loadingRequest || approvingParticular}
+          loading={
+            loading ||
+            loadingRequest ||
+            loadingDuplicate ||
+            approvingParticular
+          }
           isEditMode={false}
           handleChange={handleChange}
           handleNestedChange={handleNestedChange}
           handleSubmit={handleCreate}
           inmuebleId={null}
           inmobiliariaId={values.inmobiliariaId || activeInmobiliariaId}
+          forceDraft={Boolean(duplicateSource)}
         />
       )}
     </section>

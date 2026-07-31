@@ -14,6 +14,7 @@ import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
 import InmuebleVideos from "./InmuebleVideos";
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+import { getEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
 
 import {
   AMENITIES_LABELS,
@@ -101,11 +102,14 @@ const InmuebleForm = ({
   handleSubmit,
   inmuebleId = null,
   inmobiliariaId = null,
+  forceDraft = false,
 }) => {
   const { user, activeInmobiliariaId } = useContext(AuthContext);
 
   const [inmobiliariasById, setInmobiliariasById] = useState({});
   const [loadingInmobiliarias, setLoadingInmobiliarias] = useState(false);
+  const [emprendimientos, setEmprendimientos] = useState([]);
+  const [loadingEmprendimientos, setLoadingEmprendimientos] = useState(false);
 
   const imageManager = useInmuebleImages(values?.images ?? []);
 
@@ -182,6 +186,35 @@ const InmuebleForm = ({
       mounted = false;
     };
   }, [selectorInmobiliariaIdsKey]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchEmprendimientos = async () => {
+      if (!selectedInmobiliariaId) {
+        setEmprendimientos([]);
+        return;
+      }
+
+      try {
+        setLoadingEmprendimientos(true);
+        const data = await getEmprendimientosByInmobiliaria(
+          selectedInmobiliariaId,
+        );
+        if (mounted) setEmprendimientos(data);
+      } catch (error) {
+        console.error("Error cargando emprendimientos:", error);
+        if (mounted) setEmprendimientos([]);
+      } finally {
+        if (mounted) setLoadingEmprendimientos(false);
+      }
+    };
+
+    fetchEmprendimientos();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedInmobiliariaId]);
 
   const puedeCambiarInmobiliaria =
     selectorInmobiliariaIds.length > 1 &&
@@ -309,8 +342,11 @@ const InmuebleForm = ({
 
       estado: values?.estado || "activo",
 
-      publicarEnPortal: Boolean(values?.publicarEnPortal),
-      noIndex: Boolean(values?.noIndex),
+      destacado: forceDraft ? false : Boolean(values?.destacado),
+      publicarEnPortal: forceDraft
+        ? false
+        : Boolean(values?.publicarEnPortal),
+      noIndex: forceDraft ? true : Boolean(values?.noIndex),
 
       sharing: normalizedSharing,
       networkData: normalizedNetworkData,
@@ -367,6 +403,129 @@ const InmuebleForm = ({
           readOnly
         />
       )}
+
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Emprendimiento y unidad</div>
+        <div className="card-body row g-3">
+          <div className="col-md-6">
+            <label className="form-label">Emprendimiento</label>
+            <select
+              className="form-select"
+              value={values?.emprendimientoId || ""}
+              onChange={(event) => {
+                const selected = emprendimientos.find(
+                  (item) => item.id === event.target.value,
+                );
+
+                handleChange({
+                  target: {
+                    name: "emprendimientoId",
+                    value: event.target.value,
+                    type: "select-one",
+                  },
+                });
+                handleChange({
+                  target: {
+                    name: "emprendimientoNombre",
+                    value: selected?.nombre || "",
+                    type: "custom",
+                  },
+                });
+                handleChange({
+                  target: {
+                    name: "emprendimientoSlug",
+                    value: selected?.slug || "",
+                    type: "custom",
+                  },
+                });
+              }}
+              disabled={loadingEmprendimientos}
+            >
+              <option value="">Propiedad independiente</option>
+              {emprendimientos.map((item) => (
+                <option value={item.id} key={item.id}>
+                  {item.nombre}
+                </option>
+              ))}
+            </select>
+            <div className="form-text">
+              {loadingEmprendimientos
+                ? "Cargando emprendimientos..."
+                : "Vinculá esta publicación como unidad de un edificio, loteo o desarrollo."}
+            </div>
+          </div>
+
+          {values?.emprendimientoId && (
+            <>
+              <div className="col-md-3">
+                <label className="form-label">Código de unidad</label>
+                <input
+                  className="form-control"
+                  placeholder="Ej: 2° B / Lote 18"
+                  value={values?.unidadEmprendimiento?.codigo || ""}
+                  onChange={(event) =>
+                    handleNestedChange(
+                      "unidadEmprendimiento",
+                      "codigo",
+                      event.target.value,
+                    )
+                  }
+                />
+              </div>
+              <div className="col-md-3">
+                <label className="form-label">Tipología</label>
+                <input
+                  className="form-control"
+                  placeholder="Ej: 2 dormitorios"
+                  value={values?.unidadEmprendimiento?.tipologia || ""}
+                  onChange={(event) =>
+                    handleNestedChange(
+                      "unidadEmprendimiento",
+                      "tipologia",
+                      event.target.value,
+                    )
+                  }
+                />
+              </div>
+              <div className="col-md-3">
+                <label className="form-label">Piso / sector</label>
+                <input
+                  className="form-control"
+                  value={values?.unidadEmprendimiento?.piso || ""}
+                  onChange={(event) =>
+                    handleNestedChange(
+                      "unidadEmprendimiento",
+                      "piso",
+                      event.target.value,
+                    )
+                  }
+                />
+              </div>
+              <div className="col-md-3">
+                <label className="form-label">Disponibilidad</label>
+                <select
+                  className="form-select"
+                  value={
+                    values?.unidadEmprendimiento?.disponibilidad || "disponible"
+                  }
+                  onChange={(event) =>
+                    handleNestedChange(
+                      "unidadEmprendimiento",
+                      "disponibilidad",
+                      event.target.value,
+                    )
+                  }
+                >
+                  <option value="disponible">Disponible</option>
+                  <option value="reservada">Reservada</option>
+                  <option value="vendida">Vendida</option>
+                  <option value="no_disponible">No disponible</option>
+                </select>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* =========================
           Información básica
@@ -1099,6 +1258,16 @@ const InmuebleForm = ({
       <div className="card mb-4">
         <div className="card-header fw-semibold">Publicación</div>
         <div className="card-body row g-3 align-items-end">
+          {forceDraft && (
+            <div className="col-12">
+              <div className="alert alert-info small mb-0">
+                Las copias se crean primero como borradores no publicados, no
+                destacados y no indexables. Podrás cambiar estas opciones desde
+                la edición una vez creada la copia.
+              </div>
+            </div>
+          )}
+
           <div className="col-md-4">
             <label className="form-label">Estado *</label>
             <select
@@ -1126,6 +1295,7 @@ const InmuebleForm = ({
                 name="destacado"
                 checked={Boolean(values?.destacado)}
                 onChange={handleChange}
+                disabled={forceDraft}
               />
               <label className="form-check-label">Destacado</label>
             </div>
@@ -1139,6 +1309,7 @@ const InmuebleForm = ({
                 name="publicarEnPortal"
                 checked={Boolean(values?.publicarEnPortal)}
                 onChange={handleChange}
+                disabled={forceDraft}
               />
               <label className="form-check-label">Publicar en portal</label>
             </div>
@@ -1152,6 +1323,7 @@ const InmuebleForm = ({
                 name="noIndex"
                 checked={Boolean(values?.noIndex)}
                 onChange={handleChange}
+                disabled={forceDraft}
               />
               <label className="form-check-label">No indexar en Google</label>
             </div>
