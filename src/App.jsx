@@ -9,6 +9,9 @@ import PublicHomeRoute from "./pages/PublicHomeRoute";
 import ReservationPage from "./pages/ReservationPage";
 import UserProfilePage from "./pages/UserProfilePage";
 import LoginPage from "./pages/LoginPage";
+import PrivacyPolicyPage from "./legal/PrivacyPolicyPage";
+import TermsPage from "./legal/TermsPage";
+import DataDeletionPage from "./legal/DataDeletionPage";
 
 // Páginas para usuarios registrados particulares
 import ParticularPublicationRequestPage from "./particular/pages/ParticularPublicationRequestPage";
@@ -74,9 +77,14 @@ import InmueblePortalPage from "./inmueble/pages/InmueblePortalPage";
 import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
 import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
 import InmuebleMarketingKitPage from "./inmueble/pages/InmuebleMarketingKitPage";
+import InmuebleDistributionPage from "./inmueble/pages/InmuebleDistributionPage";
+import MercadoLibreLeadsPage from "./inmueble/pages/MercadoLibreLeadsPage";
+import InstagramOnopropQueuePage from "./inmueble/pages/InstagramOnopropQueuePage";
 import InmuebleNetworkPage from "./inmueble/pages/InmuebleNetworkPage";
 import InmuebleNetworkDetailPage from "./inmueble/pages/InmuebleNetworkDetailPage";
 import InmuebleNetworkRequestsPage from "./inmueble/pages/InmuebleNetworkRequestsPage";
+import InmuebleBulkImportPage from "./inmueble/pages/InmuebleBulkImportPage";
+
 
 function App() {
   useEffect(() => {
@@ -110,6 +118,12 @@ function App() {
                 <Route path="/contacto" element={<Contact />} />
                 <Route path="/reservar" element={<ReservationPage />} />
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/privacidad" element={<PrivacyPolicyPage />} />
+                <Route path="/terminos" element={<TermsPage />} />
+                <Route
+                  path="/eliminacion-de-datos"
+                  element={<DataDeletionPage />}
+                />
 
                 {/* =========================
                   Portal público inmobiliario
@@ -319,6 +333,19 @@ function App() {
                 />
 
                 <Route
+                  path="/admin/inmuebles/importar"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canCreateInmuebles">
+                          <InmuebleBulkImportPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
                   path="/admin/inmuebles/consultas"
                   element={
                     <ProtectedRoute role="admin">
@@ -410,6 +437,41 @@ function App() {
                           <InmuebleMarketingKitPage />
                         </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmuebles/:id/difusion"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canEditInmuebles">
+                          <InmuebleDistributionPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmuebles/leads/mercadolibre"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canEditInmuebles">
+                          <MercadoLibreLeadsPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmuebles/instagram-onoprop"
+                  element={
+                    <ProtectedRoute role="root">
+                      <InstagramOnopropQueuePage />
                     </ProtectedRoute>
                   }
                 />

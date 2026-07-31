@@ -32,7 +32,7 @@ export const createMailOnNewContact = onDocumentCreated(
 
     // Crear documento en la colección "mail" para que la extensión lo procese
     const mailDoc = {
-      to: ["hectorvazquez.laboral@gmail.com"], // 📥 destinatario principal
+      to: ["contacto@onoprop.com"], // 📥 destinatario principal
       replyTo: messageData.email, // Permite responder al cliente
       message: {
         subject: `📨 Nuevo mensaje de contacto: ${messageData.name}`,
@@ -42,16 +42,14 @@ export const createMailOnNewContact = onDocumentCreated(
             <h2 style="color: #2563eb;">Nuevo mensaje de contacto</h2>
             <p><strong>👤 Nombre:</strong> ${messageData.name}</p>
             <p><strong>📧 Email:</strong> ${messageData.email}</p>
-            <p><strong>📞 Teléfono:</strong> ${
-              messageData.phone || "No proporcionado"
-            }</p>
+            <p><strong>📞 Teléfono:</strong> ${messageData.phone || "No proporcionado"
+          }</p>
             <hr/>
             <p><strong>💬 Mensaje:</strong></p>
-            <p style="background: #f1f5f9; padding: 10px; border-radius: 5px;">${
-              messageData.message
-            }</p>
+            <p style="background: #f1f5f9; padding: 10px; border-radius: 5px;">${messageData.message
+          }</p>
             <br/>
-            <p style="font-size: 12px; color: #64748b;">Enviado desde el sitio web de Cañada del Lago</p>
+            <p style="font-size: 12px; color: #64748b;">Enviado desde el sitio web de ONO Prop</p>
           </div>
         `,
       },
@@ -79,3 +77,40 @@ export const createMailOnNewContact = onDocumentCreated(
     return;
   }
 );
+
+export {
+  mercadoLibreAuthStart,
+  mercadoLibreOAuthCallback,
+  mercadoLibreConnectionStatus,
+  mercadoLibreDisconnect,
+  mercadoLibreGetDistribution,
+  mercadoLibreSaveSettings,
+  mercadoLibreGetCategoryDetails,
+  mercadoLibreGetLocationOptions,
+  mercadoLibreValidateItem,
+  mercadoLibrePublishItem,
+  mercadoLibreUpdateItem,
+  mercadoLibreChangeItemStatus,
+  mercadoLibreSyncItemStatus,
+  mercadoLibreGetLeads,
+  mercadoLibreUpdateLeadStatus,
+  mercadoLibreAnswerQuestion,
+  mercadoLibreSyncLeads,
+  mercadoLibreProcessNotification,
+  mercadoLibreNotifications,
+} from "./mercadolibre.js";
+
+export {
+  instagramAuthStart,
+  instagramOAuthCallback,
+  instagramConnectionStatus,
+  instagramDisconnect,
+  instagramGetDistribution,
+  instagramPublishAgencyMedia,
+  instagramSubmitOnopropPublication,
+  instagramListOnopropRequests,
+  instagramApproveOnopropPublication,
+  instagramRejectOnopropPublication,
+  instagramDeauthorize,
+  instagramDataDeletion,
+} from "./instagram.js";

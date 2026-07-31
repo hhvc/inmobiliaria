@@ -130,32 +130,49 @@ const Footer = () => {
 
         <hr style={{ borderColor: "rgba(255,255,255,0.12)" }} />
 
-        <div className="d-flex flex-wrap justify-content-center justify-content-md-between gap-2 small">
+        <div className="d-flex flex-wrap justify-content-center justify-content-md-between align-items-center gap-3 small">
           <span style={{ color: "rgba(255,255,255,0.52)" }}>
             © {currentYear} {brandName}.
           </span>
 
-          {isCustomAgencyDomain ? (
+          <nav
+            className="d-flex flex-wrap justify-content-center gap-3"
+            aria-label="Información legal"
+          >
             <a
-              href="https://onoprop.com/"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="https://onoprop.com/privacidad"
               className="text-decoration-none"
               style={{ color: "rgba(255,255,255,0.72)" }}
             >
-              Sitio inmobiliario desarrollado con ONO Prop.
+              Privacidad
             </a>
-          ) : (
             <a
-              href="https://ono.ar/"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="https://onoprop.com/terminos"
               className="text-decoration-none"
               style={{ color: "rgba(255,255,255,0.72)" }}
             >
-              Tecnología inmobiliaria desarrollada por ONO.
+              Términos
             </a>
-          )}
+            <a
+              href="https://onoprop.com/eliminacion-de-datos"
+              className="text-decoration-none"
+              style={{ color: "rgba(255,255,255,0.72)" }}
+            >
+              Eliminar datos
+            </a>
+          </nav>
+
+          <a
+            href={isCustomAgencyDomain ? "https://onoprop.com/" : "https://ono.ar/"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-decoration-none"
+            style={{ color: "rgba(255,255,255,0.72)" }}
+          >
+            {isCustomAgencyDomain
+              ? "Sitio desarrollado con ONO Prop."
+              : "Tecnología desarrollada por ONO."}
+          </a>
         </div>
       </div>
     </footer>

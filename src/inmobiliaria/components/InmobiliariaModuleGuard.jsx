@@ -13,6 +13,7 @@ const MODULE_LABELS = {
     branding: "Branding",
     usuarios: "Usuarios de inmobiliaria",
     reportes: "Reportes",
+    instagram: "Instagram propio",
 };
 
 const getRoleFlags = (user) => {

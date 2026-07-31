@@ -2,15 +2,33 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://onoprop.com/</loc>
-    <lastmod>2026-07-24</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmuebles</loc>
-    <lastmod>2026-07-24</lastmod>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/privacidad</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/terminos</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/eliminacion-de-datos</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmobiliaria/ladoctaprop</loc>
@@ -26,7 +44,7 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-a-estrenar-en-cuesta-de-manantiales-1j1A7SeP9UNRKcank6FV</loc>
-    <lastmod>2026-07-23</lastmod>
+    <lastmod>2026-07-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -50,7 +68,13 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-universitario-de-horizonte-1-dorm-u59-mil-Tv5AyAweS3pfwu960mTV</loc>
-    <lastmod>2026-07-23</lastmod>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-dpto-av-patria-300-2-dorm-XE9k1hpiItwU2Jx99sDS</loc>
+    <lastmod>2026-07-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>

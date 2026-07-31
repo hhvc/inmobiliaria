@@ -254,6 +254,10 @@ const InmuebleListPage = () => {
     navigate(`/admin/inmuebles/${id}/marketing`);
   };
 
+  const handleDistribution = (id) => {
+    navigate(`/admin/inmuebles/${id}/difusion`);
+  };
+
   const handleDelete = async (id) => {
     if (!activeInmobiliariaId) {
       alert("No hay inmobiliaria activa seleccionada");
@@ -396,14 +400,35 @@ const InmuebleListPage = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={() => navigate("/admin/inmuebles/nuevo")}
-          disabled={!activeInmobiliariaId}
-        >
-          + Nuevo inmueble
-        </button>
+        <div className="d-flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-outline-success"
+            onClick={() => navigate("/admin/inmuebles/leads/mercadolibre")}
+            disabled={!activeInmobiliariaId}
+          >
+            Leads de Mercado Libre
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-outline-primary"
+            onClick={() => navigate("/admin/inmuebles/importar")}
+            disabled={!activeInmobiliariaId}
+          >
+            Importar CSV
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => navigate("/admin/inmuebles/nuevo")}
+            disabled={!activeInmobiliariaId}
+          >
+            + Nuevo inmueble
+          </button>
+        </div>
+
       </header>
 
       <section className="card border-0 shadow-sm mb-4">
@@ -428,6 +453,15 @@ const InmuebleListPage = () => {
               Creá tu primera publicación para comenzar a mostrar propiedades en
               el portal.
             </p>
+
+            <button
+              type="button"
+              className="btn btn-outline-primary me-2"
+              onClick={() => navigate("/admin/inmuebles/importar")}
+              disabled={!activeInmobiliariaId}
+            >
+              Importar CSV
+            </button>
 
             <button
               type="button"
@@ -585,6 +619,14 @@ const InmuebleListPage = () => {
                           onClick={() => handleMarketing(inmueble.id)}
                         >
                           Marketing
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-outline-primary btn-sm w-100"
+                          onClick={() => handleDistribution(inmueble.id)}
+                        >
+                          Difusión
                         </button>
 
                         {isPublicado && publicUrl && (

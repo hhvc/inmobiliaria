@@ -410,6 +410,16 @@ const Navbar = () => {
                           </li>
 
                           <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmuebles/instagram-onoprop"
+                              onClick={closeMenus}
+                            >
+                              Cola Instagram Onoprop
+                            </Link>
+                          </li>
+
+                          <li>
                             <hr className="dropdown-divider" />
                           </li>
                         </>

@@ -70,6 +70,15 @@ const MODULE_CARDS = [
         icon: "📊",
         comingSoon: true,
     },
+    {
+        id: "instagram",
+        title: "Instagram propio",
+        description:
+            "Conectar la cuenta profesional y publicar inmuebles desde Difusión.",
+        route: "/admin/inmuebles/listado",
+        cta: "Elegir inmueble",
+        icon: "📸",
+    },
 ];
 
 const VERIFICATION_CONFIG = {

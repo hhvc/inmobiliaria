@@ -66,3 +66,8 @@ canadaallago/
 ├── .gitignore            # 🙈 Archivos ignorados
 └── README.md             # 📖 Documentación
 ```
+
+## Integración con Mercado Libre
+
+La configuración de la aplicación, secretos, callbacks, despliegue y prueba
+controlada se encuentra en [MERCADOLIBRE_SETUP.md](./MERCADOLIBRE_SETUP.md).

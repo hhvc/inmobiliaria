@@ -3,7 +3,7 @@ import { useLocation } from "react-router-dom";
 
 import { useContactForm } from "../hooks/useContactForm";
 
-const CONTACT_EMAIL = "hectorvazquez.laboral@gmail.com";
+const CONTACT_EMAIL = "contacto@onoprop.com";
 const CONTACT_PHONE_DISPLAY = "+54 351 9 5478785";
 const CONTACT_WHATSAPP_NUMBER = "54935195478785";
 

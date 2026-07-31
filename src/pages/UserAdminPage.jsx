@@ -49,6 +49,12 @@ const SUBSCRIPTION_MODULES = [
     label: "Reportes",
     description: "Métricas, estadísticas y reportes comerciales.",
   },
+  {
+    id: "instagram",
+    label: "Instagram propio",
+    description:
+      "Conexión y publicación en la cuenta profesional de la inmobiliaria.",
+  },
 ];
 
 const DEFAULT_MODULES = ["inmuebles", "consultas"];

@@ -26,6 +26,21 @@ const STATIC_ROUTES = [
         changefreq: "daily",
         priority: "0.9",
     },
+    {
+        path: "/privacidad",
+        changefreq: "yearly",
+        priority: "0.3",
+    },
+    {
+        path: "/terminos",
+        changefreq: "yearly",
+        priority: "0.3",
+    },
+    {
+        path: "/eliminacion-de-datos",
+        changefreq: "yearly",
+        priority: "0.3",
+    },
 ];
 
 const ENV_FILES = [".env.local", ".env"];

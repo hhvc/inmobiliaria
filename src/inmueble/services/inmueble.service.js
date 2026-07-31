@@ -876,6 +876,40 @@ export const updateInmueble = async (
   }
 };
 
+export const updateInmuebleDistributionChannel = async (
+  inmobiliariaId,
+  inmuebleId,
+  channelId,
+  channelData = {},
+) => {
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos para actualizar difusión");
+  }
+
+  if (!channelId) {
+    throw new Error("Canal de difusión requerido");
+  }
+
+  try {
+    await assertInmobiliariaActiva(inmobiliariaId);
+
+    const ref = inmuebleDoc(inmobiliariaId, inmuebleId);
+
+    await updateDoc(ref, {
+      [`distribution.${channelId}`]: {
+        ...channelData,
+        channelId,
+        updatedAt: serverTimestamp(),
+        updatedBy: auth.currentUser?.uid || null,
+      },
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    console.error("❌ Error actualizando difusión del inmueble:", error);
+    throw error;
+  }
+};
+
 /**
  * Cambiar estado de un inmueble
  */
