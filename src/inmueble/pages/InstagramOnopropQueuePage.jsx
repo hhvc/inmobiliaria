@@ -48,15 +48,20 @@ const InstagramOnopropQueuePage = () => {
         loadRequests();
     }, [loadRequests]);
 
-    const handleApprove = async (requestId) => {
-        if (!window.confirm("¿Publicar este inmueble en el Instagram de Onoprop?")) {
+    const handleApprove = async (item) => {
+        const mediaLabel = item.mediaKind === "reel" ? "Reel" : "aviso";
+        if (
+            !window.confirm(
+                `¿Publicar este ${mediaLabel} en el Instagram de Onoprop?`,
+            )
+        ) {
             return;
         }
 
         try {
-            setOperationId(requestId);
+            setOperationId(item.id);
             setError("");
-            await approveOnopropInstagramPublication(requestId);
+            await approveOnopropInstagramPublication(item.id);
             await loadRequests();
         } catch (err) {
             console.error("Error publicando en Instagram de Onoprop:", err);
@@ -159,7 +164,23 @@ const InstagramOnopropQueuePage = () => {
                             <div className="card-body p-4">
                                 <div className="row g-4">
                                     <div className="col-lg-3">
-                                        {item.imageUrls?.[0] ? (
+                                        {item.mediaKind === "reel" &&
+                                        item.videoUrl ? (
+                                            <video
+                                                src={item.videoUrl}
+                                                controls
+                                                preload="metadata"
+                                                className="rounded border w-100 bg-dark"
+                                                style={{
+                                                    aspectRatio: "9 / 16",
+                                                    objectFit: "contain",
+                                                    maxHeight: "480px",
+                                                }}
+                                            >
+                                                Tu navegador no puede reproducir
+                                                este video.
+                                            </video>
+                                        ) : item.imageUrls?.[0] ? (
                                             <img
                                                 src={item.imageUrls[0]}
                                                 alt={item.inmuebleTitulo}
@@ -171,12 +192,18 @@ const InstagramOnopropQueuePage = () => {
                                             />
                                         ) : (
                                             <div className="bg-light border rounded p-5 text-center text-muted">
-                                                Sin imagen
+                                                Sin contenido multimedia
                                             </div>
                                         )}
 
                                         <div className="small text-muted mt-2">
-                                            {item.imageUrls?.length || 0} imagen(es)
+                                            {item.mediaKind === "reel"
+                                                ? `Reel${
+                                                      item.shareToFeed === false
+                                                          ? " · solo pestaña Reels"
+                                                          : " · también en el feed"
+                                                  }`
+                                                : `${item.imageUrls?.length || 0} imagen(es)`}
                                         </div>
                                     </div>
 
@@ -239,7 +266,7 @@ const InstagramOnopropQueuePage = () => {
                                                     type="button"
                                                     className="btn btn-success"
                                                     onClick={() =>
-                                                        handleApprove(item.id)
+                                                        handleApprove(item)
                                                     }
                                                     disabled={
                                                         operationId === item.id

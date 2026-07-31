@@ -3,6 +3,35 @@ import crypto from "node:crypto";
 
 export const DEFAULT_INSTAGRAM_OPENER_ORIGIN = "https://onoprop.com";
 
+export const normalizeInstagramMediaKind = (value = "") => {
+    return value?.toString?.().trim().toLowerCase() === "reel"
+        ? "reel"
+        : "images";
+};
+
+export const isInstagramReelStorageUrl = ({
+    url,
+    inmobiliariaId,
+    inmuebleId,
+}) => {
+    try {
+        const parsed = new URL(url);
+        if (
+            parsed.protocol !== "https:" ||
+            parsed.hostname !== "firebasestorage.googleapis.com"
+        ) {
+            return false;
+        }
+
+        const encodedPath = parsed.pathname.split("/o/")[1] || "";
+        const storagePath = decodeURIComponent(encodedPath);
+        const prefix = `inmuebles/${inmobiliariaId}/${inmuebleId}/instagram/`;
+        return storagePath.startsWith(prefix) && storagePath.length > prefix.length;
+    } catch {
+        return false;
+    }
+};
+
 export const INSTAGRAM_ALLOWED_OPENER_ORIGINS = new Set([
     DEFAULT_INSTAGRAM_OPENER_ORIGIN,
     "https://www.onoprop.com",

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { useAuth } from "../../context/auth/useAuth";
+import EmprendimientoUnitsCsvImport from "../components/EmprendimientoUnitsCsvImport";
 import {
   OPERACIONES_OPCIONES,
   TIPOS_INMUEBLE_OPCIONES,
@@ -11,6 +12,7 @@ import { getEmprendimientoById } from "../services/emprendimiento.service";
 import {
   createEmprendimientoUnits,
   getAllInmueblesForUnitMatrix,
+  importEmprendimientoUnits,
   linkInmueblesToEmprendimiento,
   unlinkInmuebleFromEmprendimiento,
   updateEmprendimientoUnits,
@@ -300,6 +302,36 @@ const EmprendimientoUnitsPage = () => {
     }
   };
 
+  const importUnits = async (importRows) => {
+    try {
+      setWorking(true);
+      setError("");
+      setSuccess("");
+      const report = await importEmprendimientoUnits({
+        inmobiliariaId: activeInmobiliariaId,
+        emprendimiento,
+        existingUnits: units,
+        importRows,
+      });
+
+      if (report.created > 0 || report.updated > 0) await load();
+
+      if (report.failed > 0) {
+        setError(
+          `La importación terminó con ${report.failed} fila(s) sin guardar. Revisá el informe.`,
+        );
+      } else {
+        setSuccess(
+          `Importación terminada: ${report.created} unidad(es) creada(s) y ${report.updated} actualizada(s).`,
+        );
+      }
+
+      return report;
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const linkSelected = async () => {
     const selected = availableInmuebles.filter((inmueble) =>
       selectedExistingIds.includes(inmueble.id),
@@ -396,6 +428,12 @@ const EmprendimientoUnitsPage = () => {
           </table>
         </div>
       </section>
+
+      <EmprendimientoUnitsCsvImport
+        units={units}
+        working={working}
+        onImport={importUnits}
+      />
 
       <section className="card border-0 shadow-sm mb-4">
         <div className="card-header"><strong>Altas pendientes: crear varias unidades</strong><div className="small text-muted">Estas filas todavía no existen como inmuebles. Podés editarlas, duplicarlas o quitarlas; recién se guardarán al presionar Crear. Se crearán no publicadas y heredarán la ubicación del emprendimiento.</div></div>

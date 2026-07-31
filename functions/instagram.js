@@ -12,6 +12,8 @@ import {
     getInstagramConnectionIdentifiers,
     getInstagramConnectionLinkEntries,
     isInstagramTokenRefreshDue,
+    isInstagramReelStorageUrl,
+    normalizeInstagramMediaKind,
     normalizeInstagramIdentifier,
     normalizeInstagramOpenerOrigin,
     verifyInstagramSignedRequest,
@@ -39,7 +41,7 @@ const INSTAGRAM_AUTH_URL = "https://www.instagram.com/oauth/authorize";
 const INSTAGRAM_TOKEN_URL = "https://api.instagram.com/oauth/access_token";
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const TOKEN_REFRESH_MARGIN_MS = 7 * 24 * 60 * 60 * 1000;
-const PUBLICATION_LEASE_MS = 2 * 60 * 1000;
+const PUBLICATION_LEASE_MS = 6 * 60 * 1000;
 const MAX_CAPTION_LENGTH = 2200;
 const MAX_CAROUSEL_ITEMS = 10;
 const INSTAGRAM_MODULE_ID = "instagram";
@@ -748,11 +750,83 @@ const resolveSelectedImages = (inmueble, requestedImages = []) => {
     return selected;
 };
 
+const resolveSelectedReel = ({
+    inmueble,
+    requestedVideoUrl,
+    inmobiliariaId,
+    inmuebleId,
+}) => {
+    const availableReels = Array.isArray(inmueble.instagramReels)
+        ? inmueble.instagramReels
+        : [];
+    const videoUrl = cleanText(requestedVideoUrl, 3000);
+    const reel = availableReels.find(
+        (item) => cleanText(item?.url, 3000) === videoUrl,
+    );
+
+    if (!videoUrl || !reel) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Seleccioná un video asociado al inmueble para publicar el Reel.",
+        );
+    }
+    if (
+        !isInstagramReelStorageUrl({
+            url: videoUrl,
+            inmobiliariaId,
+            inmuebleId,
+        })
+    ) {
+        throw new HttpsError(
+            "permission-denied",
+            "El video seleccionado no pertenece al almacenamiento autorizado del inmueble.",
+        );
+    }
+
+    const contentType = cleanText(reel.contentType, 100).toLowerCase();
+    const size = Number(reel.size || 0);
+    const duration = Number(reel.duration || 0);
+    const width = Number(reel.width || 0);
+
+    if (!["video/mp4", "video/quicktime"].includes(contentType)) {
+        throw new HttpsError(
+            "failed-precondition",
+            "El Reel debe estar en formato MP4 o MOV.",
+        );
+    }
+    if (!size || size > 300 * 1024 * 1024) {
+        throw new HttpsError(
+            "failed-precondition",
+            "El Reel supera el límite de 300 MB o no tiene tamaño verificable.",
+        );
+    }
+    if (!duration || duration < 3 || duration > 15 * 60) {
+        throw new HttpsError(
+            "failed-precondition",
+            "El Reel debe durar entre 3 segundos y 15 minutos.",
+        );
+    }
+    if (!width || width > 1920) {
+        throw new HttpsError(
+            "failed-precondition",
+            "El ancho del Reel no puede superar 1920 píxeles.",
+        );
+    }
+
+    assertPublicHttpsUrl(videoUrl);
+    return { ...reel, url: videoUrl };
+};
+
 const getPublicationContext = async (
     inmobiliariaId,
     inmuebleId,
-    requestedImages,
-    requestedCaption,
+    {
+        requestedImages = [],
+        requestedVideoUrl = "",
+        requestedMediaKind = "images",
+        requestedCaption = "",
+        shareToFeed = true,
+    } = {},
 ) => {
     if (!inmuebleId) {
         throw new HttpsError("invalid-argument", "Falta el inmueble.");
@@ -770,7 +844,18 @@ const getPublicationContext = async (
 
     const inmueble = { id: inmuebleId, ...(inmuebleSnap.data() || {}) };
     const caption = cleanText(requestedCaption, MAX_CAPTION_LENGTH);
-    const imageUrls = resolveSelectedImages(inmueble, requestedImages);
+    const mediaKind = normalizeInstagramMediaKind(requestedMediaKind);
+    const reel = mediaKind === "reel"
+        ? resolveSelectedReel({
+            inmueble,
+            requestedVideoUrl,
+            inmobiliariaId,
+            inmuebleId,
+        })
+        : null;
+    const imageUrls = mediaKind === "images"
+        ? resolveSelectedImages(inmueble, requestedImages)
+        : [];
 
     if (!caption) {
         throw new HttpsError(
@@ -783,7 +868,11 @@ const getPublicationContext = async (
         inmueble,
         inmobiliaria,
         caption,
+        mediaKind,
         imageUrls,
+        videoUrl: reel?.url || "",
+        reel,
+        shareToFeed: shareToFeed !== false,
         ref: distributionRef(inmobiliariaId, inmuebleId),
     };
 };
@@ -792,8 +881,12 @@ const wait = (milliseconds) => {
     return new Promise((resolve) => setTimeout(resolve, milliseconds));
 };
 
-const waitForContainerReady = async (containerId, accessToken) => {
-    for (let attempt = 0; attempt < 12; attempt += 1) {
+const waitForContainerReady = async (
+    containerId,
+    accessToken,
+    { attempts = 12, delayMs = 1000, mediaLabel = "contenido" } = {},
+) => {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
         const status = await instagramApiRequest(`/${containerId}`, {
             accessToken,
             query: { fields: "status_code,status" },
@@ -804,14 +897,14 @@ const waitForContainerReady = async (containerId, accessToken) => {
         if (statusCode === "ERROR" || statusCode === "EXPIRED") {
             throw new Error(
                 cleanText(status?.status, 500) ||
-                "Instagram no pudo procesar una imagen.",
+                `Instagram no pudo procesar el ${mediaLabel}.`,
             );
         }
 
-        await wait(1000);
+        await wait(delayMs);
     }
 
-    throw new Error("Instagram tardó demasiado en procesar las imágenes.");
+    throw new Error(`Instagram tardó demasiado en procesar el ${mediaLabel}.`);
 };
 
 const createImageContainer = async ({
@@ -839,15 +932,56 @@ const createImageContainer = async ({
     return result.id.toString();
 };
 
+const createReelContainer = async ({
+    instagramUserId,
+    accessToken,
+    videoUrl,
+    caption,
+    shareToFeed,
+}) => {
+    const result = await instagramApiRequest(`/${instagramUserId}/media`, {
+        accessToken,
+        method: "POST",
+        form: {
+            media_type: "REELS",
+            video_url: videoUrl,
+            caption,
+            share_to_feed: shareToFeed ? "true" : "false",
+        },
+    });
+
+    if (!result?.id) {
+        throw new Error("Instagram no devolvió el contenedor del Reel.");
+    }
+
+    await waitForContainerReady(result.id, accessToken, {
+        attempts: 90,
+        delayMs: 2000,
+        mediaLabel: "video",
+    });
+    return result.id.toString();
+};
+
 const publishInstagramMedia = async ({
     accessToken,
     instagramUserId,
     caption,
-    imageUrls,
+    mediaKind = "images",
+    imageUrls = [],
+    videoUrl = "",
+    shareToFeed = true,
 }) => {
     let containerId;
 
-    if (imageUrls.length === 1) {
+    if (mediaKind === "reel") {
+        containerId = await createReelContainer({
+            instagramUserId,
+            accessToken,
+            videoUrl,
+            caption,
+            shareToFeed,
+        });
+    } else if (imageUrls.length === 1) {
         containerId = await createImageContainer({
             instagramUserId,
             accessToken,
@@ -918,6 +1052,7 @@ const publishInstagramMedia = async ({
         mediaProductType: cleanText(media?.media_product_type, 50),
         instagramTimestamp: cleanText(media?.timestamp, 100),
         containerId,
+        publicationKind: mediaKind,
     };
 };
 
@@ -968,6 +1103,8 @@ const persistPublishedMedia = async ({
     result,
     caption,
     imageUrls,
+    videoUrl = "",
+    shareToFeed = true,
     uid,
     requestId = "",
 }) => {
@@ -980,7 +1117,10 @@ const persistPublishedMedia = async ({
         instagramTimestamp: result.instagramTimestamp,
         containerId: result.containerId,
         caption,
+        publicationKind: result.publicationKind || "images",
         imageUrls,
+        videoUrl,
+        shareToFeed,
         requestId,
         publishedBy: uid,
         publishedAt: FieldValue.serverTimestamp(),
@@ -1019,7 +1159,10 @@ const persistPublishedMedia = async ({
         instagramTimestamp: result.instagramTimestamp,
         containerId: result.containerId,
         caption,
+        publicationKind: result.publicationKind || "images",
         imageUrls,
+        videoUrl,
+        shareToFeed,
         requestId,
         publishedAt: Date.now(),
         updatedAt: Date.now(),
@@ -1064,10 +1207,15 @@ const sanitizeDistribution = (data = {}) => {
         permalink: destination.permalink || "",
         mediaType: destination.mediaType || "",
         mediaProductType: destination.mediaProductType || "",
+        publicationKind: normalizeInstagramMediaKind(
+            destination.publicationKind,
+        ),
         caption: destination.caption || "",
         imageUrls: Array.isArray(destination.imageUrls)
             ? destination.imageUrls
             : [],
+        videoUrl: destination.videoUrl || "",
+        shareToFeed: destination.shareToFeed !== false,
         requestId: destination.requestId || "",
         lastError: destination.lastError || "",
         publishedAt: timestampToMillis(destination.publishedAt),
@@ -1772,7 +1920,7 @@ export const instagramPublishAgencyMedia = onCall(
     {
         region: REGION,
         invoker: "public",
-        timeoutSeconds: 120,
+        timeoutSeconds: 300,
         secrets: [INSTAGRAM_TOKEN_ENCRYPTION_KEY],
     },
     async (request) => {
@@ -1791,8 +1939,13 @@ export const instagramPublishAgencyMedia = onCall(
             context = await getPublicationContext(
                 inmobiliariaId,
                 inmuebleId,
-                request.data?.imageUrls,
-                request.data?.caption,
+                {
+                    requestedImages: request.data?.imageUrls,
+                    requestedVideoUrl: request.data?.videoUrl,
+                    requestedMediaKind: request.data?.mediaKind,
+                    requestedCaption: request.data?.caption,
+                    shareToFeed: request.data?.shareToFeed,
+                },
             );
             await claimPublicationLease(context.ref, "agency");
 
@@ -1804,7 +1957,10 @@ export const instagramPublishAgencyMedia = onCall(
                 accessToken: connection.accessToken,
                 instagramUserId: connection.integration.instagramUserId,
                 caption: context.caption,
+                mediaKind: context.mediaKind,
                 imageUrls: context.imageUrls,
+                videoUrl: context.videoUrl,
+                shareToFeed: context.shareToFeed,
             });
             const persisted = await persistPublishedMedia({
                 ref: context.ref,
@@ -1812,6 +1968,8 @@ export const instagramPublishAgencyMedia = onCall(
                 result,
                 caption: context.caption,
                 imageUrls: context.imageUrls,
+                videoUrl: context.videoUrl,
+                shareToFeed: context.shareToFeed,
                 uid,
             });
 
@@ -1846,8 +2004,13 @@ export const instagramSubmitOnopropPublication = onCall(
             const context = await getPublicationContext(
                 inmobiliariaId,
                 inmuebleId,
-                request.data?.imageUrls,
-                request.data?.caption,
+                {
+                    requestedImages: request.data?.imageUrls,
+                    requestedVideoUrl: request.data?.videoUrl,
+                    requestedMediaKind: request.data?.mediaKind,
+                    requestedCaption: request.data?.caption,
+                    shareToFeed: request.data?.shareToFeed,
+                },
             );
             const centralConnection = await onopropIntegrationRef().get();
 
@@ -1870,7 +2033,10 @@ export const instagramSubmitOnopropPublication = onCall(
                 inmuebleTitulo:
                     cleanText(context.inmueble.titulo, 300) || inmuebleId,
                 caption: context.caption,
+                mediaKind: context.mediaKind,
                 imageUrls: context.imageUrls,
+                videoUrl: context.videoUrl,
+                shareToFeed: context.shareToFeed,
                 requestedBy: uid,
                 requestedAt: FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp(),
@@ -1896,7 +2062,10 @@ export const instagramSubmitOnopropPublication = onCall(
                                 status: "pending",
                                 requestId: requestRef.id,
                                 caption: context.caption,
+                                publicationKind: context.mediaKind,
                                 imageUrls: context.imageUrls,
+                                videoUrl: context.videoUrl,
+                                shareToFeed: context.shareToFeed,
                                 requestedBy: uid,
                                 requestedAt: FieldValue.serverTimestamp(),
                                 updatedAt: FieldValue.serverTimestamp(),
@@ -1963,9 +2132,12 @@ export const instagramListOnopropRequests = onCall(
                         inmuebleId: data.inmuebleId || "",
                         inmuebleTitulo: data.inmuebleTitulo || "",
                         caption: data.caption || "",
+                        mediaKind: normalizeInstagramMediaKind(data.mediaKind),
                         imageUrls: Array.isArray(data.imageUrls)
                             ? data.imageUrls
                             : [],
+                        videoUrl: data.videoUrl || "",
+                        shareToFeed: data.shareToFeed !== false,
                         permalink: data.permalink || "",
                         externalId: data.externalId || "",
                         lastError: data.lastError || "",
@@ -1994,7 +2166,7 @@ export const instagramApproveOnopropPublication = onCall(
     {
         region: REGION,
         invoker: "public",
-        timeoutSeconds: 120,
+        timeoutSeconds: 300,
         secrets: [INSTAGRAM_TOKEN_ENCRYPTION_KEY],
     },
     async (request) => {
@@ -2040,8 +2212,13 @@ export const instagramApproveOnopropPublication = onCall(
             const context = await getPublicationContext(
                 requestData.inmobiliariaId,
                 requestData.inmuebleId,
-                requestData.imageUrls,
-                requestData.caption,
+                {
+                    requestedImages: requestData.imageUrls,
+                    requestedVideoUrl: requestData.videoUrl,
+                    requestedMediaKind: requestData.mediaKind,
+                    requestedCaption: requestData.caption,
+                    shareToFeed: requestData.shareToFeed,
+                },
             );
             publicationDocumentRef = context.ref;
             await claimPublicationLease(context.ref, "onoprop");
@@ -2051,7 +2228,10 @@ export const instagramApproveOnopropPublication = onCall(
                 accessToken: connection.accessToken,
                 instagramUserId: connection.integration.instagramUserId,
                 caption: context.caption,
+                mediaKind: context.mediaKind,
                 imageUrls: context.imageUrls,
+                videoUrl: context.videoUrl,
+                shareToFeed: context.shareToFeed,
             });
             const persisted = await persistPublishedMedia({
                 ref: context.ref,
@@ -2059,6 +2239,8 @@ export const instagramApproveOnopropPublication = onCall(
                 result,
                 caption: context.caption,
                 imageUrls: context.imageUrls,
+                videoUrl: context.videoUrl,
+                shareToFeed: context.shareToFeed,
                 uid,
                 requestId,
             });

@@ -70,12 +70,18 @@ export const publishInstagramAgencyMedia = ({
     inmuebleId,
     caption,
     imageUrls,
+    mediaKind,
+    videoUrl,
+    shareToFeed,
 }) => {
     return callInstagramFunction("instagramPublishAgencyMedia", {
         inmobiliariaId,
         inmuebleId,
         caption,
         imageUrls,
+        mediaKind,
+        videoUrl,
+        shareToFeed,
     });
 };
 
@@ -84,12 +90,18 @@ export const submitOnopropInstagramPublication = ({
     inmuebleId,
     caption,
     imageUrls,
+    mediaKind,
+    videoUrl,
+    shareToFeed,
 }) => {
     return callInstagramFunction("instagramSubmitOnopropPublication", {
         inmobiliariaId,
         inmuebleId,
         caption,
         imageUrls,
+        mediaKind,
+        videoUrl,
+        shareToFeed,
     });
 };
 

@@ -9,6 +9,8 @@ import {
     getInstagramConnectionIdentifiers,
     getInstagramConnectionLinkEntries,
     isInstagramTokenRefreshDue,
+    isInstagramReelStorageUrl,
+    normalizeInstagramMediaKind,
     normalizeInstagramOpenerOrigin,
     parseInstagramEncryptionKey,
     verifyInstagramSignedRequest,
@@ -107,4 +109,42 @@ test("detecta cuándo corresponde renovar un token", () => {
     assert.equal(isInstagramTokenRefreshDue(now + 6 * day, now, 7 * day), true);
     assert.equal(isInstagramTokenRefreshDue(now + 8 * day, now, 7 * day), false);
     assert.equal(isInstagramTokenRefreshDue(0, now, 7 * day), false);
+});
+
+test("normaliza el tipo de publicación de Instagram", () => {
+    assert.equal(normalizeInstagramMediaKind("reel"), "reel");
+    assert.equal(normalizeInstagramMediaKind("REEL"), "reel");
+    assert.equal(normalizeInstagramMediaKind("otro"), "images");
+});
+
+test("acepta únicamente videos del inmueble alojados en Firebase Storage", () => {
+    const encodedPath = encodeURIComponent(
+        "inmuebles/inmo-1/item-2/instagram/reel-video.mp4",
+    );
+    const url = `https://firebasestorage.googleapis.com/v0/b/bucket/o/${encodedPath}?alt=media&token=test`;
+
+    assert.equal(
+        isInstagramReelStorageUrl({
+            url,
+            inmobiliariaId: "inmo-1",
+            inmuebleId: "item-2",
+        }),
+        true,
+    );
+    assert.equal(
+        isInstagramReelStorageUrl({
+            url,
+            inmobiliariaId: "otra-inmo",
+            inmuebleId: "item-2",
+        }),
+        false,
+    );
+    assert.equal(
+        isInstagramReelStorageUrl({
+            url: "https://example.com/video.mp4",
+            inmobiliariaId: "inmo-1",
+            inmuebleId: "item-2",
+        }),
+        false,
+    );
 });

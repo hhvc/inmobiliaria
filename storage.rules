@@ -69,6 +69,12 @@ service firebase.storage {
       return request.resource != null
         && request.resource.size <= 10 * 1024 * 1024;
     }
+
+    function isValidInstagramReel() {
+      return request.resource != null
+        && request.resource.contentType.matches('^video/(mp4|quicktime)$')
+        && request.resource.size <= 300 * 1024 * 1024;
+    }
     
     function isValidParticularRequestImage() {
       return request.resource != null
@@ -203,6 +209,25 @@ service firebase.storage {
         )
         && isImage()
         && isValidImageSize();
+
+      allow delete: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
+    }
+
+    match /inmuebles/{inmobiliariaId}/{inmuebleId}/instagram/{fileName} {
+
+      allow read: if true;
+
+      allow create: if
+        isSignedIn()
+        && (
+          isRoot()
+          || belongsToUserInmobiliaria(inmobiliariaId)
+        )
+        && isValidInstagramReel();
+
+      allow update: if false;
 
       allow delete: if
         isRoot()

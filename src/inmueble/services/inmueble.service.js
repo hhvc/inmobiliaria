@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
+import { normalizeInstagramReels } from "../utils/instagramReels.helpers";
 
 import { validateInmuebleEstado } from "../../domain/inmueble/inmueble.validators";
 import {
@@ -1341,4 +1342,22 @@ export const updateNetworkCollaborationRequestStatus = async (
     estado,
     updatedAt: serverTimestamp(),
   });
+};
+
+export const updateInmuebleInstagramReels = async (
+  inmobiliariaId,
+  inmuebleId,
+  reels = [],
+) => {
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos para actualizar videos de Instagram");
+  }
+
+  await assertInmobiliariaActiva(inmobiliariaId);
+  const normalizedReels = normalizeInstagramReels(reels);
+  await updateDoc(inmuebleDoc(inmobiliariaId, inmuebleId), {
+    instagramReels: normalizedReels,
+    updatedAt: serverTimestamp(),
+  });
+  return normalizedReels;
 };

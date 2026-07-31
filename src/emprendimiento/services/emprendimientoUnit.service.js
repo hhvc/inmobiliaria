@@ -6,6 +6,7 @@ import {
 import {
   applyUnitRowToInmueble,
   buildUnitInmueblePayload,
+  validateUnitRows,
 } from "../utils/emprendimientoUnits.helpers";
 
 export const getAllInmueblesForUnitMatrix = async (inmobiliariaId) => {
@@ -109,3 +110,84 @@ export const createEmprendimientoUnits = async ({
   return created;
 };
 
+export const importEmprendimientoUnits = async ({
+  inmobiliariaId,
+  emprendimiento,
+  existingUnits = [],
+  importRows = [],
+}) => {
+  const rows = importRows.map((item) => item.row);
+  const validationErrors = validateUnitRows(rows);
+
+  if (Object.keys(validationErrors).length > 0) {
+    throw new Error("La importación contiene unidades inválidas o repetidas.");
+  }
+
+  const existingById = new Map(existingUnits.map((unit) => [unit.id, unit]));
+  const results = [];
+
+  for (const item of importRows) {
+    try {
+      if (!["create", "update"].includes(item.action)) {
+        throw new Error("La acción de importación no es válida");
+      }
+
+      if (item.action === "update") {
+        const inmueble = existingById.get(item.existingId);
+        if (!inmueble || inmueble.emprendimientoId !== emprendimiento?.id) {
+          throw new Error("La unidad existente ya no pertenece al emprendimiento");
+        }
+
+        await updateInmueble(
+          inmobiliariaId,
+          inmueble.id,
+          applyUnitRowToInmueble({
+            inmueble,
+            row: item.row,
+            emprendimiento,
+          }),
+        );
+        results.push({
+          lineNumber: item.lineNumber,
+          codigo: item.row.codigo,
+          action: "update",
+          status: "success",
+          inmuebleId: inmueble.id,
+        });
+      } else {
+        const payload = buildUnitInmueblePayload({
+          row: item.row,
+          emprendimiento,
+          inmobiliariaId,
+        });
+        const created = await createInmueble(inmobiliariaId, payload);
+        results.push({
+          lineNumber: item.lineNumber,
+          codigo: item.row.codigo,
+          action: "create",
+          status: "success",
+          inmuebleId: created.id,
+        });
+      }
+    } catch (error) {
+      results.push({
+        lineNumber: item.lineNumber,
+        codigo: item.row.codigo,
+        action: item.action,
+        status: "failed",
+        error: error.message || "No se pudo guardar la unidad",
+      });
+    }
+  }
+
+  return {
+    created: results.filter(
+      (item) => item.status === "success" && item.action === "create",
+    ).length,
+    updated: results.filter(
+      (item) => item.status === "success" && item.action === "update",
+    ).length,
+    failed: results.filter((item) => item.status === "failed").length,
+    results,
+  };
+};

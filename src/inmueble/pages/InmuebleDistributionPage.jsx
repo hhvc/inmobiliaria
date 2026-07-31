@@ -5,7 +5,12 @@ import { useAuth } from "../../context/auth/useAuth";
 import {
     getInmuebleById,
     updateInmuebleDistributionChannel,
+    updateInmuebleInstagramReels,
 } from "../services/inmueble.service";
+import {
+    deleteInstagramReelFile,
+    uploadInstagramReel,
+} from "../services/instagramReelUpload.service";
 import {
     changeMercadoLibreItemStatus,
     disconnectMercadoLibre,
@@ -35,6 +40,11 @@ import {
     findMercadoLibreOptionByName,
     validateMercadoLibreDraft,
 } from "../utils/mercadoLibreDistribution.helpers";
+import {
+    getInstagramReelAspectWarning,
+    INSTAGRAM_REEL_MAX_FILES,
+    normalizeInstagramReels,
+} from "../utils/instagramReels.helpers";
 
 const CHANNELS = [
     {
@@ -225,6 +235,18 @@ const getPublicUrl = (inmueble = {}) => {
     if (typeof window === "undefined" || !inmueble.slug) return "";
 
     return `${window.location.origin}/inmueble/${inmueble.slug}`;
+};
+
+const formatFileSize = (bytes = 0) => {
+    const megabytes = Number(bytes || 0) / (1024 * 1024);
+    return `${megabytes.toLocaleString("es-AR", { maximumFractionDigits: 1 })} MB`;
+};
+
+const formatVideoDuration = (seconds = 0) => {
+    const total = Math.max(0, Math.round(Number(seconds || 0)));
+    const minutes = Math.floor(total / 60);
+    const remainder = total % 60;
+    return `${minutes}:${remainder.toString().padStart(2, "0")}`;
 };
 
 const buildMercadoLibreSettings = (form = {}, inmueble = {}) => {
@@ -528,7 +550,7 @@ const validateChannel = (channelId, inmueble = {}, channelForm = {}) => {
         errors.push("Falta ubicación mínima.");
     }
 
-    if (payload.images.length === 0) {
+    if (channelId !== "instagram" && payload.images.length === 0) {
         errors.push("Debe tener al menos una imagen.");
     }
 
@@ -557,15 +579,24 @@ const validateChannel = (channelId, inmueble = {}, channelForm = {}) => {
     }
 
     if (channelId === "instagram") {
+        const mediaKind = channelForm.mediaKind === "reel" ? "reel" : "images";
         const selectedImageUrls = Array.isArray(channelForm.selectedImageUrls)
             ? channelForm.selectedImageUrls
             : payload.images.slice(0, 10);
 
-        if (selectedImageUrls.length === 0) {
+        if (mediaKind === "images" && selectedImageUrls.length === 0) {
             errors.push("Instagram necesita una imagen principal.");
         }
-        if (selectedImageUrls.length > 10) {
+        if (mediaKind === "images" && selectedImageUrls.length > 10) {
             errors.push("Instagram admite hasta 10 imágenes por publicación.");
+        }
+        if (
+            mediaKind === "reel" &&
+            !normalizeInstagramReels(inmueble.instagramReels).some(
+                (reel) => reel.url === channelForm.videoUrl,
+            )
+        ) {
+            errors.push("Seleccioná un video cargado para publicar el Reel.");
         }
 
         if (!payload.publicUrl) {
@@ -615,6 +646,7 @@ const buildChannelPayload = (channelId, inmueble = {}, channelForm = {}) => {
     }
 
     if (channelId === "instagram") {
+        const mediaKind = channelForm.mediaKind === "reel" ? "reel" : "images";
         const selectedImageUrls = Array.isArray(channelForm.selectedImageUrls)
             ? channelForm.selectedImageUrls
             : common.images.slice(0, 10);
@@ -624,7 +656,10 @@ const buildChannelPayload = (channelId, inmueble = {}, channelForm = {}) => {
                 channelForm.caption ||
                 buildDefaultInstagramCaption(common),
             imageUrl: selectedImageUrls[0] || "",
-            imageUrls: selectedImageUrls,
+            imageUrls: mediaKind === "images" ? selectedImageUrls : [],
+            mediaKind,
+            videoUrl: mediaKind === "reel" ? channelForm.videoUrl || "" : "",
+            shareToFeed: channelForm.shareToFeed !== false,
             publicUrl: common.publicUrl,
         };
     }
@@ -685,6 +720,7 @@ const InmuebleDistributionPage = () => {
     const [instagramError, setInstagramError] = useState("");
     const [instagramSuccess, setInstagramSuccess] = useState("");
     const [instagramOperation, setInstagramOperation] = useState("");
+    const [instagramUploadProgress, setInstagramUploadProgress] = useState(0);
 
     const channelsState = {
         ...(inmueble?.distribution || {}),
@@ -832,6 +868,26 @@ const InmuebleDistributionPage = () => {
                             remoteInstagramDistribution.agency?.imageUrls ||
                             remoteInstagramDistribution.onoprop?.imageUrls ||
                             getImageUrls(data).slice(0, 10),
+                        mediaKind:
+                            legacy.mediaKind ||
+                            legacy.payloadPreview?.mediaKind ||
+                            remoteInstagramDistribution.agency
+                                ?.publicationKind ||
+                            remoteInstagramDistribution.onoprop
+                                ?.publicationKind ||
+                            "images",
+                        videoUrl:
+                            legacy.videoUrl ||
+                            legacy.payloadPreview?.videoUrl ||
+                            remoteInstagramDistribution.agency?.videoUrl ||
+                            remoteInstagramDistribution.onoprop?.videoUrl ||
+                            "",
+                        shareToFeed:
+                            legacy.shareToFeed ??
+                            legacy.payloadPreview?.shareToFeed ??
+                            remoteInstagramDistribution.agency?.shareToFeed ??
+                            remoteInstagramDistribution.onoprop?.shareToFeed ??
+                            true,
                     };
 
                     return acc;
@@ -1155,6 +1211,137 @@ const InmuebleDistributionPage = () => {
         });
     };
 
+    const handleInstagramReelUpload = async (event) => {
+        const input = event.currentTarget;
+        const file = input.files?.[0];
+        if (!file) return;
+
+        const currentReels = normalizeInstagramReels(
+            inmueble?.instagramReels || [],
+        );
+        if (currentReels.length >= INSTAGRAM_REEL_MAX_FILES) {
+            setInstagramError(
+                `Podés guardar hasta ${INSTAGRAM_REEL_MAX_FILES} videos por inmueble.`,
+            );
+            input.value = "";
+            return;
+        }
+
+        try {
+            await runInstagramOperation("upload-reel", async () => {
+                setInstagramUploadProgress(0);
+                const uploaded = await uploadInstagramReel({
+                    inmobiliariaId: activeInmobiliariaId,
+                    inmuebleId: inmueble.id,
+                    file,
+                    onProgress: setInstagramUploadProgress,
+                });
+                const nextReels = normalizeInstagramReels([
+                    ...currentReels,
+                    uploaded,
+                ]);
+
+                try {
+                    await updateInmuebleInstagramReels(
+                        activeInmobiliariaId,
+                        inmueble.id,
+                        nextReels,
+                    );
+                } catch (saveError) {
+                    await deleteInstagramReelFile({
+                        inmobiliariaId: activeInmobiliariaId,
+                        inmuebleId: inmueble.id,
+                        storagePath: uploaded.storagePath,
+                    }).catch(() => {});
+                    throw saveError;
+                }
+
+                setInmueble((prev) => ({
+                    ...prev,
+                    instagramReels: nextReels,
+                }));
+                setChannelForms((prev) => ({
+                    ...prev,
+                    instagram: {
+                        ...(prev.instagram || {}),
+                        mediaKind: "reel",
+                        videoUrl: uploaded.url,
+                    },
+                }));
+                setInstagramSuccess(
+                    "Video cargado. Revisá la vista previa y luego publicalo o envialo a Onoprop.",
+                );
+            });
+        } catch {
+            // El mensaje ya se muestra dentro de la pantalla.
+        } finally {
+            setInstagramUploadProgress(0);
+            input.value = "";
+        }
+    };
+
+    const handleInstagramReelDelete = async (reel) => {
+        if (
+            instagramDistribution.onoprop?.status === "pending" &&
+            instagramDistribution.onoprop?.videoUrl === reel.url
+        ) {
+            setInstagramError(
+                "Este video tiene una publicación pendiente en Onoprop. Aprobala o rechazala antes de eliminarlo.",
+            );
+            return;
+        }
+        if (!window.confirm(`¿Eliminar el video “${reel.name || "Reel"}”?`)) {
+            return;
+        }
+
+        try {
+            await runInstagramOperation("delete-reel", async () => {
+                const currentReels = normalizeInstagramReels(
+                    inmueble?.instagramReels || [],
+                );
+                const nextReels = currentReels.filter(
+                    (item) => item.id !== reel.id,
+                );
+                await updateInmuebleInstagramReels(
+                    activeInmobiliariaId,
+                    inmueble.id,
+                    nextReels,
+                );
+
+                setInmueble((prev) => ({
+                    ...prev,
+                    instagramReels: nextReels,
+                }));
+                setChannelForms((prev) => {
+                    const current = prev.instagram || {};
+                    if (current.videoUrl !== reel.url) return prev;
+                    return {
+                        ...prev,
+                        instagram: {
+                            ...current,
+                            mediaKind: nextReels.length ? "reel" : "images",
+                            videoUrl: nextReels[0]?.url || "",
+                        },
+                    };
+                });
+
+                await deleteInstagramReelFile({
+                    inmobiliariaId: activeInmobiliariaId,
+                    inmuebleId: inmueble.id,
+                    storagePath: reel.storagePath,
+                }).catch((deleteError) => {
+                    console.warn(
+                        "El registro se eliminó, pero el archivo no pudo borrarse:",
+                        deleteError,
+                    );
+                });
+                setInstagramSuccess("Video eliminado del inmueble.");
+            });
+        } catch {
+            // El mensaje ya se muestra dentro de la pantalla.
+        }
+    };
+
     const mergeInstagramDestination = (destination, result = {}) => {
         setInstagramDistribution((prev) => ({
             ...prev,
@@ -1207,6 +1394,9 @@ const InmuebleDistributionPage = () => {
                     inmuebleId: inmueble.id,
                     caption: payload.caption,
                     imageUrls: payload.imageUrls,
+                    mediaKind: payload.mediaKind,
+                    videoUrl: payload.videoUrl,
+                    shareToFeed: payload.shareToFeed,
                 });
                 mergeInstagramDestination("agency", {
                     ...result,
@@ -1244,12 +1434,18 @@ const InmuebleDistributionPage = () => {
                     inmuebleId: inmueble.id,
                     caption: payload.caption,
                     imageUrls: payload.imageUrls,
+                    mediaKind: payload.mediaKind,
+                    videoUrl: payload.videoUrl,
+                    shareToFeed: payload.shareToFeed,
                 });
                 mergeInstagramDestination("onoprop", {
                     ...result,
                     status: "pending",
                     caption: payload.caption,
                     imageUrls: payload.imageUrls,
+                    publicationKind: payload.mediaKind,
+                    videoUrl: payload.videoUrl,
+                    shareToFeed: payload.shareToFeed,
                 });
             });
         } catch {
@@ -1618,6 +1814,9 @@ const InmuebleDistributionPage = () => {
                     ? {
                         caption: payload.caption || "",
                         selectedImageUrls: payload.imageUrls || [],
+                        mediaKind: payload.mediaKind || "images",
+                        videoUrl: payload.videoUrl || "",
+                        shareToFeed: payload.shareToFeed !== false,
                     }
                     : {}),
                 isReady: validation.isReady,
@@ -2146,6 +2345,9 @@ const InmuebleDistributionPage = () => {
                         instagramDistribution.onoprop || {};
                     const instagramBusy =
                         isInstagram && Boolean(instagramOperation);
+                    const instagramReels = isInstagram
+                        ? normalizeInstagramReels(inmueble.instagramReels)
+                        : [];
 
                     return (
                         <article className="col-12" key={channel.id}>
@@ -2473,84 +2675,361 @@ const InmuebleDistributionPage = () => {
                                                 </div>
                                             </div>
 
-                                            <div className="mb-4">
-                                                <div className="d-flex flex-wrap justify-content-between gap-2 mb-2">
-                                                    <label className="form-label fw-semibold mb-0">
-                                                        Imágenes seleccionadas
+                                            <fieldset className="mb-4">
+                                                <legend className="form-label fw-semibold mb-2">
+                                                    Formato de la publicación
+                                                </legend>
+                                                <div className="d-flex flex-wrap gap-2">
+                                                    <input
+                                                        className="btn-check"
+                                                        type="radio"
+                                                        name="instagram-media-kind"
+                                                        id="instagram-media-images"
+                                                        checked={
+                                                            payload.mediaKind !==
+                                                            "reel"
+                                                        }
+                                                        onChange={() =>
+                                                            handleChannelFormChange(
+                                                                "instagram",
+                                                                "mediaKind",
+                                                                "images",
+                                                            )
+                                                        }
+                                                        disabled={instagramBusy}
+                                                    />
+                                                    <label
+                                                        className="btn btn-outline-primary"
+                                                        htmlFor="instagram-media-images"
+                                                    >
+                                                        Fotos o carrusel
                                                     </label>
-                                                    <span className="small text-muted">
-                                                        {payload.imageUrls?.length ||
-                                                            0}
-                                                        /10
-                                                    </span>
+
+                                                    <input
+                                                        className="btn-check"
+                                                        type="radio"
+                                                        name="instagram-media-kind"
+                                                        id="instagram-media-reel"
+                                                        checked={
+                                                            payload.mediaKind ===
+                                                            "reel"
+                                                        }
+                                                        onChange={() =>
+                                                            handleChannelFormChange(
+                                                                "instagram",
+                                                                "mediaKind",
+                                                                "reel",
+                                                            )
+                                                        }
+                                                        disabled={instagramBusy}
+                                                    />
+                                                    <label
+                                                        className="btn btn-outline-primary"
+                                                        htmlFor="instagram-media-reel"
+                                                    >
+                                                        Reel de video
+                                                    </label>
                                                 </div>
+                                            </fieldset>
 
-                                                <div className="row g-2">
-                                                    {getImageUrls(inmueble).map(
-                                                        (imageUrl, imageIndex) => {
-                                                            const selected =
-                                                                payload.imageUrls?.includes(
-                                                                    imageUrl,
-                                                                );
+                                            {payload.mediaKind === "reel" ? (
+                                                <div className="mb-4">
+                                                    <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                                                        <div>
+                                                            <div className="fw-semibold">
+                                                                Video para el Reel
+                                                            </div>
+                                                            <div className="small text-muted">
+                                                                MP4 o MOV, de 3 segundos a 15
+                                                                minutos y hasta 300 MB. Se
+                                                                recomienda formato vertical 9:16.
+                                                            </div>
+                                                        </div>
 
-                                                            return (
+                                                        <label
+                                                            className={`btn btn-outline-primary ${
+                                                                instagramBusy ||
+                                                                instagramReels.length >=
+                                                                    INSTAGRAM_REEL_MAX_FILES
+                                                                    ? "disabled"
+                                                                    : ""
+                                                            }`}
+                                                        >
+                                                            {instagramOperation ===
+                                                            "upload-reel"
+                                                                ? "Subiendo..."
+                                                                : "Cargar video"}
+                                                            <input
+                                                                type="file"
+                                                                className="visually-hidden"
+                                                                accept="video/mp4,video/quicktime,.mp4,.mov"
+                                                                onChange={
+                                                                    handleInstagramReelUpload
+                                                                }
+                                                                disabled={
+                                                                    instagramBusy ||
+                                                                    instagramReels.length >=
+                                                                        INSTAGRAM_REEL_MAX_FILES
+                                                                }
+                                                            />
+                                                        </label>
+                                                    </div>
+
+                                                    {instagramOperation ===
+                                                        "upload-reel" && (
+                                                        <div className="mb-3">
+                                                            <div
+                                                                className="progress"
+                                                                role="progressbar"
+                                                                aria-label="Carga del video"
+                                                                aria-valuenow={
+                                                                    instagramUploadProgress
+                                                                }
+                                                                aria-valuemin="0"
+                                                                aria-valuemax="100"
+                                                            >
                                                                 <div
-                                                                    className="col-6 col-md-3 col-xl-2"
-                                                                    key={imageUrl}
+                                                                    className="progress-bar progress-bar-striped progress-bar-animated"
+                                                                    style={{
+                                                                        width: `${instagramUploadProgress}%`,
+                                                                    }}
                                                                 >
-                                                                    <button
-                                                                        type="button"
-                                                                        className={`btn p-1 w-100 border ${
-                                                                            selected
-                                                                                ? "border-primary border-3"
-                                                                                : "border-secondary-subtle"
-                                                                        }`}
-                                                                        onClick={() =>
-                                                                            handleInstagramImageToggle(
-                                                                                imageUrl,
-                                                                            )
-                                                                        }
-                                                                        disabled={
-                                                                            instagramBusy
-                                                                        }
-                                                                        aria-pressed={
-                                                                            selected
-                                                                        }
+                                                                    {instagramUploadProgress}%
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {instagramReels.length === 0 ? (
+                                                        <div className="alert alert-light border mb-0">
+                                                            Todavía no hay videos cargados para
+                                                            este inmueble.
+                                                        </div>
+                                                    ) : (
+                                                        <div className="row g-3">
+                                                            {instagramReels.map((reel) => {
+                                                                const selected =
+                                                                    payload.videoUrl ===
+                                                                    reel.url;
+                                                                const aspectWarning =
+                                                                    getInstagramReelAspectWarning(
+                                                                        reel,
+                                                                    );
+
+                                                                return (
+                                                                    <div
+                                                                        className="col-md-6 col-xl-4"
+                                                                        key={reel.id}
                                                                     >
-                                                                        <img
-                                                                            src={
-                                                                                imageUrl
-                                                                            }
-                                                                            alt={`Imagen ${
-                                                                                imageIndex +
-                                                                                1
-                                                                            }`}
-                                                                            className="w-100 rounded"
-                                                                            style={{
-                                                                                aspectRatio:
-                                                                                    "1 / 1",
-                                                                                objectFit:
-                                                                                    "cover",
-                                                                            }}
-                                                                        />
-                                                                        <span
-                                                                            className={`d-block small py-1 ${
+                                                                        <div
+                                                                            className={`card h-100 ${
                                                                                 selected
-                                                                                    ? "text-primary fw-semibold"
-                                                                                    : "text-muted"
+                                                                                    ? "border-primary border-2"
+                                                                                    : ""
                                                                             }`}
                                                                         >
-                                                                            {selected
-                                                                                ? "Seleccionada"
-                                                                                : "Seleccionar"}
-                                                                        </span>
-                                                                    </button>
-                                                                </div>
-                                                            );
-                                                        },
+                                                                            <video
+                                                                                src={reel.url}
+                                                                                controls
+                                                                                preload="metadata"
+                                                                                className="card-img-top bg-dark"
+                                                                                style={{
+                                                                                    aspectRatio:
+                                                                                        "9 / 16",
+                                                                                    objectFit:
+                                                                                        "contain",
+                                                                                    maxHeight:
+                                                                                        "420px",
+                                                                                }}
+                                                                            >
+                                                                                Tu navegador no
+                                                                                puede reproducir
+                                                                                este video.
+                                                                            </video>
+                                                                            <div className="card-body d-flex flex-column gap-2">
+                                                                                <div
+                                                                                    className="text-truncate fw-semibold"
+                                                                                    title={reel.name}
+                                                                                >
+                                                                                    {reel.name}
+                                                                                </div>
+                                                                                <div className="small text-muted">
+                                                                                    {formatVideoDuration(
+                                                                                        reel.duration,
+                                                                                    )}
+                                                                                    {" · "}
+                                                                                    {formatFileSize(
+                                                                                        reel.size,
+                                                                                    )}
+                                                                                    {reel.width &&
+                                                                                        reel.height
+                                                                                        ? ` · ${reel.width}×${reel.height}`
+                                                                                        : ""}
+                                                                                </div>
+
+                                                                                {aspectWarning && (
+                                                                                    <div className="small text-warning-emphasis">
+                                                                                        {aspectWarning}
+                                                                                    </div>
+                                                                                )}
+
+                                                                                <div className="d-flex flex-wrap gap-2 mt-auto">
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className={`btn btn-sm ${
+                                                                                            selected
+                                                                                                ? "btn-primary"
+                                                                                                : "btn-outline-primary"
+                                                                                        }`}
+                                                                                        onClick={() => {
+                                                                                            handleChannelFormChange(
+                                                                                                "instagram",
+                                                                                                "mediaKind",
+                                                                                                "reel",
+                                                                                            );
+                                                                                            handleChannelFormChange(
+                                                                                                "instagram",
+                                                                                                "videoUrl",
+                                                                                                reel.url,
+                                                                                            );
+                                                                                        }}
+                                                                                        disabled={
+                                                                                            instagramBusy
+                                                                                        }
+                                                                                    >
+                                                                                        {selected
+                                                                                            ? "Seleccionado"
+                                                                                            : "Seleccionar"}
+                                                                                    </button>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        className="btn btn-sm btn-outline-danger"
+                                                                                        onClick={() =>
+                                                                                            handleInstagramReelDelete(
+                                                                                                reel,
+                                                                                            )
+                                                                                        }
+                                                                                        disabled={
+                                                                                            instagramBusy
+                                                                                        }
+                                                                                    >
+                                                                                        Eliminar
+                                                                                    </button>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
                                                     )}
+
+                                                    <div className="form-check form-switch mt-3">
+                                                        <input
+                                                            className="form-check-input"
+                                                            type="checkbox"
+                                                            role="switch"
+                                                            id="instagram-share-reel-to-feed"
+                                                            checked={
+                                                                payload.shareToFeed !== false
+                                                            }
+                                                            onChange={(event) =>
+                                                                handleChannelFormChange(
+                                                                    "instagram",
+                                                                    "shareToFeed",
+                                                                    event.target.checked,
+                                                                )
+                                                            }
+                                                            disabled={instagramBusy}
+                                                        />
+                                                        <label
+                                                            className="form-check-label"
+                                                            htmlFor="instagram-share-reel-to-feed"
+                                                        >
+                                                            Mostrar también en el feed del perfil
+                                                        </label>
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            ) : (
+                                                <div className="mb-4">
+                                                    <div className="d-flex flex-wrap justify-content-between gap-2 mb-2">
+                                                        <label className="form-label fw-semibold mb-0">
+                                                            Imágenes seleccionadas
+                                                        </label>
+                                                        <span className="small text-muted">
+                                                            {payload.imageUrls?.length ||
+                                                                0}
+                                                            /10
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="row g-2">
+                                                        {getImageUrls(inmueble).map(
+                                                            (imageUrl, imageIndex) => {
+                                                                const selected =
+                                                                    payload.imageUrls?.includes(
+                                                                        imageUrl,
+                                                                    );
+
+                                                                return (
+                                                                    <div
+                                                                        className="col-6 col-md-3 col-xl-2"
+                                                                        key={imageUrl}
+                                                                    >
+                                                                        <button
+                                                                            type="button"
+                                                                            className={`btn p-1 w-100 border ${
+                                                                                selected
+                                                                                    ? "border-primary border-3"
+                                                                                    : "border-secondary-subtle"
+                                                                            }`}
+                                                                            onClick={() =>
+                                                                                handleInstagramImageToggle(
+                                                                                    imageUrl,
+                                                                                )
+                                                                            }
+                                                                            disabled={
+                                                                                instagramBusy
+                                                                            }
+                                                                            aria-pressed={
+                                                                                selected
+                                                                            }
+                                                                        >
+                                                                            <img
+                                                                                src={
+                                                                                    imageUrl
+                                                                                }
+                                                                                alt={`Imagen ${
+                                                                                    imageIndex +
+                                                                                    1
+                                                                                }`}
+                                                                                className="w-100 rounded"
+                                                                                style={{
+                                                                                    aspectRatio:
+                                                                                        "1 / 1",
+                                                                                    objectFit:
+                                                                                        "cover",
+                                                                                }}
+                                                                            />
+                                                                            <span
+                                                                                className={`d-block small py-1 ${
+                                                                                    selected
+                                                                                        ? "text-primary fw-semibold"
+                                                                                        : "text-muted"
+                                                                                }`}
+                                                                            >
+                                                                                {selected
+                                                                                    ? "Seleccionada"
+                                                                                    : "Seleccionar"}
+                                                                            </span>
+                                                                        </button>
+                                                                    </div>
+                                                                );
+                                                            },
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             <div className="d-flex flex-wrap gap-2">
                                                 <button
