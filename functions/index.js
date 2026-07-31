@@ -111,6 +111,7 @@ export {
   instagramListOnopropRequests,
   instagramApproveOnopropPublication,
   instagramRejectOnopropPublication,
+  instagramMaintainConnections,
   instagramDeauthorize,
   instagramDataDeletion,
 } from "./instagram.js";

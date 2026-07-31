@@ -32,10 +32,12 @@ export const getInstagramConnectionStatus = (inmobiliariaId) => {
 export const startInstagramAuthorization = ({
     inmobiliariaId,
     target,
+    openerOrigin,
 }) => {
     return callInstagramFunction("instagramAuthStart", {
         inmobiliariaId,
         target,
+        openerOrigin,
     });
 };
 

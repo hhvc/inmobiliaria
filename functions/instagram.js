@@ -1,9 +1,21 @@
-import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
 
 import admin from "firebase-admin";
 import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+
+import {
+    DEFAULT_INSTAGRAM_OPENER_ORIGIN,
+    decryptInstagramToken,
+    encryptInstagramToken,
+    getInstagramConnectionIdentifiers,
+    getInstagramConnectionLinkEntries,
+    isInstagramTokenRefreshDue,
+    normalizeInstagramIdentifier,
+    normalizeInstagramOpenerOrigin,
+    verifyInstagramSignedRequest,
+} from "./instagram.helpers.js";
 
 if (!admin.apps.length) {
     admin.initializeApp();
@@ -196,10 +208,123 @@ const connectionRefForTarget = (target, inmobiliariaId) => {
         : agencyIntegrationRef(inmobiliariaId);
 };
 
-const accountConnectionRef = (instagramUserId) => {
+const accountConnectionRef = (instagramIdentifier) => {
+    const identifier = normalizeInstagramIdentifier(instagramIdentifier);
+
+    if (!identifier) {
+        throw new Error("El identificador de Instagram no es válido.");
+    }
+
     return db
         .collection("instagram_account_connections")
-        .doc(instagramUserId.toString());
+        .doc(identifier);
+};
+
+const connectionRefFromPath = (path = "") => {
+    const normalizedPath = cleanText(path, 500);
+
+    if (!normalizedPath || normalizedPath.split("/").length % 2 !== 0) {
+        return null;
+    }
+
+    try {
+        return db.doc(normalizedPath);
+    } catch {
+        return null;
+    }
+};
+
+const buildAccountConnectionLinkData = (
+    entry,
+    connectionData,
+    connectionPath,
+) => {
+    return {
+        instagramIdentifier: entry.identifier,
+        identifierType: entry.identifierType,
+        canonicalInstagramUserId: connectionData.instagramUserId || "",
+        target: connectionData.target || "",
+        targetKey: connectionData.targetKey || "",
+        inmobiliariaId: connectionData.inmobiliariaId || "",
+        connectionPath,
+        updatedAt: FieldValue.serverTimestamp(),
+    };
+};
+
+const findConnectionByInstagramIdentifier = async (rawIdentifier) => {
+    const identifier = normalizeInstagramIdentifier(rawIdentifier);
+    if (!identifier) return null;
+
+    const directLinkRef = accountConnectionRef(identifier);
+    const directLinkSnap = await directLinkRef.get();
+
+    if (directLinkSnap.exists) {
+        const directConnectionRef = connectionRefFromPath(
+            directLinkSnap.data()?.connectionPath,
+        );
+        const directConnectionSnap = directConnectionRef
+            ? await directConnectionRef.get()
+            : null;
+
+        if (directConnectionSnap?.exists) {
+            return {
+                connectionRef: directConnectionRef,
+                connectionData: directConnectionSnap.data() || {},
+            };
+        }
+
+        await directLinkRef.delete();
+    }
+
+    const allLinksSnap = await db
+        .collection("instagram_account_connections")
+        .get();
+    const connectionPaths = new Set([onopropIntegrationRef().path]);
+
+    allLinksSnap.docs.forEach((doc) => {
+        const path = cleanText(doc.data()?.connectionPath, 500);
+        if (connectionRefFromPath(path)) connectionPaths.add(path);
+    });
+
+    const refs = [...connectionPaths]
+        .map(connectionRefFromPath)
+        .filter(Boolean);
+
+    for (let offset = 0; offset < refs.length; offset += 100) {
+        const snapshots = await db.getAll(...refs.slice(offset, offset + 100));
+
+        for (const snap of snapshots) {
+            if (
+                snap.exists &&
+                getInstagramConnectionIdentifiers(snap.data() || {})
+                    .includes(identifier)
+            ) {
+                const connectionData = snap.data() || {};
+                const linkEntry =
+                    getInstagramConnectionLinkEntries(connectionData)
+                        .find((entry) => entry.identifier === identifier) || {
+                        identifier,
+                        identifierType: "meta_callback_id",
+                    };
+
+                await directLinkRef.set(
+                    buildAccountConnectionLinkData(
+                        linkEntry,
+                        connectionData,
+                        snap.ref.path,
+                    ),
+                    { merge: true },
+                );
+
+                return {
+                    connectionRef: snap.ref,
+                    connectionData,
+                };
+            }
+        }
+    }
+
+    return null;
 };
 
 const inmuebleRef = (inmobiliariaId, inmuebleId) => {
@@ -219,58 +344,6 @@ const distributionRef = (inmobiliariaId, inmuebleId) => {
 const onopropRequestRef = (requestId = "") => {
     const collectionRef = db.collection("instagram_onoprop_publication_requests");
     return requestId ? collectionRef.doc(requestId) : collectionRef.doc();
-};
-
-const parseEncryptionKey = (rawKey) => {
-    const value = cleanText(rawKey, 500);
-
-    if (/^[0-9a-fA-F]{64}$/.test(value)) {
-        return Buffer.from(value, "hex");
-    }
-
-    const decoded = Buffer.from(value, "base64");
-    if (decoded.length === 32) return decoded;
-
-    throw new Error(
-        "INSTAGRAM_TOKEN_ENCRYPTION_KEY debe contener exactamente 32 bytes en base64 o 64 caracteres hexadecimales.",
-    );
-};
-
-const encryptToken = (token, rawKey) => {
-    if (!token) return null;
-
-    const key = parseEncryptionKey(rawKey);
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-    const encrypted = Buffer.concat([
-        cipher.update(token.toString(), "utf8"),
-        cipher.final(),
-    ]);
-
-    return {
-        version: 1,
-        algorithm: "aes-256-gcm",
-        iv: iv.toString("base64"),
-        tag: cipher.getAuthTag().toString("base64"),
-        data: encrypted.toString("base64"),
-    };
-};
-
-const decryptToken = (encryptedToken, rawKey) => {
-    if (!encryptedToken) return "";
-
-    const key = parseEncryptionKey(rawKey);
-    const decipher = crypto.createDecipheriv(
-        "aes-256-gcm",
-        key,
-        Buffer.from(encryptedToken.iv, "base64"),
-    );
-    decipher.setAuthTag(Buffer.from(encryptedToken.tag, "base64"));
-
-    return Buffer.concat([
-        decipher.update(Buffer.from(encryptedToken.data, "base64")),
-        decipher.final(),
-    ]).toString("utf8");
 };
 
 const readJsonResponse = async (response) => {
@@ -482,13 +555,38 @@ const getValidConnection = async (target, inmobiliariaId = "") => {
     }
 
     const encryptionKey = INSTAGRAM_TOKEN_ENCRYPTION_KEY.value();
-    let accessToken = decryptToken(data.accessTokenEncrypted, encryptionKey);
-    const now = Date.now();
+    let accessToken;
 
-    if (Number(data.expiresAtMs || 0) <= now) {
+    try {
+        accessToken = decryptInstagramToken(
+            data.accessTokenEncrypted,
+            encryptionKey,
+        );
+    } catch {
         await ref.set(
             {
                 requiresReconnect: true,
+                accessTokenEncrypted: FieldValue.delete(),
+                lastTokenError:
+                    "El token cifrado de Instagram no se pudo recuperar.",
+                tokenRefreshFailedAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+        );
+        throw new HttpsError(
+            "failed-precondition",
+            "La cuenta de Instagram necesita volver a conectarse.",
+        );
+    }
+
+    const now = Date.now();
+
+    if (!accessToken || Number(data.expiresAtMs || 0) <= now) {
+        await ref.set(
+            {
+                requiresReconnect: true,
+                accessTokenEncrypted: FieldValue.delete(),
                 updatedAt: FieldValue.serverTimestamp(),
             },
             { merge: true },
@@ -499,20 +597,38 @@ const getValidConnection = async (target, inmobiliariaId = "") => {
         );
     }
 
-    if (Number(data.expiresAtMs || 0) <= now + TOKEN_REFRESH_MARGIN_MS) {
+    if (
+        isInstagramTokenRefreshDue(
+            data.expiresAtMs,
+            now,
+            TOKEN_REFRESH_MARGIN_MS,
+        )
+    ) {
         try {
             const refreshed = await refreshLongLivedToken(accessToken);
             accessToken = refreshed.access_token || accessToken;
             const expiresIn = Number(refreshed.expires_in || 0);
+
+            if (expiresIn <= 0) {
+                throw new Error(
+                    "Instagram no informó la vigencia del token renovado.",
+                );
+            }
+
             const expiresAtMs = now + expiresIn * 1000;
 
             await ref.set(
                 {
-                    accessTokenEncrypted: encryptToken(accessToken, encryptionKey),
+                    accessTokenEncrypted: encryptInstagramToken(
+                        accessToken,
+                        encryptionKey,
+                    ),
                     expiresIn,
                     expiresAtMs,
                     requiresReconnect: false,
                     tokenRefreshedAt: FieldValue.serverTimestamp(),
+                    lastTokenError: FieldValue.delete(),
+                    tokenRefreshFailedAt: FieldValue.delete(),
                     updatedAt: FieldValue.serverTimestamp(),
                 },
                 { merge: true },
@@ -522,8 +638,8 @@ const getValidConnection = async (target, inmobiliariaId = "") => {
         } catch (error) {
             await ref.set(
                 {
-                    requiresReconnect: true,
                     lastTokenError: formatInstagramError(error),
+                    tokenRefreshFailedAt: FieldValue.serverTimestamp(),
                     updatedAt: FieldValue.serverTimestamp(),
                 },
                 { merge: true },
@@ -535,48 +651,23 @@ const getValidConnection = async (target, inmobiliariaId = "") => {
     return { accessToken, integration: data, ref };
 };
 
-const verifySignedRequest = (signedRequest) => {
-    const [encodedSignature, encodedPayload] = cleanText(
-        signedRequest,
-        10000,
-    ).split(".");
-
-    if (!encodedSignature || !encodedPayload) {
-        throw new Error("signed_request inválido.");
-    }
-
-    const signature = Buffer.from(encodedSignature, "base64url");
-    const expected = crypto
-        .createHmac("sha256", INSTAGRAM_APP_SECRET.value())
-        .update(encodedPayload)
-        .digest();
-
-    if (
-        signature.length !== expected.length ||
-        !crypto.timingSafeEqual(signature, expected)
-    ) {
-        throw new Error("La firma de Meta no es válida.");
-    }
-
-    return JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
-};
-
-const disconnectAccountByInstagramUserId = async (
-    instagramUserId,
+const disconnectAccountByInstagramIdentifier = async (
+    instagramIdentifier,
     extraData = {},
     deleteConnection = false,
 ) => {
-    const linkRef = accountConnectionRef(instagramUserId);
-    const linkSnap = await linkRef.get();
+    const located = await findConnectionByInstagramIdentifier(
+        instagramIdentifier,
+    );
+    if (!located) return false;
 
-    if (!linkSnap.exists) return false;
-
-    const linkData = linkSnap.data() || {};
-    const path = cleanText(linkData.connectionPath, 500);
-    if (!path) return false;
-
-    const connectionRef = db.doc(path);
+    const { connectionRef, connectionData } = located;
+    const identifiers = new Set([
+        ...getInstagramConnectionIdentifiers(connectionData),
+        normalizeInstagramIdentifier(instagramIdentifier),
+    ]);
     const batch = db.batch();
+
     if (deleteConnection) {
         batch.delete(connectionRef);
     } else {
@@ -594,7 +685,9 @@ const disconnectAccountByInstagramUserId = async (
             { merge: true },
         );
     }
-    batch.delete(linkRef);
+    identifiers.forEach((identifier) => {
+        if (identifier) batch.delete(accountConnectionRef(identifier));
+    });
     await batch.commit();
     return true;
 };
@@ -987,6 +1080,208 @@ const sanitizeDistribution = (data = {}) => {
     };
 };
 
+const ensureAccountConnectionLinks = async (connectionRef, connectionData) => {
+    const entries = getInstagramConnectionLinkEntries(connectionData);
+    if (entries.length === 0) return 0;
+
+    const batch = db.batch();
+    entries.forEach((entry) => {
+        batch.set(
+            accountConnectionRef(entry.identifier),
+            buildAccountConnectionLinkData(
+                entry,
+                connectionData,
+                connectionRef.path,
+            ),
+            { merge: true },
+        );
+    });
+    await batch.commit();
+    return entries.length;
+};
+
+const getTrackedInstagramConnectionRefs = async () => {
+    const linksSnap = await db
+        .collection("instagram_account_connections")
+        .get();
+    const paths = new Set([onopropIntegrationRef().path]);
+
+    linksSnap.docs.forEach((doc) => {
+        const path = cleanText(doc.data()?.connectionPath, 500);
+        if (connectionRefFromPath(path)) paths.add(path);
+    });
+
+    return [...paths]
+        .map(connectionRefFromPath)
+        .filter(Boolean);
+};
+
+const refreshStoredInstagramConnection = async (ref, now) => {
+    const snap = await ref.get();
+    if (!snap.exists) return "missing";
+
+    const data = snap.data() || {};
+    if (data.connected !== true || data.requiresReconnect === true) {
+        return "inactive";
+    }
+
+    const expiresAtMs = Number(data.expiresAtMs || 0);
+    if (!data.accessTokenEncrypted || expiresAtMs <= now) {
+        await ref.set(
+            {
+                requiresReconnect: true,
+                accessTokenEncrypted: FieldValue.delete(),
+                lastTokenError: "El token de Instagram está ausente o vencido.",
+                tokenRefreshFailedAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+        );
+        return "expired";
+    }
+
+    await ensureAccountConnectionLinks(ref, data);
+
+    if (
+        !isInstagramTokenRefreshDue(
+            expiresAtMs,
+            now,
+            TOKEN_REFRESH_MARGIN_MS,
+        )
+    ) {
+        return "active";
+    }
+
+    let accessToken;
+    const encryptionKey = INSTAGRAM_TOKEN_ENCRYPTION_KEY.value();
+
+    try {
+        accessToken = decryptInstagramToken(
+            data.accessTokenEncrypted,
+            encryptionKey,
+        );
+    } catch (error) {
+        await ref.set(
+            {
+                requiresReconnect: true,
+                accessTokenEncrypted: FieldValue.delete(),
+                lastTokenError: formatInstagramError(error),
+                tokenRefreshFailedAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+        );
+        return "invalid";
+    }
+
+    try {
+        const refreshed = await refreshLongLivedToken(accessToken);
+        const refreshedToken = refreshed.access_token || accessToken;
+        const expiresIn = Number(refreshed.expires_in || 0);
+
+        if (expiresIn <= 0) {
+            throw new Error(
+                "Instagram no informó la vigencia del token renovado.",
+            );
+        }
+
+        await ref.set(
+            {
+                accessTokenEncrypted: encryptInstagramToken(
+                    refreshedToken,
+                    encryptionKey,
+                ),
+                expiresIn,
+                expiresAtMs: now + expiresIn * 1000,
+                requiresReconnect: false,
+                tokenRefreshedAt: FieldValue.serverTimestamp(),
+                lastTokenError: FieldValue.delete(),
+                tokenRefreshFailedAt: FieldValue.delete(),
+                updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+        );
+        return "refreshed";
+    } catch (error) {
+        await ref.set(
+            {
+                lastTokenError: formatInstagramError(error),
+                tokenRefreshFailedAt: FieldValue.serverTimestamp(),
+                updatedAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true },
+        );
+        return "retry";
+    }
+};
+
+const deleteExpiredInstagramDocuments = async (collectionName, now) => {
+    const snap = await db
+        .collection(collectionName)
+        .where("expiresAtMs", "<=", now)
+        .limit(450)
+        .get();
+
+    if (snap.empty) return 0;
+
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+    return snap.size;
+};
+
+export const instagramMaintainConnections = onSchedule(
+    {
+        region: REGION,
+        schedule: "15 3 * * *",
+        timeZone: "America/Argentina/Buenos_Aires",
+        timeoutSeconds: 300,
+        secrets: [INSTAGRAM_TOKEN_ENCRYPTION_KEY],
+    },
+    async () => {
+        const now = Date.now();
+        const refs = await getTrackedInstagramConnectionRefs();
+        const summary = {
+            active: 0,
+            expired: 0,
+            failed: 0,
+            inactive: 0,
+            invalid: 0,
+            missing: 0,
+            refreshed: 0,
+            retry: 0,
+        };
+
+        for (const ref of refs) {
+            try {
+                const status =
+                    await refreshStoredInstagramConnection(ref, now);
+                summary[status] = Number(summary[status] || 0) + 1;
+            } catch (error) {
+                summary.failed += 1;
+                console.error("Instagram connection maintenance failed", {
+                    connectionPath: ref.path,
+                    message: formatInstagramError(error),
+                });
+            }
+        }
+
+        const [expiredStates, expiredDeletionRequests] = await Promise.all([
+            deleteExpiredInstagramDocuments("instagram_oauth_states", now),
+            deleteExpiredInstagramDocuments(
+                "instagram_data_deletion_requests",
+                now,
+            ),
+        ]);
+
+        console.info("Instagram maintenance completed", {
+            ...summary,
+            expiredStates,
+            expiredDeletionRequests,
+        });
+    },
+);
+
 export const instagramAuthStart = onCall(
     {
         region: REGION,
@@ -996,6 +1291,10 @@ export const instagramAuthStart = onCall(
     async (request) => {
         try {
             const target = normalizeTarget(request.data?.target);
+            const openerOrigin = normalizeInstagramOpenerOrigin(
+                request.data?.openerOrigin ||
+                DEFAULT_INSTAGRAM_OPENER_ORIGIN,
+            );
             const { uid, inmobiliariaId, userData, inmobiliaria } =
                 await assertAuthenticatedManager(request);
 
@@ -1013,6 +1312,7 @@ export const instagramAuthStart = onCall(
                 uid,
                 inmobiliariaId,
                 target,
+                openerOrigin,
                 used: false,
                 createdAt: FieldValue.serverTimestamp(),
                 expiresAtMs: now + OAUTH_STATE_TTL_MS,
@@ -1023,6 +1323,7 @@ export const instagramAuthStart = onCall(
                 authUrl: buildInstagramAuthUrl({ state }),
                 expiresAtMs: now + OAUTH_STATE_TTL_MS,
                 target,
+                openerOrigin,
             };
         } catch (error) {
             throw toHttpsError(error, "No se pudo iniciar la conexión con Instagram.");
@@ -1090,6 +1391,9 @@ export const instagramOAuthCallback = onRequest(
 
             const { uid, inmobiliariaId } = stateData;
             const target = normalizeTarget(stateData.target);
+            const openerOrigin = normalizeInstagramOpenerOrigin(
+                stateData.openerOrigin || DEFAULT_INSTAGRAM_OPENER_ORIGIN,
+            );
             const userData = await assertCanManageInmobiliaria(uid, inmobiliariaId);
             const inmobiliaria = await getInmobiliaria(inmobiliariaId);
             assertActiveInmobiliaria(inmobiliaria);
@@ -1141,8 +1445,14 @@ export const instagramOAuthCallback = onRequest(
             const targetKey =
                 target === "onoprop" ? "onoprop" : `agency:${inmobiliariaId}`;
             const connectionRef = connectionRefForTarget(target, inmobiliariaId);
-            const linkRef = accountConnectionRef(instagramUserId);
             const expiresIn = Number(longLived.expires_in || 0);
+
+            if (expiresIn <= 0) {
+                throw new Error(
+                    "Instagram no informó la vigencia del token de acceso.",
+                );
+            }
+
             const expiresAtMs = Date.now() + expiresIn * 1000;
             const encryptionKey = INSTAGRAM_TOKEN_ENCRYPTION_KEY.value();
             const connectionData = {
@@ -1159,7 +1469,10 @@ export const instagramOAuthCallback = onRequest(
                 username: cleanText(profile.username, 200),
                 accountType:
                     cleanText(profile.account_type, 50) || "professional",
-                accessTokenEncrypted: encryptToken(accessToken, encryptionKey),
+                accessTokenEncrypted: encryptInstagramToken(
+                    accessToken,
+                    encryptionKey,
+                ),
                 tokenType: longLived.token_type || "Bearer",
                 expiresIn,
                 expiresAtMs,
@@ -1167,49 +1480,56 @@ export const instagramOAuthCallback = onRequest(
                 connectedAt: FieldValue.serverTimestamp(),
                 updatedAt: FieldValue.serverTimestamp(),
             };
-            await db.runTransaction(async (transaction) => {
-                const [existingLink, existingConnection] = await Promise.all([
-                    transaction.get(linkRef),
-                    transaction.get(connectionRef),
-                ]);
+            const linkEntries =
+                getInstagramConnectionLinkEntries(connectionData);
+            const linkRefs = linkEntries
+                .map((entry) => accountConnectionRef(entry.identifier));
 
-                if (
-                    existingLink.exists &&
-                    existingLink.data()?.targetKey !== targetKey
-                ) {
+            await db.runTransaction(async (transaction) => {
+                const [existingConnection, ...existingLinks] =
+                    await Promise.all([
+                        transaction.get(connectionRef),
+                        ...linkRefs.map((ref) => transaction.get(ref)),
+                    ]);
+
+                if (existingLinks.some(
+                    (linkSnap) =>
+                        linkSnap.exists &&
+                        linkSnap.data()?.targetKey !== targetKey,
+                )) {
                     throw new HttpsError(
                         "already-exists",
                         "Esta cuenta de Instagram ya está conectada a otro destino de Onoprop.",
                     );
                 }
 
-                const previousInstagramUserId = cleanText(
-                    existingConnection.data()?.instagramUserId,
-                    100,
+                const previousIdentifiers = new Set(
+                    getInstagramConnectionIdentifiers(
+                        existingConnection.data() || {},
+                    ),
                 );
-                if (
-                    previousInstagramUserId &&
-                    previousInstagramUserId !== instagramUserId
-                ) {
-                    transaction.delete(
-                        accountConnectionRef(previousInstagramUserId),
-                    );
-                }
+                const currentIdentifiers = new Set(
+                    linkEntries.map((entry) => entry.identifier),
+                );
+
+                previousIdentifiers.forEach((identifier) => {
+                    if (!currentIdentifiers.has(identifier)) {
+                        transaction.delete(accountConnectionRef(identifier));
+                    }
+                });
 
                 transaction.set(connectionRef, connectionData, { merge: true });
-                transaction.set(
-                    linkRef,
-                    {
-                        instagramUserId,
-                        target,
-                        targetKey,
-                        inmobiliariaId:
-                            target === "agency" ? inmobiliariaId : "",
-                        connectionPath: connectionRef.path,
-                        updatedAt: FieldValue.serverTimestamp(),
-                    },
-                    { merge: true },
-                );
+                linkEntries.forEach((entry, index) => {
+                    transaction.set(
+                        linkRefs[index],
+                        buildAccountConnectionLinkData(
+                            entry,
+                            connectionData,
+                            connectionRef.path,
+                        ),
+                        { merge: true },
+                    );
+                });
                 transaction.delete(stateRef);
             });
 
@@ -1228,7 +1548,7 @@ export const instagramOAuthCallback = onRequest(
                         window.opener.postMessage({
                           type: "instagram-oauth-success",
                           target: ${JSON.stringify(target)}
-                        }, "*");
+                        }, ${JSON.stringify(openerOrigin)});
                       }
                       window.setTimeout(() => window.close(), 800);
                     </script>
@@ -1321,9 +1641,9 @@ export const instagramDisconnect = onCall(
                 },
                 { merge: true },
             );
-            if (data.instagramUserId) {
-                batch.delete(accountConnectionRef(data.instagramUserId));
-            }
+            getInstagramConnectionIdentifiers(data).forEach((identifier) => {
+                batch.delete(accountConnectionRef(identifier));
+            });
             await batch.commit();
 
             return { disconnected: true, target };
@@ -1770,14 +2090,17 @@ export const instagramDeauthorize = onRequest(
     },
     async (req, res) => {
         try {
-            const payload = verifySignedRequest(req.body?.signed_request);
+            const payload = verifyInstagramSignedRequest(
+                req.body?.signed_request,
+                INSTAGRAM_APP_SECRET.value(),
+            );
             const instagramUserId = cleanText(payload.user_id, 100);
 
             if (!instagramUserId) {
                 throw new Error("Meta no informó el usuario de Instagram.");
             }
 
-            await disconnectAccountByInstagramUserId(instagramUserId, {
+            await disconnectAccountByInstagramIdentifier(instagramUserId, {
                 deauthorizedByMeta: true,
                 deauthorizedAt: FieldValue.serverTimestamp(),
             });
@@ -1829,18 +2152,23 @@ export const instagramDataDeletion = onRequest(
         }
 
         try {
-            const payload = verifySignedRequest(req.body?.signed_request);
+            const payload = verifyInstagramSignedRequest(
+                req.body?.signed_request,
+                INSTAGRAM_APP_SECRET.value(),
+            );
             const instagramUserId = cleanText(payload.user_id, 100);
             if (!instagramUserId) {
                 throw new Error("Meta no informó el usuario de Instagram.");
             }
 
-            await disconnectAccountByInstagramUserId(instagramUserId, {
+            await disconnectAccountByInstagramIdentifier(instagramUserId, {
                 dataDeletionRequestedByMeta: true,
                 dataDeletionRequestedAt: FieldValue.serverTimestamp(),
             }, true);
 
             const confirmationCode = crypto.randomUUID();
+            const expiresAtMs =
+                Date.now() + 30 * 24 * 60 * 60 * 1000;
             await db
                 .collection("instagram_data_deletion_requests")
                 .doc(confirmationCode)
@@ -1852,9 +2180,8 @@ export const instagramDataDeletion = onRequest(
                         .digest("hex"),
                     status: "completed",
                     completedAt: FieldValue.serverTimestamp(),
-                    expiresAt: Timestamp.fromMillis(
-                        Date.now() + 30 * 24 * 60 * 60 * 1000,
-                    ),
+                    expiresAtMs,
+                    expiresAt: Timestamp.fromMillis(expiresAtMs),
                 });
 
             const statusUrl = `${req.protocol}://${req.get("host")}${req.path}` +

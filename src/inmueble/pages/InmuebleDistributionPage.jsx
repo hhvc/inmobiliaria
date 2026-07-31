@@ -53,6 +53,9 @@ const CHANNELS = [
     },
 ];
 
+const INSTAGRAM_OAUTH_CALLBACK_ORIGIN =
+    "https://southamerica-east1-inmobiliaria-bcc63.cloudfunctions.net";
+
 const STATUS_OPTIONS = [
     { value: "no_preparado", label: "No preparado" },
     { value: "listo", label: "Listo para publicar" },
@@ -437,6 +440,8 @@ const waitForInstagramOAuth = (popup, expectedTarget) => {
 
         const handleMessage = (event) => {
             if (
+                event.source === popup &&
+                event.origin === INSTAGRAM_OAUTH_CALLBACK_ORIGIN &&
                 event.data?.type === "instagram-oauth-success" &&
                 event.data?.target === expectedTarget
             ) {
@@ -1044,6 +1049,7 @@ const InmuebleDistributionPage = () => {
                 const authorization = await startInstagramAuthorization({
                     inmobiliariaId: activeInmobiliariaId,
                     target,
+                    openerOrigin: window.location.origin,
                 });
                 const popup = window.open(
                     authorization.authUrl,

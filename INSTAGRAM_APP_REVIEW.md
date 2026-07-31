@@ -13,6 +13,7 @@ insights, publicidad, Reels o Stories.
 - Instagram Login completa correctamente el OAuth.
 - La cuenta profesional queda vinculada al destino correcto de OnoProp.
 - El token se almacena cifrado y nunca se entrega al navegador.
+- Los tokens próximos a vencer se renuevan mediante una función programada.
 - La publicación de una imagen fue completada y se obtuvo su permalink.
 - Están configuradas las URLs de redirección, desautorización y eliminación de
   datos.

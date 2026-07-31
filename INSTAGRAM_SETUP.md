@@ -120,6 +120,21 @@ Configurar TTL para:
 - `instagram_oauth_states`, campo `expiresAt`.
 - `instagram_data_deletion_requests`, campo `expiresAt`.
 
+La función programada `instagramMaintainConnections` se ejecuta diariamente a
+las 03:15 (`America/Argentina/Buenos_Aires`) y actúa como segunda barrera:
+
+- renueva los tokens que están a siete días o menos de vencer;
+- conserva la conexión ante errores transitorios para reintentar al día
+  siguiente;
+- marca para reconexión los tokens ausentes, dañados o vencidos;
+- reconstruye los vínculos privados para los distintos identificadores que
+  Meta puede devolver;
+- elimina por lotes estados OAuth y comprobantes de eliminación vencidos.
+
+La limpieza programada no reemplaza la configuración TTL de Firestore, pero
+evita que una demora o una omisión del TTL deje documentos temporales
+indefinidamente.
+
 ## 5. Publicación
 
 La primera versión publica:
@@ -151,6 +166,7 @@ Validar:
 ```powershell
 npm --prefix functions run lint
 npm run lint
+npm run test:instagram
 npm run build
 ```
 
