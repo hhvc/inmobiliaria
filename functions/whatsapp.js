@@ -35,7 +35,7 @@ const sendUnavailablePage = (res, status, message) => {
     `);
 };
 
-const getAgencyWhatsappDestination = async (slug) => {
+const getAgencyWhatsappDestination = async (slug, context = {}) => {
     const snap = await getFirestore()
         .collection("inmobiliarias")
         .where("activa", "==", true)
@@ -50,6 +50,7 @@ const getAgencyWhatsappDestination = async (slug) => {
     const url = buildWhatsappDestinationUrl({
         number,
         agencyName: data.nombre || "la inmobiliaria",
+        ...context,
     });
 
     return url || null;
@@ -73,6 +74,11 @@ export const whatsappRedirect = onRequest(
         try {
             const requestedAgency = req.query.agency?.toString?.() || "";
             const agencySlug = normalizeWhatsappAgencySlug(requestedAgency);
+            const context = {
+                developmentName:
+                    req.query.development?.toString?.() || "",
+                unitReference: req.query.unit?.toString?.() || "",
+            };
 
             if (requestedAgency && !agencySlug) {
                 sendUnavailablePage(
@@ -84,9 +90,10 @@ export const whatsappRedirect = onRequest(
             }
 
             const destinationUrl = agencySlug
-                ? await getAgencyWhatsappDestination(agencySlug)
+                ? await getAgencyWhatsappDestination(agencySlug, context)
                 : buildWhatsappDestinationUrl({
                     number: ONOPROP_WHATSAPP_NUMBER.value(),
+                    ...context,
                 });
 
             if (!destinationUrl) {

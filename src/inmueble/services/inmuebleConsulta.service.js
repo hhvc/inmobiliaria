@@ -155,6 +155,7 @@ export const createInmuebleConsulta = async ({
 
 export const createEmprendimientoConsulta = async ({
     emprendimiento,
+    unidad = null,
     nombre,
     email,
     telefono,
@@ -168,6 +169,13 @@ export const createEmprendimientoConsulta = async ({
     const normalizedEmail = normalizeEmail(email);
     const normalizedTelefono = normalizePhone(telefono);
     const normalizedMensaje = cleanText(mensaje);
+    const selectedUnit =
+        unidad?.id && unidad.emprendimientoId === emprendimiento.id
+            ? unidad
+            : null;
+    const unitCode = cleanText(
+        selectedUnit?.unidadEmprendimiento?.codigo || "",
+    );
 
     if (!normalizedNombre) throw new Error("El nombre es obligatorio");
     if (!normalizedEmail && !normalizedTelefono) {
@@ -175,14 +183,23 @@ export const createEmprendimientoConsulta = async ({
     }
 
     const consulta = {
-        inmuebleId: emprendimiento.id,
-        inmuebleSlug: emprendimiento.slug || "",
-        inmuebleTitulo: emprendimiento.nombre || "",
-        inmuebleOperacion: "emprendimiento",
-        inmuebleTipo: emprendimiento.tipo || "",
+        inmuebleId: selectedUnit?.id || emprendimiento.id,
+        inmuebleSlug: selectedUnit?.slug || emprendimiento.slug || "",
+        inmuebleTitulo: selectedUnit?.titulo || emprendimiento.nombre || "",
+        inmuebleOperacion: selectedUnit?.operacion || "emprendimiento",
+        inmuebleTipo: selectedUnit?.tipo || emprendimiento.tipo || "",
         sourceType: "emprendimiento",
         emprendimientoId: emprendimiento.id,
         emprendimientoSlug: emprendimiento.slug || "",
+        emprendimientoNombre: emprendimiento.nombre || "",
+        unidadId: selectedUnit?.id || "",
+        unidadSlug: selectedUnit?.slug || "",
+        unidadTitulo: selectedUnit?.titulo || "",
+        unidadCodigo: unitCode,
+        unidadTipologia:
+            selectedUnit?.unidadEmprendimiento?.tipologia || "",
+        unidadDisponibilidad:
+            selectedUnit?.unidadEmprendimiento?.disponibilidad || "",
         inmobiliariaId: emprendimiento.inmobiliariaId,
         ownerInmobiliariaId:
             emprendimiento.ownerInmobiliariaId || emprendimiento.inmobiliariaId,
@@ -190,7 +207,9 @@ export const createEmprendimientoConsulta = async ({
         email: normalizedEmail,
         telefono: normalizedTelefono,
         mensaje: normalizedMensaje,
-        source: "emprendimiento_public_page",
+        source: selectedUnit
+            ? "emprendimiento_unit_public_page"
+            : "emprendimiento_public_page",
         pageUrl: buildEmprendimientoPageUrl(emprendimiento.slug),
         estado: "nueva",
         leida: false,

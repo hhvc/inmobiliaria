@@ -668,6 +668,7 @@ export const getPublicInmuebles = async (
     search = "",
     tipo = "",
     operacion = "",
+    emprendimientoId = "",
     inmobiliariaId = "",
     pageSize = 12,
     lastDoc = null,
@@ -689,6 +690,9 @@ export const getPublicInmuebles = async (
 
   if (tipo) constraints.push(where("tipo", "==", tipo));
   if (operacion) constraints.push(where("operacion", "==", operacion));
+  if (emprendimientoId) {
+    constraints.push(where("emprendimientoId", "==", emprendimientoId));
+  }
 
   constraints.push(limit(pageSize));
 

@@ -49,6 +49,7 @@ export const emprendimientoInitialValues = {
   destacado: false,
   publicarEnPortal: false,
   noIndex: false,
+  mostrarUnidadesVendidas: false,
 };
 
 const cleanText = (value = "") => value?.toString?.().trim?.() || "";
@@ -91,6 +92,7 @@ export const normalizeEmprendimiento = (data = {}) => ({
   destacado: Boolean(data.destacado),
   publicarEnPortal: Boolean(data.publicarEnPortal),
   noIndex: Boolean(data.noIndex),
+  mostrarUnidadesVendidas: Boolean(data.mostrarUnidadesVendidas),
 });
 
 export const validateEmprendimiento = (data = {}) => {
@@ -138,4 +140,3 @@ export const getEmprendimientoTypeLabel = (tipo = "") =>
 export const getEmprendimientoStatusLabel = (estado = "") =>
   EMPRENDIMIENTO_ESTADOS_OBRA.find((item) => item.id === estado)?.label ||
   estado;
-

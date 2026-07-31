@@ -42,10 +42,9 @@ const EmprendimientoPortalPage = () => {
         });
         if (active) setItems(data);
       } catch (loadError) {
+        console.error("Error cargando emprendimientos públicos:", loadError);
         if (active) {
-          setError(
-            loadError.message || "No se pudieron cargar los emprendimientos",
-          );
+          setError("No se pudieron cargar los emprendimientos. Intentá nuevamente.");
         }
       } finally {
         if (active) setLoading(false);
@@ -232,4 +231,3 @@ const EmprendimientoPortalPage = () => {
 };
 
 export default EmprendimientoPortalPage;
-

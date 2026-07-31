@@ -46,6 +46,17 @@ const normalizeWhatsappNumber = (value = "") => {
     return value.toString().replace(/\D/g, "");
 };
 
+const getConsultaUnitLabel = (consulta = {}) => {
+    if (!consulta.unidadId && !consulta.unidadCodigo) return "";
+
+    return [
+        consulta.unidadCodigo ? `Unidad ${consulta.unidadCodigo}` : "Unidad",
+        consulta.unidadTipologia || "",
+    ]
+        .filter(Boolean)
+        .join(" · ");
+};
+
 const buildWhatsappReplyUrl = (consulta) => {
     const phone = normalizeWhatsappNumber(consulta.telefono);
 
@@ -60,6 +71,9 @@ const buildWhatsappReplyUrl = (consulta) => {
             : "",
         consulta.inmuebleOperacion || consulta.inmuebleTipo
             ? `Referencia: ${consulta.inmuebleOperacion || ""} ${consulta.inmuebleTipo || ""}`.trim()
+            : "",
+        getConsultaUnitLabel(consulta)
+            ? `Unidad consultada: ${getConsultaUnitLabel(consulta)}`
             : "",
         publicUrl ? `Link: ${publicUrl}` : "",
     ]
@@ -82,6 +96,12 @@ const buildLeadClipboardText = (consulta) => {
         `Publicación: ${consulta.inmuebleTitulo || "Sin título"}`,
         `Operación: ${consulta.inmuebleOperacion || "Sin operación"}`,
         `Tipo: ${consulta.inmuebleTipo || "Sin tipo"}`,
+        consulta.emprendimientoNombre
+            ? `Emprendimiento: ${consulta.emprendimientoNombre}`
+            : "",
+        getConsultaUnitLabel(consulta)
+            ? `Unidad consultada: ${getConsultaUnitLabel(consulta)}`
+            : "",
         publicUrl ? `Link: ${publicUrl}` : "",
         "",
         consulta.mensaje ? `Mensaje:\n${consulta.mensaje}` : "Mensaje: Sin mensaje",
@@ -109,6 +129,9 @@ const buildEmailReplyUrl = (consulta) => {
             : "",
         consulta.inmuebleOperacion || consulta.inmuebleTipo
             ? `Referencia: ${consulta.inmuebleOperacion || ""} ${consulta.inmuebleTipo || ""}`.trim()
+            : "",
+        getConsultaUnitLabel(consulta)
+            ? `Unidad consultada: ${getConsultaUnitLabel(consulta)}`
             : "",
         publicUrl ? `Link: ${publicUrl}` : "",
         "",
@@ -139,6 +162,9 @@ const buildConsultasCsv = (consultas) => {
         "Email",
         "Telefono",
         "Inmueble",
+        "Emprendimiento",
+        "Unidad",
+        "Tipologia unidad",
         "Operacion",
         "Tipo",
         "Mensaje",
@@ -155,6 +181,9 @@ const buildConsultasCsv = (consultas) => {
             consulta.email || "",
             consulta.telefono || "",
             consulta.inmuebleTitulo || "",
+            consulta.emprendimientoNombre || "",
+            consulta.unidadCodigo || "",
+            consulta.unidadTipologia || "",
             consulta.inmuebleOperacion || "",
             consulta.inmuebleTipo || "",
             consulta.mensaje || "",
@@ -953,6 +982,13 @@ const InmuebleConsultasPage = () => {
                                                                         "Sin título"}
                                                                 </div>
 
+                                                                {getConsultaUnitLabel(consulta) && (
+                                                                    <div className="small mb-2">
+                                                                        <strong>Unidad:</strong>{" "}
+                                                                        {getConsultaUnitLabel(consulta)}
+                                                                    </div>
+                                                                )}
+
                                                                 {(consulta.telefono ||
                                                                     consulta.email) && (
                                                                         <div className="small text-muted mb-2">
@@ -1155,6 +1191,16 @@ const InmuebleConsultasPage = () => {
                                                     {consulta.inmuebleOperacion || "Sin operación"} ·{" "}
                                                     {consulta.inmuebleTipo || "Sin tipo"}
                                                 </p>
+
+                                                {getConsultaUnitLabel(consulta) && (
+                                                    <p className="mb-1">
+                                                        <strong>Unidad consultada:</strong>{" "}
+                                                        {getConsultaUnitLabel(consulta)}
+                                                        {consulta.emprendimientoNombre
+                                                            ? ` · ${consulta.emprendimientoNombre}`
+                                                            : ""}
+                                                    </p>
+                                                )}
                                             </div>
 
                                             <div className="text-md-end">

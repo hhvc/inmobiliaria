@@ -16,8 +16,34 @@ export const normalizeWhatsappAgencySlug = (value = "") => {
     return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) ? slug : "";
 };
 
-export const buildWhatsappMessage = ({ agencyName = "" } = {}) => {
-    const cleanAgencyName = agencyName.toString().trim().slice(0, 120);
+export const normalizeWhatsappContextText = (value = "", maxLength = 120) =>
+    value
+        .toString()
+        .replace(/[\r\n\t]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, maxLength);
+
+export const buildWhatsappMessage = ({
+    agencyName = "",
+    developmentName = "",
+    unitReference = "",
+} = {}) => {
+    const cleanAgencyName = normalizeWhatsappContextText(agencyName);
+    const cleanDevelopmentName = normalizeWhatsappContextText(developmentName);
+    const cleanUnitReference = normalizeWhatsappContextText(unitReference, 80);
+
+    if (cleanDevelopmentName && cleanUnitReference) {
+        return `Hola, quiero consultar por ${cleanUnitReference} del emprendimiento ${cleanDevelopmentName}${
+            cleanAgencyName ? ` publicado por ${cleanAgencyName}` : ""
+        }.`;
+    }
+
+    if (cleanDevelopmentName) {
+        return `Hola, quiero consultar por el emprendimiento ${cleanDevelopmentName}${
+            cleanAgencyName ? ` publicado por ${cleanAgencyName}` : ""
+        }.`;
+    }
 
     if (cleanAgencyName) {
         return `Hola, quiero consultar por las propiedades de ${cleanAgencyName}.`;
@@ -29,10 +55,19 @@ export const buildWhatsappMessage = ({ agencyName = "" } = {}) => {
     ].join("\n");
 };
 
-export const buildWhatsappDestinationUrl = ({ number, agencyName = "" }) => {
+export const buildWhatsappDestinationUrl = ({
+    number,
+    agencyName = "",
+    developmentName = "",
+    unitReference = "",
+}) => {
     const normalizedNumber = normalizeWhatsappNumber(number);
     if (!normalizedNumber) return "";
 
-    const message = buildWhatsappMessage({ agencyName });
+    const message = buildWhatsappMessage({
+        agencyName,
+        developmentName,
+        unitReference,
+    });
     return `https://wa.me/${normalizedNumber}?text=${encodeURIComponent(message)}`;
 };

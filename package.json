@@ -11,6 +11,7 @@
     "test:whatsapp": "node --test tests/whatsapp.helpers.test.js",
     "test:emprendimientos": "node --test tests/emprendimientoSchema.test.js",
     "test:unidades": "node --test tests/emprendimientoUnits.test.js",
+    "test:unidades-publicas": "node --test tests/emprendimientoPublicUnits.test.js",
     "test:duplicados": "node --test tests/inmuebleDuplicate.test.js",
     "test:mercadolibre": "node --test tests/mercadoLibreDistribution.helpers.test.js tests/mercadoLibreNotifications.helpers.test.js",
     "preview": "vite preview",

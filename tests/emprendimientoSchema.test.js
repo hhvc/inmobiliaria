@@ -20,6 +20,19 @@ test("limita el avance de obra al rango de 0 a 100", () => {
   assert.equal(normalizeEmprendimiento({ avanceObra: -5 }).avanceObra, 0);
 });
 
+test("normaliza la visibilidad pública de unidades vendidas", () => {
+  assert.equal(
+    normalizeEmprendimiento({ mostrarUnidadesVendidas: true })
+      .mostrarUnidadesVendidas,
+    true,
+  );
+  assert.equal(
+    normalizeEmprendimiento({ mostrarUnidadesVendidas: 0 })
+      .mostrarUnidadesVendidas,
+    false,
+  );
+});
+
 test("valida los campos mínimos del emprendimiento", () => {
   const errors = validateEmprendimiento({
     inmobiliariaId: "inmo-1",
@@ -42,4 +55,3 @@ test("rechaza un emprendimiento incompleto", () => {
   assert.ok(errors.descripcion);
   assert.ok(errors.ciudad);
 });
-

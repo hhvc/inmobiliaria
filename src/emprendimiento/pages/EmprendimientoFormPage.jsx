@@ -390,14 +390,22 @@ const EmprendimientoFormPage = () => {
               ["destacado", "Destacado"],
               ["publicarEnPortal", "Publicar en portal"],
               ["noIndex", "No indexar en Google"],
+              ["mostrarUnidadesVendidas", "Mostrar unidades vendidas"],
             ].map(([name, label]) => (
-              <div className="col-md-2" key={name}>
+              <div className="col-md-2 col-lg-3" key={name}>
                 <div className="form-check">
                   <input id={name} name={name} type="checkbox" className="form-check-input" checked={Boolean(values[name])} onChange={change} />
                   <label className="form-check-label" htmlFor={name}>{label}</label>
                 </div>
               </div>
             ))}
+            <div className="col-12">
+              <div className="form-text">
+                Si no activás “Mostrar unidades vendidas”, sólo se mostrarán en
+                la ficha pública las unidades publicadas que todavía no estén
+                vendidas.
+              </div>
+            </div>
           </div>
         </section>
 

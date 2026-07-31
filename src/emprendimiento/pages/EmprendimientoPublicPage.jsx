@@ -1,16 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
 import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueble.service";
 import { createEmprendimientoConsulta } from "../../inmueble/services/inmuebleConsulta.service";
 import { buildWhatsappRedirectUrl } from "../../utils/whatsappRedirect";
+import EmprendimientoPublicUnits from "../components/EmprendimientoPublicUnits";
 import { getPublicEmprendimientoBySlug } from "../services/emprendimiento.service";
 import {
   getEmprendimientoStatusLabel,
   getEmprendimientoTypeLabel,
 } from "../utils/emprendimientoSchema";
+import {
+  buildPublicUnitConsultationMessage,
+  getConfiguredPublicUnits,
+  getPublicUnitCode,
+  isPublicUnitContactable,
+} from "../utils/emprendimientoPublicUnits.helpers";
 
 const INITIAL_CONSULTA = {
   nombre: "",
@@ -19,20 +26,12 @@ const INITIAL_CONSULTA = {
   mensaje: "",
 };
 
-const formatPrice = (item) => {
-  if (!item?.precio) return "Consultar";
-  const price = Number(item.precio);
-
-  return `${item.moneda || "USD"} ${
-    Number.isFinite(price) ? price.toLocaleString("es-AR") : item.precio
-  }`;
-};
-
 const EmprendimientoPublicPage = () => {
   const { slug } = useParams();
   const [item, setItem] = useState(null);
   const [inmobiliaria, setInmobiliaria] = useState(null);
   const [units, setUnits] = useState([]);
+  const [selectedUnitId, setSelectedUnitId] = useState("");
   const [consulta, setConsulta] = useState(INITIAL_CONSULTA);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
@@ -55,18 +54,15 @@ const EmprendimientoPublicPage = () => {
         const [agency, inmuebleResult] = await Promise.all([
           getPublicInmobiliariaById(development.inmobiliariaId),
           getPublicInmueblesByInmobiliaria(development.inmobiliariaId, {
-            pageSize: 100,
+            emprendimientoId: development.id,
+            pageSize: 500,
           }),
         ]);
 
         if (!active) return;
         setItem(development);
         setInmobiliaria(agency);
-        setUnits(
-          (inmuebleResult?.data || []).filter(
-            (unit) => unit.emprendimientoId === development.id,
-          ),
-        );
+        setUnits(inmuebleResult?.data || []);
       } catch (loadError) {
         if (active) {
           setError(loadError.message || "No se pudo cargar el emprendimiento");
@@ -90,21 +86,68 @@ const EmprendimientoPublicPage = () => {
     [item?.images],
   );
 
+  const configuredUnits = useMemo(
+    () =>
+      getConfiguredPublicUnits(units, {
+        showSold: Boolean(item?.mostrarUnidadesVendidas),
+      }),
+    [item?.mostrarUnidadesVendidas, units],
+  );
+
+  const contactableUnits = useMemo(
+    () => configuredUnits.filter(isPublicUnitContactable),
+    [configuredUnits],
+  );
+
+  const selectedUnit = useMemo(
+    () => units.find((unit) => unit.id === selectedUnitId) || null,
+    [selectedUnitId, units],
+  );
+
   const contact = inmobiliaria?.configuracion?.contacto || {};
   const whatsappUrl =
     contact.whatsapp && inmobiliaria?.slug
       ? buildWhatsappRedirectUrl({
           agencySlug: inmobiliaria.slug,
           source: "development-page",
+          developmentName: item?.nombre || "",
+          unitReference: selectedUnit
+            ? `Unidad ${getPublicUnitCode(selectedUnit)}`
+            : "",
         })
       : "";
+
+  const selectUnitForConsultation = (unit, { scroll = true } = {}) => {
+    const nextUnit = unit && isPublicUnitContactable(unit) ? unit : null;
+    setSelectedUnitId(nextUnit?.id || "");
+    setConsulta((current) => ({
+      ...current,
+      mensaje: buildPublicUnitConsultationMessage({
+        developmentName: item?.nombre || "",
+        unit: nextUnit,
+      }),
+    }));
+    setSent(false);
+
+    if (scroll && typeof document !== "undefined") {
+      window.setTimeout(() => {
+        document
+          .getElementById("consulta-emprendimiento")
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 0);
+    }
+  };
 
   const submitConsulta = async (event) => {
     event.preventDefault();
 
     try {
       setSending(true);
-      await createEmprendimientoConsulta({ emprendimiento: item, ...consulta });
+      await createEmprendimientoConsulta({
+        emprendimiento: item,
+        unidad: selectedUnit,
+        ...consulta,
+      });
       setConsulta(INITIAL_CONSULTA);
       setSent(true);
     } catch (submitError) {
@@ -260,11 +303,16 @@ const EmprendimientoPublicPage = () => {
 
           <aside className="col-lg-4">
             <div
+              id="consulta-emprendimiento"
               className="card border-0 shadow-sm sticky-lg-top"
               style={{ top: 90 }}
             >
               <div className="card-body p-4">
-                <h2 className="h5">Consultar por este proyecto</h2>
+                <h2 className="h5">
+                  {selectedUnit
+                    ? `Consultar por la unidad ${getPublicUnitCode(selectedUnit)}`
+                    : "Consultar por este proyecto"}
+                </h2>
                 {inmobiliaria?.nombre && (
                   <p className="text-muted small">
                     Publicado por {inmobiliaria.nombre}
@@ -276,6 +324,31 @@ const EmprendimientoPublicPage = () => {
                   </div>
                 )}
                 <form onSubmit={submitConsulta} className="vstack gap-3">
+                  {contactableUnits.length > 0 && (
+                    <div>
+                      <label className="form-label small" htmlFor="unidadConsulta">
+                        Unidad de interés
+                      </label>
+                      <select
+                        id="unidadConsulta"
+                        className="form-select"
+                        value={selectedUnitId}
+                        onChange={(event) => {
+                          const unit = contactableUnits.find(
+                            (candidate) => candidate.id === event.target.value,
+                          );
+                          selectUnitForConsultation(unit || null, { scroll: false });
+                        }}
+                      >
+                        <option value="">Consulta general</option>
+                        {contactableUnits.map((unit) => (
+                          <option value={unit.id} key={unit.id}>
+                            Unidad {getPublicUnitCode(unit)} · {unit.unidadEmprendimiento?.tipologia || unit.tipo || "Sin tipología"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                   <input
                     className="form-control"
                     placeholder="Nombre *"
@@ -328,7 +401,9 @@ const EmprendimientoPublicPage = () => {
                   </button>
                   {whatsappUrl && (
                     <a className="btn btn-outline-success" href={whatsappUrl}>
-                      Consultar por WhatsApp
+                      {selectedUnit
+                        ? `WhatsApp por unidad ${getPublicUnitCode(selectedUnit)}`
+                        : "Consultar por WhatsApp"}
                     </a>
                   )}
                 </form>
@@ -338,66 +413,13 @@ const EmprendimientoPublicPage = () => {
         </div>
       </section>
 
-      <section className="bg-light py-5">
-        <div className="container">
-          <div className="d-flex justify-content-between align-items-center mb-4">
-            <div>
-              <p className="text-uppercase text-muted small mb-1">
-                Disponibilidad
-              </p>
-              <h2 className="h3 mb-0">Unidades publicadas</h2>
-            </div>
-            <Link className="btn btn-outline-secondary" to="/inmuebles">
-              Ver todos los inmuebles
-            </Link>
-          </div>
-
-          {units.length === 0 ? (
-            <div className="alert alert-light border">
-              Consultá por las unidades disponibles de este emprendimiento.
-            </div>
-          ) : (
-            <div className="row g-4">
-              {units.map((unit) => {
-                const cover = unit.images?.find((image) => image?.url);
-
-                return (
-                  <div className="col-md-6 col-xl-4" key={unit.id}>
-                    <article className="card h-100 border-0 shadow-sm">
-                      {cover?.url && (
-                        <img
-                          src={cover.url}
-                          alt={unit.titulo}
-                          className="card-img-top"
-                          style={{ height: 210, objectFit: "cover" }}
-                        />
-                      )}
-                      <div className="card-body d-flex flex-column">
-                        <h3 className="h5">{unit.titulo}</h3>
-                        {unit.unidadEmprendimiento?.codigo && (
-                          <p className="small text-muted">
-                            Unidad {unit.unidadEmprendimiento.codigo}
-                          </p>
-                        )}
-                        <p className="fw-semibold">{formatPrice(unit)}</p>
-                        <Link
-                          className="btn btn-outline-primary mt-auto"
-                          to={`/inmueble/${unit.slug}`}
-                        >
-                          Ver unidad
-                        </Link>
-                      </div>
-                    </article>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </section>
+      <EmprendimientoPublicUnits
+        units={units}
+        showSold={Boolean(item.mostrarUnidadesVendidas)}
+        onConsult={selectUnitForConsultation}
+      />
     </main>
   );
 };
 
 export default EmprendimientoPublicPage;
-
