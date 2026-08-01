@@ -85,6 +85,10 @@ import InmuebleNetworkDetailPage from "./inmueble/pages/InmuebleNetworkDetailPag
 import InmuebleNetworkRequestsPage from "./inmueble/pages/InmuebleNetworkRequestsPage";
 import InmuebleBulkImportPage from "./inmueble/pages/InmuebleBulkImportPage";
 
+// Cuenta corriente y gestión comercial
+import BillingAccountPage from "./billing/pages/BillingAccountPage";
+import BillingAdminPage from "./billing/pages/BillingAdminPage";
+
 // Emprendimientos
 import EmprendimientoListPage from "./emprendimiento/pages/EmprendimientoListPage";
 import EmprendimientoFormPage from "./emprendimiento/pages/EmprendimientoFormPage";
@@ -267,6 +271,15 @@ function App() {
                   }
                 />
 
+                <Route
+                  path="/admin/inmobiliaria/cuenta-corriente"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <BillingAccountPage />
+                    </ProtectedRoute>
+                  }
+                />
+
                 {/* =========================
                   Admin ROOT - Inmobiliarias
                  ========================= */}
@@ -305,6 +318,15 @@ function App() {
                   element={
                     <ProtectedRoute role="root">
                       <InmobiliariasVerificationReviewPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/facturacion"
+                  element={
+                    <ProtectedRoute role="root">
+                      <BillingAdminPage />
                     </ProtectedRoute>
                   }
                 />

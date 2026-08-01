@@ -12,6 +12,18 @@ const DEFAULT_MODULES = ["inmuebles", "consultas"];
 
 const MODULE_CARDS = [
     {
+        id: "billing",
+        title: "Cuenta corriente y servicios",
+        description:
+            "Contratar servicios, informar pagos, consultar saldos y usar créditos de destacados.",
+        routeFactory: (inmobiliariaId) => (
+            `/admin/inmobiliaria/cuenta-corriente?inmobiliariaId=${inmobiliariaId}`
+        ),
+        cta: "Abrir cuenta corriente",
+        icon: "💳",
+        alwaysAvailable: true,
+    },
+    {
         id: "inmuebles",
         title: "Inmuebles",
         description: "Crear, editar, publicar y administrar propiedades.",
@@ -163,6 +175,7 @@ const getInitialInmobiliariaId = ({ user, inmobiliarias, isRoot }) => {
 
 const moduleIsAvailable = ({ module, subscribedModules, isRoot }) => {
     if (isRoot) return true;
+    if (module.alwaysAvailable) return true;
 
     if (Array.isArray(module.requiredModules) && module.requiredModules.length) {
         return module.requiredModules.some((moduleId) =>
@@ -790,6 +803,7 @@ const InmobiliariaDashboardPage = () => {
                                             <p className="text-muted">{module.description}</p>
 
                                             {isRoot &&
+                                                !module.alwaysAvailable &&
                                                 !subscribedModules.includes(module.id) &&
                                                 !module.requiredModules?.some((moduleId) =>
                                                     subscribedModules.includes(moduleId),

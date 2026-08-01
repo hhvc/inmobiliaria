@@ -48,6 +48,22 @@
   // ]
   "indexes": [
     {
+      "collectionGroup": "billing_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "inmobiliariaId", "order": "ASCENDING" },
+        { "fieldPath": "catalogItemId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "billing_contracts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "inmobiliariaId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "cabanas",
       "queryScope": "COLLECTION",
       "fields": [

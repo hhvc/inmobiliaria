@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test:instagram": "node --test tests/instagram.helpers.test.js",
     "test:instagram-reels": "node --test tests/instagramReels.test.js",
+    "test:billing": "node --test tests/billing.helpers.test.js",
     "test:whatsapp": "node --test tests/whatsapp.helpers.test.js",
     "test:emprendimientos": "node --test tests/emprendimientoSchema.test.js",
     "test:unidades": "node --test tests/emprendimientoUnits.test.js",

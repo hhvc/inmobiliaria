@@ -1477,6 +1477,27 @@ match /particular_publication_requests/{requestId} {
     }
 
     /* ============================
+       CUENTA CORRIENTE Y GESTIÓN COMERCIAL
+       Acceso exclusivo mediante Cloud Functions verificadas.
+       ============================ */
+
+    match /billing_catalog_items/{itemId} {
+      allow read, write: if false;
+    }
+
+    match /billing_contracts/{contractId} {
+      allow read, write: if false;
+    }
+
+    match /billing_accounts/{inmobiliariaId}/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /billing_payment_reports/{reportId} {
+      allow read, write: if false;
+    }
+
+    /* ============================
        CIERRE TOTAL
        ============================ */
 

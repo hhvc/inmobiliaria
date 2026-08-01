@@ -90,6 +90,14 @@ service firebase.storage {
         );
     }
 
+    function isValidBillingProof() {
+      return request.resource != null
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+          '^(application/pdf|image/.*)$'
+        );
+    }
+
     /* ================= Inmobiliarias - documentación privada ================= */
 
     match /inmobiliarias/{inmobiliariaId}/verificacion/{userId}/{fileName} {
@@ -257,7 +265,33 @@ service firebase.storage {
        || (
          isSignedIn()
          && request.auth.uid == userId
-       );
+        );
+    }
+
+    /* ================= Cuenta corriente - comprobantes privados ================= */
+
+    match /billing/{inmobiliariaId}/payment-proofs/{reportId}/{fileName} {
+      allow read: if
+        isRoot()
+        || belongsToUserInmobiliaria(inmobiliariaId);
+
+      allow create: if
+        (
+          isRoot()
+          || belongsToUserInmobiliaria(inmobiliariaId)
+        )
+        && isValidBillingProof();
+
+      allow update: if false;
+
+      allow delete: if
+        isRoot()
+        || (
+          belongsToUserInmobiliaria(inmobiliariaId)
+          && !firestore.exists(
+            /databases/(default)/documents/billing_payment_reports/$(reportId)
+          )
+        );
     }
 
     /* ================= Fallback ================= */

@@ -368,6 +368,16 @@ const Navbar = () => {
                             </Link>
                           </li>
 
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/inmobiliaria/cuenta-corriente"
+                              onClick={closeMenus}
+                            >
+                              Cuenta corriente y servicios
+                            </Link>
+                          </li>
+
                           {canCreateInmuebles && (
                             <>
                               <li>
@@ -416,6 +426,16 @@ const Navbar = () => {
                               onClick={closeMenus}
                             >
                               Inmobiliarias
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
+                              to="/admin/facturacion"
+                              onClick={closeMenus}
+                            >
+                              Gestión comercial
                             </Link>
                           </li>
 
