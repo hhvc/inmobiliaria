@@ -228,7 +228,7 @@ const PortalRankingConfigPage = () => {
                         </div>
 
                         <div className="d-flex flex-wrap gap-2 align-items-start">
-                            <Link to="/admin" className="btn btn-outline-secondary">
+                            <Link to="/admin/dashboard" className="btn btn-outline-secondary">
                                 Volver al admin
                             </Link>
 

@@ -987,6 +987,12 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     );
   }
 
+  // Variables de opacidad de la foto de portada
+  // Puede ajustarse este valor (ej: 0.3 para muy suave, 0.6 para intermedio)
+  // O incluso leerlo de la inmobiliaria si existe: inmobiliaria?.branding?.heroOverlayOpacity ?? 0.4
+  const heroOverlayOpacity = inmobiliaria?.branding?.heroOverlayOpacity ?? 0.45;
+  const heroOverlayOpacityEnd = heroOverlayOpacity * 0.6; // Mantiene el degradado hacia la derecha
+
   return (
     <main className="portal-home">
       <SEO
@@ -1006,7 +1012,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
             className="card border-0 shadow-sm overflow-hidden"
             style={{
               background: heroBackground
-                ? `linear-gradient(90deg, rgba(17,24,39,0.92), rgba(17,24,39,0.62)), url(${heroBackground}) center/cover`
+                ? `linear-gradient(90deg, rgba(17, 24, 39, ${heroOverlayOpacity}), rgba(17, 24, 39, ${heroOverlayOpacityEnd})), url(${heroBackground}) center/cover`
                 : "linear-gradient(135deg, #111827, #0d6efd)",
               color: "#fff",
             }}
