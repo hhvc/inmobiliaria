@@ -14,6 +14,7 @@ import {
     getAutomaticConsortiumCommunication,
     normalizeConsortiumNotificationSettings,
     resolveConsortiumRecipients,
+    resolveEffectiveConsortiumNotificationSettings,
 } from "./consortium.helpers.js";
 
 if (!admin.apps.length) admin.initializeApp();
@@ -23,12 +24,14 @@ const FieldValue = admin.firestore.FieldValue;
 const FieldPath = admin.firestore.FieldPath;
 const REGION = "southamerica-east1";
 const SETTINGS_COLLECTION = "condominium_notification_settings";
+const CONSENTS_COLLECTION = "condominium_communication_consents";
 const COMMUNICATIONS_COLLECTION = "condominium_communications";
 const OBLIGATIONS_COLLECTION = "condominium_obligations";
 const UNITS_COLLECTION = "condominium_units";
 const CONSORTIUMS_COLLECTION = "condominiums";
 const MANUAL_LIMIT = 150;
 const AGENCY_PAGE_SIZE = 150;
+const AUTOMATION_CONSENT_VERSION = "2026-08-10.1";
 
 const escapeHtml = (value = "") => String(value || "")
     .replace(/&/g, "&amp;")
@@ -173,7 +176,13 @@ const buildMessage = ({
 
 const loadSettings = async (agencyId, consortiumId) => {
     const snap = await nestedRef(agencyId, SETTINGS_COLLECTION, consortiumId).get();
-    return normalizeConsortiumNotificationSettings(snap.exists ? snap.data() : {});
+    const normalized = normalizeConsortiumNotificationSettings(
+        snap.exists ? snap.data() : {},
+    );
+    return {
+        ...normalized,
+        enabled: normalized.enabled && normalized.automationAuthorized,
+    };
 };
 
 const listAgencySnapshots = async () => {
@@ -313,6 +322,133 @@ const queueCommunication = async ({
     }
 };
 
+export const consortiumSaveNotificationSettings = onCall(
+    { region: REGION, invoker: "public" },
+    async (request) => {
+        const inmobiliariaId = cleanConsortiumText(request.data?.inmobiliariaId, 128);
+        const consortiumId = cleanConsortiumText(request.data?.consortiumId, 128);
+        if (!consortiumId) {
+            throw new HttpsError("invalid-argument", "Falta el consorcio.");
+        }
+        const { agency, user } = await assertCanManageAgency(
+            request.auth?.uid,
+            inmobiliariaId,
+        );
+        const consortiumRef = nestedRef(
+            inmobiliariaId,
+            CONSORTIUMS_COLLECTION,
+            consortiumId,
+        );
+        const settingsRef = nestedRef(
+            inmobiliariaId,
+            SETTINGS_COLLECTION,
+            consortiumId,
+        );
+        const [consortiumSnap, previousSnap] = await Promise.all([
+            consortiumRef.get(),
+            settingsRef.get(),
+        ]);
+        if (!consortiumSnap.exists || consortiumSnap.data()?.status === "archived") {
+            throw new HttpsError("failed-precondition", "El consorcio no está activo.");
+        }
+        const previous = previousSnap.exists ? previousSnap.data() || {} : {};
+        const normalized = normalizeConsortiumNotificationSettings(
+            request.data?.settings || {},
+        );
+        const wasAuthorized = previous.enabled === true &&
+            previous.automationAuthorized === true;
+        const shouldEnable = normalized.enabled === true;
+        if (shouldEnable && !wasAuthorized && request.data?.authorizationAccepted !== true) {
+            throw new HttpsError(
+                "failed-precondition",
+                "Confirmá la autorización de envíos automáticos para este consorcio.",
+            );
+        }
+
+        const now = FieldValue.serverTimestamp();
+        const actorEmail = cleanConsortiumText(
+            request.auth?.token?.email || user.email,
+            220,
+        );
+        const next = {
+            ...normalized,
+            id: consortiumId,
+            schemaVersion: 1,
+            inmobiliariaId,
+            ownerInmobiliariaId: inmobiliariaId,
+            consortiumId,
+            automationAuthorized: shouldEnable,
+            consentVersion: AUTOMATION_CONSENT_VERSION,
+            updatedBy: request.auth.uid,
+            updatedAt: now,
+        };
+        if (shouldEnable) {
+            next.authorizedBy = wasAuthorized
+                ? previous.authorizedBy || request.auth.uid
+                : request.auth.uid;
+            next.authorizedByEmail = wasAuthorized
+                ? previous.authorizedByEmail || actorEmail
+                : actorEmail;
+            next.authorizedAt = wasAuthorized && previous.authorizedAt
+                ? previous.authorizedAt : now;
+            next.revokedBy = "";
+            next.revokedByEmail = "";
+            next.revokedAt = null;
+        } else {
+            next.authorizedBy = "";
+            next.authorizedByEmail = "";
+            next.authorizedAt = null;
+            if (wasAuthorized) {
+                next.revokedBy = request.auth.uid;
+                next.revokedByEmail = actorEmail;
+                next.revokedAt = now;
+            }
+        }
+
+        const batch = db.batch();
+        batch.set(settingsRef, next, { merge: true });
+        if (shouldEnable !== wasAuthorized) {
+            const consentRef = agencyRef(inmobiliariaId)
+                .collection(CONSENTS_COLLECTION)
+                .doc();
+            batch.create(consentRef, {
+                id: consentRef.id,
+                schemaVersion: 1,
+                action: shouldEnable ? "authorized" : "revoked",
+                scope: "consortium",
+                inmobiliariaId,
+                ownerInmobiliariaId: inmobiliariaId,
+                consortiumId,
+                consortiumName: cleanConsortiumText(consortiumSnap.data()?.name, 220),
+                consentVersion: AUTOMATION_CONSENT_VERSION,
+                settingsSnapshot: {
+                    sendOnIssue: normalized.sendOnIssue,
+                    preDueDays: normalized.preDueDays,
+                    overdueDays: normalized.overdueDays,
+                },
+                actorUid: request.auth.uid,
+                actorEmail,
+                agencyName: cleanConsortiumText(
+                    agency.nombre || agency.razonSocial,
+                    220,
+                ),
+                createdAt: now,
+            });
+        }
+        await batch.commit();
+        return {
+            settings: {
+                ...normalized,
+                enabled: shouldEnable,
+                automationAuthorized: shouldEnable,
+                authorizedByEmail: shouldEnable
+                    ? next.authorizedByEmail : "",
+                consentVersion: AUTOMATION_CONSENT_VERSION,
+            },
+        };
+    },
+);
+
 export const consortiumSendCommunications = onCall(
     { region: REGION, invoker: "public", timeoutSeconds: 540 },
     async (request) => {
@@ -375,7 +511,8 @@ export const consortiumSendCommunications = onCall(
             }
             const consortium = consortiumCache.get(obligation.consortiumId);
             const unit = unitCache.get(obligation.unitId);
-            if (!consortium || !unit || consortium.status === "archived" || unit.deleted === true) {
+            if (!consortium || !unit || consortium.status === "archived" ||
+                unit.deleted === true || unit.status === "archived") {
                 results.push({ queued: false, reason: "inactive_record", obligationId: obligation.id });
                 continue;
             }
@@ -409,7 +546,6 @@ export const consortiumSendOnObligationCreated = onDocumentCreated(
         const obligation = { id: event.params.obligationId, ...(event.data.data() || {}) };
         if (obligation.source && obligation.source !== "period") return null;
         const settings = await loadSettings(event.params.inmobiliariaId, obligation.consortiumId);
-        if (!settings.enabled || !settings.sendOnIssue) return null;
         const [agencySnap, consortiumSnap, unitSnap] = await Promise.all([
             agencyRef(event.params.inmobiliariaId).get(),
             nestedRef(event.params.inmobiliariaId, CONSORTIUMS_COLLECTION, obligation.consortiumId).get(),
@@ -418,13 +554,21 @@ export const consortiumSendOnObligationCreated = onDocumentCreated(
         if (!agencySnap.exists || agencySnap.data()?.activa === false ||
             !Array.isArray(agencySnap.data()?.modulosSuscriptos) ||
             !agencySnap.data().modulosSuscriptos.includes("consorcios") ||
-            !consortiumSnap.exists || !unitSnap.exists) return null;
+            !consortiumSnap.exists || consortiumSnap.data()?.status === "archived" ||
+            !unitSnap.exists || unitSnap.data()?.deleted === true ||
+            unitSnap.data()?.status === "archived") return null;
+        const unit = { id: unitSnap.id, ...(unitSnap.data() || {}) };
+        const effectiveSettings = resolveEffectiveConsortiumNotificationSettings(
+            settings,
+            unit,
+        );
+        if (!effectiveSettings.enabled || !effectiveSettings.sendOnIssue) return null;
         return queueCommunication({
             agency: { id: agencySnap.id, ...(agencySnap.data() || {}) },
             consortium: { id: consortiumSnap.id, ...(consortiumSnap.data() || {}) },
-            unit: { id: unitSnap.id, ...(unitSnap.data() || {}) },
+            unit,
             obligation,
-            settings,
+            settings: effectiveSettings,
             kind: "issue",
             source: "automatic",
             actorUid: "system",
@@ -477,13 +621,6 @@ const runConsortiumReminderAutomation = async () => {
                 const units = new Map();
                 for (const obligationSnap of obligationsSnap.docs) {
                     const obligation = { id: obligationSnap.id, ...(obligationSnap.data() || {}) };
-                    const action = getAutomaticConsortiumCommunication({
-                        obligation,
-                        settings,
-                        todayDateKey,
-                    });
-                    if (!action) continue;
-                    summary.reviewed += 1;
                     if (!units.has(obligation.unitId)) {
                         const unitSnap = await nestedRef(
                             inmobiliariaId,
@@ -494,16 +631,28 @@ const runConsortiumReminderAutomation = async () => {
                             ? { id: unitSnap.id, ...(unitSnap.data() || {}) } : null);
                     }
                     const unit = units.get(obligation.unitId);
-                    if (!unit || unit.deleted === true || unit.active === false) {
+                    if (!unit || unit.deleted === true || unit.status === "archived" ||
+                        unit.active === false) {
                         summary.skipped += 1;
                         continue;
                     }
+                    const effectiveSettings = resolveEffectiveConsortiumNotificationSettings(
+                        settings,
+                        unit,
+                    );
+                    const action = getAutomaticConsortiumCommunication({
+                        obligation,
+                        settings: effectiveSettings,
+                        todayDateKey,
+                    });
+                    if (!action) continue;
+                    summary.reviewed += 1;
                     const result = await queueCommunication({
                         agency,
                         consortium,
                         unit,
                         obligation,
-                        settings,
+                        settings: effectiveSettings,
                         ...action,
                         source: "automatic",
                         actorUid: "system",

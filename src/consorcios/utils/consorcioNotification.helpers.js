@@ -2,6 +2,7 @@ import { normalizeConsortiumEmails } from "./consorcioPortal.helpers.js";
 
 export const DEFAULT_CONSORTIUM_NOTIFICATION_SETTINGS = Object.freeze({
   enabled: false,
+  automationAuthorized: false,
   sendOnIssue: false,
   preDueDays: [3],
   overdueDays: [1, 7, 15],
@@ -47,6 +48,7 @@ export const normalizeReminderDays = (value, fallback = []) => {
 export const normalizeConsortiumNotificationSettings = (value = {}) => ({
   ...DEFAULT_CONSORTIUM_NOTIFICATION_SETTINGS,
   enabled: value.enabled === true,
+  automationAuthorized: value.automationAuthorized === true,
   sendOnIssue: value.sendOnIssue === true,
   preDueDays: normalizeReminderDays(
     value.preDueDays,
@@ -62,6 +64,27 @@ export const normalizeConsortiumNotificationSettings = (value = {}) => ({
   introText: value.introText?.toString?.().trim().slice(0, 1000)
     || DEFAULT_CONSORTIUM_NOTIFICATION_SETTINGS.introText,
 });
+
+export const normalizeConsortiumUnitAutomationMode = (value = "inherit") => (
+  ["inherit", "custom", "disabled"].includes(value) ? value : "inherit"
+);
+
+export const getEffectiveConsortiumNotificationSettings = (settings = {}, unit = {}) => {
+  const base = normalizeConsortiumNotificationSettings(settings);
+  const mode = normalizeConsortiumUnitAutomationMode(unit.notificationAutomationMode);
+  if (!base.enabled || !base.automationAuthorized || mode === "disabled") {
+    return { ...base, enabled: false, unitMode: mode };
+  }
+  if (mode !== "custom") return { ...base, unitMode: mode };
+  return {
+    ...base,
+    sendOnIssue: unit.notificationSendOnIssue === true,
+    preDueDays: normalizeReminderDays(unit.notificationPreDueDays, base.preDueDays),
+    overdueDays: normalizeReminderDays(unit.notificationOverdueDays, base.overdueDays)
+      .filter((item) => item > 0),
+    unitMode: mode,
+  };
+};
 
 export const getConsortiumCommunicationStatus = (status = "queued") => ({
   queued: { label: "En cola", badge: "text-bg-warning" },

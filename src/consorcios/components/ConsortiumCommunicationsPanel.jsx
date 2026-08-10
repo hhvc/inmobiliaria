@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
+  getConsortiumCommunicationConsents,
   getConsortiumCommunications,
   getConsortiumNotificationSettings,
   saveConsortiumNotificationSettings,
@@ -24,6 +25,7 @@ const communicationKindLabel = (item = {}) => ({
   before_due: `Aviso ${item.offsetDays || 0} día(s) antes`,
   overdue: `Aviso de mora · ${item.offsetDays || 0} día(s)`,
 }[item.kind] || "Comunicación");
+const reminderDaysInput = (value) => (Array.isArray(value) ? value.join(", ") : value || "");
 
 const ConsortiumCommunicationsPanel = ({
   inmobiliariaId,
@@ -35,11 +37,13 @@ const ConsortiumCommunicationsPanel = ({
 }) => {
   const [settings, setSettings] = useState(() => normalizeConsortiumNotificationSettings());
   const [communications, setCommunications] = useState([]);
+  const [consents, setConsents] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [authorizationAccepted, setAuthorizationAccepted] = useState(false);
 
   const unitMap = useMemo(() => new Map(units.map((unit) => [unit.id, unit])), [units]);
   const rows = useMemo(() => obligations.map((obligation) => {
@@ -52,15 +56,18 @@ const ConsortiumCommunicationsPanel = ({
     try {
       setLoading(true);
       setError("");
-      const [settingsData, communicationData] = await Promise.all([
+      const [settingsData, communicationData, consentData] = await Promise.all([
         getConsortiumNotificationSettings(inmobiliariaId, consortium.id),
         getConsortiumCommunications(inmobiliariaId, {
           consortiumId: consortium.id,
           periodId: period.id,
         }),
+        getConsortiumCommunicationConsents(inmobiliariaId, consortium.id),
       ]);
       setSettings(settingsData);
+      setAuthorizationAccepted(false);
       setCommunications(communicationData);
+      setConsents(consentData);
     } catch (loadError) {
       setError(loadError.message || "No se pudo cargar la configuración de comunicaciones.");
     } finally {
@@ -94,9 +101,10 @@ const ConsortiumCommunicationsPanel = ({
       const saved = await saveConsortiumNotificationSettings(
         inmobiliariaId,
         consortium.id,
-        settings,
+        { ...settings, authorizationAccepted },
       );
       setSettings(saved);
+      await load();
       setSuccess("Configuración de comunicaciones guardada.");
     } catch (saveError) {
       setError(saveError.message || "No se pudo guardar la configuración.");
@@ -139,14 +147,20 @@ const ConsortiumCommunicationsPanel = ({
         {success && <div className="alert alert-success">{success}</div>}
 
         {canManage && <form className="rounded border bg-light p-3 mb-4" onSubmit={saveSettings}>
-          <div className="mb-3"><h3 className="h6 mb-1">Plantilla de comunicación</h3><small className="text-muted">Los envíos de esta etapa son manuales y siempre requieren selección y confirmación.</small></div>
-          <div className="alert alert-info py-2 small">Los recordatorios programados están preparados pero permanecen inactivos hasta habilitar expresamente el envío recurrente a terceros.</div>
+          <div className="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h3 className="h6 mb-1">Automatización y plantilla</h3><small className="text-muted">La autorización se aplica únicamente a este consorcio.</small></div><div className="form-check form-switch"><input className="form-check-input" id={`consortium-auto-email-${consortium.id}`} type="checkbox" checked={settings.enabled} onChange={(event) => setSettings((current) => ({ ...current, enabled: event.target.checked }))} /><label className="form-check-label" htmlFor={`consortium-auto-email-${consortium.id}`}>Envíos automáticos</label></div></div>
+          {settings.automationAuthorized && settings.enabled && <div className="alert alert-success py-2 small">Automatización autorizada{settings.authorizedByEmail ? ` por ${settings.authorizedByEmail}` : ""}. Podés revocarla desactivando el interruptor y guardando.</div>}
+          {settings.automationAuthorized && !settings.enabled && <div className="alert alert-warning py-2 small">Al guardar se revocará la autorización automática de este consorcio.</div>}
           <div className="row g-3">
+            <div className="col-md-4"><div className="form-check mt-md-4 pt-md-2"><input className="form-check-input" id={`consortium-send-issue-${consortium.id}`} type="checkbox" checked={settings.sendOnIssue} disabled={!settings.enabled} onChange={(event) => setSettings((current) => ({ ...current, sendOnIssue: event.target.checked }))} /><label className="form-check-label" htmlFor={`consortium-send-issue-${consortium.id}`}>Enviar al emitir una liquidación</label></div></div>
+            <div className="col-md-4"><label className="form-label">Avisar antes del vencimiento</label><input className="form-control" value={reminderDaysInput(settings.preDueDays)} disabled={!settings.enabled} onChange={(event) => setSettings((current) => ({ ...current, preDueDays: event.target.value }))} placeholder="3" /><small className="text-muted">Días separados por coma; vacío desactiva.</small></div>
+            <div className="col-md-4"><label className="form-label">Avisar después del vencimiento</label><input className="form-control" value={reminderDaysInput(settings.overdueDays)} disabled={!settings.enabled} onChange={(event) => setSettings((current) => ({ ...current, overdueDays: event.target.value }))} placeholder="1, 7, 15" /><small className="text-muted">Solo si continúa con saldo.</small></div>
             <div className="col-md-8"><label className="form-label">Asunto</label><input className="form-control" value={settings.subjectTemplate} onChange={(event) => setSettings((current) => ({ ...current, subjectTemplate: event.target.value }))} /></div>
             <div className="col-md-4"><label className="form-label">Responder a</label><input className="form-control" type="email" value={settings.replyToEmail} onChange={(event) => setSettings((current) => ({ ...current, replyToEmail: event.target.value }))} placeholder="administracion@ejemplo.com" /></div>
             <div className="col-12"><label className="form-label">Mensaje inicial</label><textarea className="form-control" rows="2" value={settings.introText} onChange={(event) => setSettings((current) => ({ ...current, introText: event.target.value }))} /><small className="text-muted">Variables: {"{{consorcio}}"}, {"{{periodo}}"}, {"{{unidad}}"}, {"{{vencimiento}}"} y {"{{saldo}}"}.</small></div>
+            {settings.enabled && !settings.automationAuthorized && <div className="col-12"><div className="form-check rounded border border-primary bg-white p-3 ps-5"><input className="form-check-input" id={`consortium-automation-consent-${consortium.id}`} type="checkbox" checked={authorizationAccepted} onChange={(event) => setAuthorizationAccepted(event.target.checked)} required /><label className="form-check-label" htmlFor={`consortium-automation-consent-${consortium.id}`}><strong>Autorización del administrador.</strong> Confirmo que esta inmobiliaria autoriza a ONO Prop a enviar automáticamente las liquidaciones y recordatorios de este consorcio a los contactos configurados en cada unidad. Esta decisión y su eventual revocación quedarán auditadas.</label></div></div>}
             <div className="col-12 text-end"><button className="btn btn-outline-primary" disabled={operation === "settings"} type="submit">{operation === "settings" ? "Guardando..." : "Guardar configuración"}</button></div>
           </div>
+          {consents.length > 0 && <details className="mt-3"><summary className="small fw-semibold">Historial de autorizaciones ({consents.length})</summary><div className="table-responsive mt-2"><table className="table table-sm mb-0"><thead><tr><th>Fecha</th><th>Acción</th><th>Administrador</th><th>Configuración registrada</th></tr></thead><tbody>{consents.map((consent) => <tr key={consent.id}><td>{formatTimestamp(consent.createdAt)}</td><td><span className={`badge ${consent.action === "authorized" ? "text-bg-success" : "text-bg-secondary"}`}>{consent.action === "authorized" ? "Autorizada" : "Revocada"}</span></td><td>{consent.actorEmail || consent.actorUid || "Administrador"}</td><td>{consent.settingsSnapshot?.sendOnIssue ? "Al emitir; " : ""}{(consent.settingsSnapshot?.preDueDays || []).length ? `${consent.settingsSnapshot.preDueDays.join(", ")} día(s) antes; ` : ""}{(consent.settingsSnapshot?.overdueDays || []).length ? `${consent.settingsSnapshot.overdueDays.join(", ")} día(s) después` : ""}</td></tr>)}</tbody></table></div></details>}
         </form>}
 
         <h3 className="h6">Previsualización de destinatarios · {period.periodKey}</h3>

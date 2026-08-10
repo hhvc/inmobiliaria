@@ -4,6 +4,7 @@ export const CONSORTIUM_TIME_ZONE = "America/Argentina/Buenos_Aires";
 
 export const DEFAULT_CONSORTIUM_NOTIFICATION_SETTINGS = Object.freeze({
     enabled: false,
+    automationAuthorized: false,
     sendOnIssue: false,
     preDueDays: [3],
     overdueDays: [1, 7, 15],
@@ -43,6 +44,7 @@ export const normalizeReminderDays = (value, fallback = []) => {
 
 export const normalizeConsortiumNotificationSettings = (value = {}) => ({
     enabled: value.enabled === true,
+    automationAuthorized: value.automationAuthorized === true,
     sendOnIssue: value.sendOnIssue === true,
     preDueDays: normalizeReminderDays(
         value.preDueDays,
@@ -58,6 +60,28 @@ export const normalizeConsortiumNotificationSettings = (value = {}) => ({
     introText: cleanConsortiumText(value.introText, 1000) ||
         DEFAULT_CONSORTIUM_NOTIFICATION_SETTINGS.introText,
 });
+
+export const resolveEffectiveConsortiumNotificationSettings = (
+    settings = {},
+    unit = {},
+) => {
+    const base = normalizeConsortiumNotificationSettings(settings);
+    const mode = ["inherit", "custom", "disabled"].includes(
+        unit.notificationAutomationMode,
+    ) ? unit.notificationAutomationMode : "inherit";
+    if (!base.enabled || !base.automationAuthorized || mode === "disabled") {
+        return { ...base, enabled: false, unitMode: mode };
+    }
+    if (mode !== "custom") return { ...base, unitMode: mode };
+    return {
+        ...base,
+        sendOnIssue: unit.notificationSendOnIssue === true,
+        preDueDays: normalizeReminderDays(unit.notificationPreDueDays, base.preDueDays),
+        overdueDays: normalizeReminderDays(unit.notificationOverdueDays, base.overdueDays)
+            .filter((item) => item > 0),
+        unitMode: mode,
+    };
+};
 
 export const resolveConsortiumRecipients = (unit = {}) => {
     const preference = ["owner", "occupant", "both", "none"]

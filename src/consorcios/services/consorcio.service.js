@@ -35,6 +35,8 @@ import {
 import {
   getConsortiumUnitNotificationRecipients,
   normalizeConsortiumDeliveryPreference,
+  normalizeConsortiumUnitAutomationMode,
+  normalizeReminderDays,
 } from "../utils/consorcioNotification.helpers";
 
 const COLLECTIONS = {
@@ -100,6 +102,9 @@ const sanitizeConsortium = (value = {}) => ({
 
 const sanitizeUnit = (value = {}) => {
   const notificationPreference = normalizeConsortiumDeliveryPreference(value.notificationPreference);
+  const notificationAutomationMode = normalizeConsortiumUnitAutomationMode(
+    value.notificationAutomationMode,
+  );
   const ownerEmail = normalizeConsortiumEmails([value.ownerEmail])[0] || "";
   const occupantEmail = normalizeConsortiumEmails([value.occupantEmail])[0] || "";
   const manualPortalEmails = normalizeConsortiumEmails(value.manualPortalEmails ?? value.portalEmails);
@@ -119,6 +124,11 @@ const sanitizeUnit = (value = {}) => {
     occupantSince: cleanText(value.occupantSince, 10),
     occupantEmail,
     notificationPreference,
+    notificationAutomationMode,
+    notificationSendOnIssue: value.notificationSendOnIssue === true,
+    notificationPreDueDays: normalizeReminderDays(value.notificationPreDueDays, [3]),
+    notificationOverdueDays: normalizeReminderDays(value.notificationOverdueDays, [1, 7, 15])
+      .filter((item) => item > 0),
     email: cleanText(value.email, 220),
     phone: cleanText(value.phone, 80),
     manualPortalEmails,
@@ -149,6 +159,10 @@ const UNIT_AUDIT_FIELDS = [
   "occupantSince",
   "occupantEmail",
   "notificationPreference",
+  "notificationAutomationMode",
+  "notificationSendOnIssue",
+  "notificationPreDueDays",
+  "notificationOverdueDays",
   "email",
   "phone",
   "manualPortalEmails",

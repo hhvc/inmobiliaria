@@ -7,6 +7,7 @@ import {
     getAutomaticConsortiumCommunication,
     normalizeConsortiumNotificationSettings,
     resolveConsortiumRecipients,
+    resolveEffectiveConsortiumNotificationSettings,
 } from "./consortium.helpers.js";
 
 test("resuelve titular, ocupante o ambos sin duplicar emails", () => {
@@ -30,6 +31,7 @@ test("resuelve titular, ocupante o ambos sin duplicar emails", () => {
 test("detecta recordatorios previos y posteriores al vencimiento", () => {
     const settings = normalizeConsortiumNotificationSettings({
         enabled: true,
+        automationAuthorized: true,
         preDueDays: [3],
         overdueDays: [1, 7],
     });
@@ -48,6 +50,42 @@ test("detecta recordatorios previos y posteriores al vencimiento", () => {
         settings,
         todayDateKey: "2026-08-10",
     }), null);
+});
+
+test("bloquea cualquier automatización de unidad sin consentimiento del consorcio", () => {
+    const settings = resolveEffectiveConsortiumNotificationSettings({
+        enabled: true,
+        automationAuthorized: false,
+    }, {
+        notificationAutomationMode: "custom",
+        notificationSendOnIssue: true,
+        notificationPreDueDays: [5],
+    });
+    assert.equal(settings.enabled, false);
+    assert.equal(settings.unitMode, "custom");
+});
+
+test("aplica configuración personalizada y exclusión por unidad", () => {
+    const base = {
+        enabled: true,
+        automationAuthorized: true,
+        sendOnIssue: true,
+        preDueDays: [3],
+        overdueDays: [1, 7],
+    };
+    const custom = resolveEffectiveConsortiumNotificationSettings(base, {
+        notificationAutomationMode: "custom",
+        notificationSendOnIssue: false,
+        notificationPreDueDays: [5],
+        notificationOverdueDays: [10],
+    });
+    assert.equal(custom.enabled, true);
+    assert.equal(custom.sendOnIssue, false);
+    assert.deepEqual(custom.preDueDays, [5]);
+    assert.deepEqual(custom.overdueDays, [10]);
+    assert.equal(resolveEffectiveConsortiumNotificationSettings(base, {
+        notificationAutomationMode: "disabled",
+    }).enabled, false);
 });
 
 test("genera plantillas e identificadores idempotentes", () => {

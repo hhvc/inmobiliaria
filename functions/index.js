@@ -176,6 +176,10 @@ export {
 export { rentalGenerateMonthlyObligations } from "./rentals.js";
 
 export {
+  consortiumSaveNotificationSettings,
   consortiumSendCommunications,
+  consortiumSendOnObligationCreated,
+  consortiumRunReminderAutomation,
+  consortiumProcessReminders,
   consortiumSyncMailStatus,
 } from "./consortium.js";

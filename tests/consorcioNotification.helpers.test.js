@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getEffectiveConsortiumNotificationSettings,
   getConsortiumUnitNotificationRecipients,
   normalizeConsortiumNotificationSettings,
   normalizeReminderDays,
@@ -41,6 +42,7 @@ test("normaliza plantilla y email de respuesta", () => {
     introText: " Mensaje de prueba ",
   }), {
     enabled: true,
+    automationAuthorized: false,
     sendOnIssue: true,
     preDueDays: [5],
     overdueDays: [1, 10],
@@ -48,4 +50,37 @@ test("normaliza plantilla y email de respuesta", () => {
     subjectTemplate: "Expensas {{unidad}}",
     introText: "Mensaje de prueba",
   });
+});
+
+test("una unidad no puede activar envíos sin autorización del consorcio", () => {
+  const result = getEffectiveConsortiumNotificationSettings({
+    enabled: true,
+    automationAuthorized: false,
+    sendOnIssue: true,
+  }, {
+    notificationAutomationMode: "custom",
+    notificationSendOnIssue: true,
+  });
+  assert.equal(result.enabled, false);
+  assert.equal(result.unitMode, "custom");
+});
+
+test("la unidad puede heredar, personalizar o excluir automatizaciones autorizadas", () => {
+  const settings = {
+    enabled: true,
+    automationAuthorized: true,
+    sendOnIssue: true,
+    preDueDays: [3],
+    overdueDays: [1, 7],
+  };
+  assert.equal(getEffectiveConsortiumNotificationSettings(settings, {}).enabled, true);
+  assert.deepEqual(getEffectiveConsortiumNotificationSettings(settings, {
+    notificationAutomationMode: "custom",
+    notificationSendOnIssue: false,
+    notificationPreDueDays: [5],
+    notificationOverdueDays: [10],
+  }).preDueDays, [5]);
+  assert.equal(getEffectiveConsortiumNotificationSettings(settings, {
+    notificationAutomationMode: "disabled",
+  }).enabled, false);
 });

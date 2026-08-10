@@ -4,14 +4,11 @@ import {
   getDoc,
   getDocs,
   query,
-  serverTimestamp,
-  setDoc,
   where,
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 import app, { db } from "../../firebase/config";
-import { assertInmobiliariaActiva } from "../../inmobiliaria/services/inmobiliaria.service";
 import { normalizeConsortiumNotificationSettings } from "../utils/consorcioNotification.helpers";
 
 const functions = getFunctions(app, "southamerica-east1");
@@ -32,10 +29,23 @@ const communicationCollection = (inmobiliariaId) => collection(
   "condominium_communications",
 );
 
+const consentCollection = (inmobiliariaId) => collection(
+  db,
+  "inmobiliarias",
+  inmobiliariaId,
+  "condominium_communication_consents",
+);
+
 export const getConsortiumNotificationSettings = async (inmobiliariaId, consortiumId) => {
   if (!inmobiliariaId || !consortiumId) return normalizeConsortiumNotificationSettings();
   const snap = await getDoc(settingsRef(inmobiliariaId, consortiumId));
-  return normalizeConsortiumNotificationSettings(snap.exists() ? snap.data() : {});
+  const raw = snap.exists() ? snap.data() : {};
+  return {
+    ...normalizeConsortiumNotificationSettings(raw),
+    authorizedByEmail: raw.authorizedByEmail || "",
+    authorizedAt: raw.authorizedAt || null,
+    consentVersion: raw.consentVersion || "",
+  };
 };
 
 export const saveConsortiumNotificationSettings = async (
@@ -43,20 +53,14 @@ export const saveConsortiumNotificationSettings = async (
   consortiumId,
   value,
 ) => {
-  await assertInmobiliariaActiva(inmobiliariaId);
-  const payload = normalizeConsortiumNotificationSettings(value);
-  await setDoc(settingsRef(inmobiliariaId, consortiumId), {
-    ...payload,
-    enabled: false,
-    sendOnIssue: false,
-    id: consortiumId,
-    schemaVersion: 1,
+  const callable = httpsCallable(functions, "consortiumSaveNotificationSettings");
+  const result = await callable({
     inmobiliariaId,
-    ownerInmobiliariaId: inmobiliariaId,
     consortiumId,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
-  return { ...payload, enabled: false, sendOnIssue: false };
+    settings: normalizeConsortiumNotificationSettings(value),
+    authorizationAccepted: value.authorizationAccepted === true,
+  });
+  return result.data?.settings || normalizeConsortiumNotificationSettings();
 };
 
 export const getConsortiumCommunications = async (
@@ -75,6 +79,20 @@ export const getConsortiumCommunications = async (
     .filter((item) => !consortiumId || item.consortiumId === consortiumId)
     .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt))
     .slice(0, Math.max(1, Number(limit) || 300));
+};
+
+export const getConsortiumCommunicationConsents = async (
+  inmobiliariaId,
+  consortiumId,
+) => {
+  if (!inmobiliariaId || !consortiumId) return [];
+  const snap = await getDocs(query(
+    consentCollection(inmobiliariaId),
+    where("consortiumId", "==", consortiumId),
+  ));
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt));
 };
 
 export const sendConsortiumCommunications = async (inmobiliariaId, obligationIds) => {

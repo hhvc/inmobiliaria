@@ -44,6 +44,10 @@ const UNIT_CHANGE_LABELS = {
   occupantSince: "Ocupante desde",
   occupantEmail: "Email del ocupante",
   notificationPreference: "Destinatarios de liquidaciones",
+  notificationAutomationMode: "Automatización de la unidad",
+  notificationSendOnIssue: "Envío automático al emitir",
+  notificationPreDueDays: "Recordatorios previos",
+  notificationOverdueDays: "Recordatorios de mora",
   email: "Email",
   phone: "Teléfono",
   manualPortalEmails: "Accesos adicionales",
@@ -61,6 +65,12 @@ const formatChangeValue = (field, value) => {
     both: "Titular y ocupante",
     none: "Sin envío por email",
   }[value] || "Titular");
+  if (field === "notificationAutomationMode") return ({
+    inherit: "Hereda del consorcio",
+    custom: "Personalizada",
+    disabled: "Excluida",
+  }[value] || "Hereda del consorcio");
+  if (field === "notificationSendOnIssue") return value === true ? "Sí" : "No";
   if (field === "coefficient" && value !== "" && value != null) {
     return Number(value).toLocaleString("es-AR", { maximumFractionDigits: 6 });
   }
