@@ -42,6 +42,7 @@ const COLLECTIONS = {
   expenseDocuments: "condominium_expense_documents",
   paymentReports: "condominium_payment_reports",
   adjustments: "condominium_adjustments",
+  penalties: "condominium_penalties",
 };
 
 const agencyCollection = (inmobiliariaId, key) =>
@@ -133,6 +134,45 @@ const sanitizeExpense = (value = {}, fallbackId = "") => ({
   specificUnitId: cleanText(value.specificUnitId, 128),
   amountMinor: Math.max(0, Math.round(Number(value.amountMinor) || 0)),
   notes: cleanText(value.notes, 1000),
+});
+
+const sanitizePenalty = (value = {}) => ({
+  unitId: cleanText(value.unitId, 128),
+  infringementDate: cleanText(value.infringementDate, 10),
+  resolutionDate: cleanText(value.resolutionDate, 10),
+  dueDate: cleanText(value.dueDate, 10),
+  description: cleanText(value.description, 2000),
+  ruleReference: cleanText(value.ruleReference, 1000),
+  authority: ["assembly", "council", "administrator", "other"].includes(value.authority)
+    ? value.authority
+    : "assembly",
+  authorityReference: cleanText(value.authorityReference, 1000),
+  evidenceNotes: cleanText(value.evidenceNotes, 2000),
+  amountMinor: Math.max(0, Math.round(Number(value.amountMinor) || 0)),
+});
+
+const validatePenalty = (value = {}) => {
+  if (!value.unitId) throw new Error("Seleccioná la unidad sancionada.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.infringementDate)) throw new Error("Ingresá la fecha de la infracción.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.resolutionDate)) throw new Error("Ingresá la fecha de la resolución.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value.dueDate)) throw new Error("Ingresá el vencimiento de la multa.");
+  if (value.resolutionDate < value.infringementDate) {
+    throw new Error("La resolución no puede ser anterior a la infracción.");
+  }
+  if (value.dueDate < value.resolutionDate) {
+    throw new Error("El vencimiento no puede ser anterior a la resolución.");
+  }
+  if (!value.description) throw new Error("Describí la conducta sancionada.");
+  if (!value.ruleReference) throw new Error("Indicá la norma o cláusula reglamentaria aplicable.");
+  if (!value.authorityReference) throw new Error("Indicá el acta, resolución o antecedente que respalda la sanción.");
+  if (!value.amountMinor) throw new Error("Ingresá un importe mayor a cero.");
+};
+
+const getPenaltyHistoryEntry = (status, userId, notes = "") => ({
+  status,
+  by: userId,
+  atIso: new Date().toISOString(),
+  notes: cleanText(notes, 1000),
 });
 
 export const getConsortiums = async (inmobiliariaId) => {
@@ -994,6 +1034,453 @@ export const downloadPrivateConsortiumDocument = async ({ path, fileName }) => {
   anchor.click();
   anchor.remove();
   globalThis.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+export const getConsortiumPenalties = async (
+  inmobiliariaId,
+  { consortiumId = "", unitId = "", portalOnly = false } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const source = unitId && portalOnly
+    ? query(
+      agencyCollection(inmobiliariaId, "penalties"),
+      where("unitId", "==", unitId),
+      where("portalVisible", "==", true),
+    )
+    : unitId
+      ? query(agencyCollection(inmobiliariaId, "penalties"), where("unitId", "==", unitId))
+    : agencyCollection(inmobiliariaId, "penalties");
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .sort((a, b) => (
+      (b.resolutionDate || "").localeCompare(a.resolutionDate || "")
+      || timestampMillis(b.createdAt) - timestampMillis(a.createdAt)
+    ));
+};
+
+export const createConsortiumPenalty = async ({
+  inmobiliariaId,
+  consortiumId,
+  value,
+  file = null,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const payload = sanitizePenalty(value);
+  validatePenalty(payload);
+  if (file) validateConsortiumFileOrThrow(file);
+  const [unitSnapshot, consortiumSnapshot] = await Promise.all([
+    getDoc(agencyDoc(inmobiliariaId, "units", payload.unitId)),
+    getDoc(agencyDoc(inmobiliariaId, "consortiums", consortiumId)),
+  ]);
+  if (!unitSnapshot.exists() || unitSnapshot.data().consortiumId !== consortiumId) {
+    throw new Error("La unidad no pertenece al consorcio activo.");
+  }
+  if (!consortiumSnapshot.exists()) throw new Error("El consorcio no existe.");
+  const unit = unitSnapshot.data();
+  const consortium = consortiumSnapshot.data();
+  const penaltyRef = doc(agencyCollection(inmobiliariaId, "penalties"));
+  const safeName = file ? safeConsortiumFileName(file.name) : "";
+  const evidenceStoragePath = file
+    ? `consorcios/${inmobiliariaId}/${consortiumId}/penalties/${payload.unitId}/${penaltyRef.id}/${safeName}`
+    : "";
+  if (file) {
+    await uploadPrivateFile({
+      file,
+      path: evidenceStoragePath,
+      metadata: {
+        inmobiliariaId,
+        consortiumId,
+        unitId: payload.unitId,
+        penaltyId: penaltyRef.id,
+        uploadedBy: user.uid,
+      },
+    });
+  }
+  try {
+    await setDoc(penaltyRef, {
+      id: penaltyRef.id,
+      schemaVersion: 1,
+      ...payload,
+      periodKey: payload.resolutionDate.slice(0, 7),
+      currency: cleanText(consortium.currency, 10) || unit.consortiumCurrency || "ARS",
+      consortiumId,
+      unitSnapshot: getUnitAuditSnapshot(unit),
+      status: "draft",
+      portalVisible: false,
+      statusHistory: [getPenaltyHistoryEntry("draft", user.uid, "Expediente creado")],
+      notificationDate: "",
+      notificationMethod: "",
+      notificationRecipient: "",
+      obligationId: "",
+      periodId: "",
+      adjustmentId: "",
+      evidenceStoragePath,
+      evidenceFileName: safeName,
+      evidenceContentType: file?.type || "",
+      evidenceSize: Number(file?.size || 0),
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      updatedBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    if (evidenceStoragePath) {
+      await deleteObject(storageRef(storage, evidenceStoragePath)).catch(() => {});
+    }
+    throw error;
+  }
+  return penaltyRef.id;
+};
+
+export const notifyConsortiumPenalty = async ({
+  inmobiliariaId,
+  penaltyId,
+  notificationDate,
+  notificationMethod,
+  notificationRecipient,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const date = cleanText(notificationDate, 10);
+  const method = cleanText(notificationMethod, 120);
+  const recipient = cleanText(notificationRecipient, 220);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Ingresá la fecha de notificación.");
+  if (!method) throw new Error("Indicá el medio de notificación.");
+  if (!recipient) throw new Error("Indicá la persona notificada.");
+  const penaltyRef = agencyDoc(inmobiliariaId, "penalties", penaltyId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(penaltyRef);
+    if (!snapshot.exists()) throw new Error("La multa no existe.");
+    const penalty = snapshot.data();
+    if (penalty.status !== "draft") throw new Error("Solo se puede notificar un expediente en borrador.");
+    if (date < penalty.resolutionDate) throw new Error("La notificación no puede ser anterior a la resolución.");
+    transaction.update(penaltyRef, {
+      status: "notified",
+      portalVisible: true,
+      notificationDate: date,
+      notificationMethod: method,
+      notificationRecipient: recipient,
+      statusHistory: [...(Array.isArray(penalty.statusHistory) ? penalty.statusHistory : []),
+        getPenaltyHistoryEntry("notified", user.uid, `${method} a ${recipient}`)],
+      notifiedAt: serverTimestamp(),
+      notifiedBy: user.uid,
+      updatedAt: serverTimestamp(),
+      updatedBy: user.uid,
+    });
+  });
+};
+
+export const challengeConsortiumPenalty = async ({ inmobiliariaId, penaltyId, reason }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalizedReason = cleanText(reason, 2000);
+  if (!normalizedReason) throw new Error("Ingresá el motivo de la impugnación.");
+  const penaltyRef = agencyDoc(inmobiliariaId, "penalties", penaltyId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(penaltyRef);
+    if (!snapshot.exists()) throw new Error("La multa no existe.");
+    const penalty = snapshot.data();
+    if (!["notified", "confirmed"].includes(penalty.status)) {
+      throw new Error("La multa no se encuentra en un estado impugnable.");
+    }
+    transaction.update(penaltyRef, {
+      status: "challenged",
+      statusBeforeChallenge: penalty.status,
+      challengeReason: normalizedReason,
+      challengedAt: serverTimestamp(),
+      challengedBy: user.uid,
+      statusHistory: [...(Array.isArray(penalty.statusHistory) ? penalty.statusHistory : []),
+        getPenaltyHistoryEntry("challenged", user.uid, normalizedReason)],
+      updatedAt: serverTimestamp(),
+      updatedBy: user.uid,
+    });
+  });
+};
+
+export const ratifyConsortiumPenalty = async ({ inmobiliariaId, penaltyId, reason }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalizedReason = cleanText(reason, 2000);
+  if (!normalizedReason) throw new Error("Ingresá el fundamento de la ratificación.");
+  const penaltyRef = agencyDoc(inmobiliariaId, "penalties", penaltyId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(penaltyRef);
+    if (!snapshot.exists()) throw new Error("La multa no existe.");
+    const penalty = snapshot.data();
+    if (penalty.status !== "challenged") throw new Error("La multa no se encuentra impugnada.");
+    const nextStatus = penalty.obligationId ? "confirmed" : "notified";
+    transaction.update(penaltyRef, {
+      status: nextStatus,
+      ratificationReason: normalizedReason,
+      ratifiedAt: serverTimestamp(),
+      ratifiedBy: user.uid,
+      statusHistory: [...(Array.isArray(penalty.statusHistory) ? penalty.statusHistory : []),
+        getPenaltyHistoryEntry(nextStatus, user.uid, `Ratificada: ${normalizedReason}`)],
+      updatedAt: serverTimestamp(),
+      updatedBy: user.uid,
+    });
+  });
+};
+
+export const confirmConsortiumPenalty = async ({ inmobiliariaId, penaltyId }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const penaltyRef = agencyDoc(inmobiliariaId, "penalties", penaltyId);
+  const periodId = `penalty_${penaltyId}`;
+  const periodRef = agencyDoc(inmobiliariaId, "periods", periodId);
+  const adjustmentRef = doc(agencyCollection(inmobiliariaId, "adjustments"));
+  let obligationId = "";
+  await runTransaction(db, async (transaction) => {
+    const penaltySnapshot = await transaction.get(penaltyRef);
+    if (!penaltySnapshot.exists()) throw new Error("La multa no existe.");
+    const penalty = penaltySnapshot.data();
+    if (penalty.status !== "notified") {
+      throw new Error("La multa debe estar notificada y sin impugnación pendiente antes de generar el débito.");
+    }
+    const unitRef = agencyDoc(inmobiliariaId, "units", penalty.unitId);
+    obligationId = `${periodId}_${penalty.unitId}`;
+    const obligationRef = agencyDoc(inmobiliariaId, "obligations", obligationId);
+    const [unitSnapshot, periodSnapshot, obligationSnapshot] = await Promise.all([
+      transaction.get(unitRef),
+      transaction.get(periodRef),
+      transaction.get(obligationRef),
+    ]);
+    if (!unitSnapshot.exists() || unitSnapshot.data().consortiumId !== penalty.consortiumId) {
+      throw new Error("La unidad asociada ya no está disponible.");
+    }
+    if (periodSnapshot.exists() || obligationSnapshot.exists()) {
+      throw new Error("La multa ya tiene un débito contable asociado.");
+    }
+    const amount = Math.max(0, Number(penalty.amountMinor) || 0);
+    const unitAudit = getUnitAuditSnapshot(unitSnapshot.data());
+    const expense = {
+      id: penaltyId,
+      concept: cleanText(`Multa: ${penalty.description}`, 220),
+      category: "penalty",
+      distributionMode: "specific",
+      specificUnitId: penalty.unitId,
+      amountMinor: amount,
+      notes: penalty.ruleReference || "",
+    };
+    transaction.set(periodRef, {
+      id: periodId,
+      schemaVersion: 1,
+      consortiumId: penalty.consortiumId,
+      periodKey: penalty.periodKey,
+      dueDate: penalty.dueDate,
+      currency: penalty.currency || "ARS",
+      status: "issued",
+      source: "penalty",
+      penaltyId,
+      expenses: [expense],
+      totalExpensesMinor: amount,
+      issuedUnitCount: 1,
+      deleted: false,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      updatedBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      issuedAt: serverTimestamp(),
+      issuedBy: user.uid,
+    });
+    transaction.set(obligationRef, {
+      id: obligationId,
+      schemaVersion: 1,
+      source: "penalty",
+      penaltyId,
+      unitId: penalty.unitId,
+      unitSnapshot: unitAudit,
+      ordinaryMinor: 0,
+      extraordinaryMinor: 0,
+      penaltyMinor: amount,
+      totalAmountMinor: amount,
+      paidAmountMinor: 0,
+      balanceMinor: amount,
+      status: getConsortiumObligationStatus({ balanceMinor: amount, dueDate: penalty.dueDate }),
+      breakdown: [{
+        expenseId: penaltyId,
+        concept: expense.concept,
+        category: "penalty",
+        distributionMode: "specific",
+        amountMinor: amount,
+        source: "penalty",
+      }],
+      paymentIds: [],
+      adjustmentIds: [adjustmentRef.id],
+      consortiumId: penalty.consortiumId,
+      periodId,
+      periodKey: penalty.periodKey,
+      dueDate: penalty.dueDate,
+      currency: penalty.currency || "ARS",
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      updatedBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(adjustmentRef, {
+      id: adjustmentRef.id,
+      schemaVersion: 1,
+      type: "penalty_debit",
+      direction: "debit",
+      category: "penalty",
+      penaltyId,
+      consortiumId: penalty.consortiumId,
+      unitId: penalty.unitId,
+      unitSnapshot: unitAudit,
+      obligationId,
+      periodId,
+      periodKey: penalty.periodKey,
+      source: "penalty",
+      currency: penalty.currency || "ARS",
+      amountMinor: amount,
+      effectiveDate: penalty.resolutionDate,
+      dueDate: penalty.dueDate,
+      reason: penalty.description,
+      previousTotalMinor: 0,
+      nextTotalMinor: amount,
+      previousBalanceMinor: 0,
+      nextBalanceMinor: amount,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    });
+    transaction.update(penaltyRef, {
+      status: "confirmed",
+      periodId,
+      obligationId,
+      adjustmentId: adjustmentRef.id,
+      confirmedAt: serverTimestamp(),
+      confirmedBy: user.uid,
+      statusHistory: [...(Array.isArray(penalty.statusHistory) ? penalty.statusHistory : []),
+        getPenaltyHistoryEntry("confirmed", user.uid, "Débito contable generado")],
+      updatedAt: serverTimestamp(),
+      updatedBy: user.uid,
+    });
+  });
+  return { periodId, obligationId, adjustmentId: adjustmentRef.id };
+};
+
+export const voidConsortiumPenalty = async ({ inmobiliariaId, penaltyId, reason }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalizedReason = cleanText(reason, 2000);
+  if (!normalizedReason) throw new Error("Ingresá el fundamento de la anulación.");
+  const penaltyRef = agencyDoc(inmobiliariaId, "penalties", penaltyId);
+  const adjustmentRef = doc(agencyCollection(inmobiliariaId, "adjustments"));
+  await runTransaction(db, async (transaction) => {
+    const penaltySnapshot = await transaction.get(penaltyRef);
+    if (!penaltySnapshot.exists()) throw new Error("La multa no existe.");
+    const penalty = penaltySnapshot.data();
+    if (penalty.status === "voided") throw new Error("La multa ya está anulada.");
+    if (!penalty.obligationId) {
+      transaction.update(penaltyRef, {
+        status: "voided",
+        voidReason: normalizedReason,
+        voidedAt: serverTimestamp(),
+        voidedBy: user.uid,
+        statusHistory: [...(Array.isArray(penalty.statusHistory) ? penalty.statusHistory : []),
+          getPenaltyHistoryEntry("voided", user.uid, normalizedReason)],
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid,
+      });
+      return;
+    }
+    const obligationRef = agencyDoc(inmobiliariaId, "obligations", penalty.obligationId);
+    const periodRef = agencyDoc(inmobiliariaId, "periods", penalty.periodId);
+    const [obligationSnapshot, periodSnapshot] = await Promise.all([
+      transaction.get(obligationRef),
+      transaction.get(periodRef),
+    ]);
+    if (!obligationSnapshot.exists() || !periodSnapshot.exists()) {
+      throw new Error("No se pudo reconstruir el débito de la multa.");
+    }
+    const obligation = obligationSnapshot.data();
+    const amount = Math.max(0, Number(penalty.amountMinor) || 0);
+    const previousBalanceMinor = Math.max(0, Number(obligation.balanceMinor) || 0);
+    if (amount > previousBalanceMinor) {
+      throw new Error("La multa tiene pagos aplicados. Primero revisá la cobranza y registrá el crédito correspondiente en la cuenta de la unidad.");
+    }
+    const previousTotalMinor = Math.max(0, Number(obligation.totalAmountMinor) || 0);
+    const nextTotalMinor = Math.max(0, previousTotalMinor - amount);
+    const nextBalanceMinor = Math.max(0, nextTotalMinor - Number(obligation.paidAmountMinor || 0));
+    transaction.update(obligationRef, {
+      penaltyMinor: Math.max(0, Number(obligation.penaltyMinor) || 0) - amount,
+      totalAmountMinor: nextTotalMinor,
+      balanceMinor: nextBalanceMinor,
+      status: getConsortiumObligationStatus({ ...obligation, balanceMinor: nextBalanceMinor }),
+      voided: true,
+      voidReason: normalizedReason,
+      breakdown: [...(Array.isArray(obligation.breakdown) ? obligation.breakdown : []), {
+        expenseId: adjustmentRef.id,
+        concept: `Anulación de multa: ${normalizedReason}`,
+        category: "penalty",
+        distributionMode: "specific",
+        amountMinor: -amount,
+        source: "penalty_void",
+      }],
+      adjustmentIds: [...(Array.isArray(obligation.adjustmentIds) ? obligation.adjustmentIds : []), adjustmentRef.id],
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(periodRef, {
+      status: nextBalanceMinor <= 0 ? "closed" : "issued",
+      adjustmentNetMinor: -amount,
+      adjustedTotalExpensesMinor: nextTotalMinor,
+      closedAt: nextBalanceMinor <= 0 ? serverTimestamp() : null,
+      closedBy: nextBalanceMinor <= 0 ? user.uid : "",
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(adjustmentRef, {
+      id: adjustmentRef.id,
+      schemaVersion: 1,
+      type: "penalty_credit",
+      direction: "credit",
+      category: "penalty",
+      penaltyId,
+      consortiumId: penalty.consortiumId,
+      unitId: penalty.unitId,
+      unitSnapshot: penalty.unitSnapshot || obligation.unitSnapshot || {},
+      obligationId: penalty.obligationId,
+      periodId: penalty.periodId,
+      periodKey: penalty.periodKey,
+      source: "penalty",
+      currency: penalty.currency || "ARS",
+      amountMinor: amount,
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      dueDate: penalty.dueDate,
+      reason: normalizedReason,
+      previousTotalMinor,
+      nextTotalMinor,
+      previousBalanceMinor,
+      nextBalanceMinor,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    });
+    transaction.update(penaltyRef, {
+      status: "voided",
+      reversalAdjustmentId: adjustmentRef.id,
+      voidReason: normalizedReason,
+      voidedAt: serverTimestamp(),
+      voidedBy: user.uid,
+      statusHistory: [...(Array.isArray(penalty.statusHistory) ? penalty.statusHistory : []),
+        getPenaltyHistoryEntry("voided", user.uid, normalizedReason)],
+      updatedAt: serverTimestamp(),
+      updatedBy: user.uid,
+    });
+  });
 };
 
 export const getConsortiumExpenseDocuments = async (

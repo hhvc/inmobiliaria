@@ -382,6 +382,32 @@ service firebase.storage {
         );
     }
 
+    match /consorcios/{inmobiliariaId}/{consortiumId}/penalties/{unitId}/{penaltyId}/{fileName} {
+      allow read: if
+        isAgencyAdmin(inmobiliariaId)
+        || (
+          hasConsortiumUnitPortalAccess(inmobiliariaId, unitId)
+          && firestore.exists(
+            /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_penalties/$(penaltyId)
+          )
+          && firestore.get(
+            /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_penalties/$(penaltyId)
+          ).data.portalVisible == true
+        );
+
+      allow create: if
+        isAgencyAdmin(inmobiliariaId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isAgencyAdmin(inmobiliariaId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_penalties/$(penaltyId)
+        );
+    }
+
     /* ================= Fallback ================= */
 
     match /{allPaths=**} {

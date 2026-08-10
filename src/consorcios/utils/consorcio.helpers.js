@@ -52,7 +52,12 @@ export const getConsortiumAccountingPeriodLabel = ({
     || type === "opening_debit"
     || type === "opening_credit"
     ? `Saldo inicial · ${getConsortiumPeriodLabel(periodKey)}`
-    : getConsortiumPeriodLabel(periodKey)
+    : source === "penalty"
+      || accountingSource === "penalty"
+      || type === "penalty_debit"
+      || type === "penalty_credit"
+      ? `Multa · ${getConsortiumPeriodLabel(periodKey)}`
+      : getConsortiumPeriodLabel(periodKey)
 );
 
 export const getConsortiumAdjustmentTypeLabel = (type = "") => ({
@@ -60,7 +65,32 @@ export const getConsortiumAdjustmentTypeLabel = (type = "") => ({
   opening_credit: "Saldo inicial a favor",
   rectification_debit: "Nota de débito",
   rectification_credit: "Nota de crédito",
+  penalty_debit: "Multa / penalidad",
+  penalty_credit: "Anulación de multa",
 }[type] || type || "Ajuste");
+
+export const getConsortiumPenaltyAuthorityLabel = (authority = "") => ({
+  assembly: "Asamblea",
+  council: "Consejo de propietarios",
+  administrator: "Administración",
+  other: "Otra autoridad",
+}[authority] || authority || "Sin informar");
+
+export const getConsortiumPenaltyStatus = (penalty = {}, obligation = null) => {
+  if (penalty.status === "confirmed" && obligation && Number(obligation.balanceMinor || 0) <= 0) {
+    return "paid";
+  }
+  return penalty.status || "draft";
+};
+
+export const getConsortiumPenaltyStatusLabel = (status = "draft") => ({
+  draft: { label: "Borrador", badge: "text-bg-secondary" },
+  notified: { label: "Notificada", badge: "text-bg-info" },
+  confirmed: { label: "Confirmada", badge: "text-bg-warning" },
+  challenged: { label: "Impugnada", badge: "text-bg-danger" },
+  voided: { label: "Anulada", badge: "text-bg-dark" },
+  paid: { label: "Pagada", badge: "text-bg-success" },
+}[status] || { label: status, badge: "text-bg-light" });
 
 export const getConsortiumAccountSummary = ({
   obligations = [],
@@ -208,6 +238,7 @@ export const calculateConsortiumAssessments = ({ units = [], expenses = [] } = {
 };
 
 export const getConsortiumObligationStatus = (obligation = {}, todayKey = new Date().toISOString().slice(0, 10)) => {
+  if (obligation.voided === true) return "voided";
   const balance = Math.max(0, Number(obligation.balanceMinor) || 0);
   const paid = Math.max(0, Number(obligation.paidAmountMinor) || 0);
   if (balance <= 0) return "paid";
@@ -220,10 +251,13 @@ export const getConsortiumObligationStatusLabel = (status = "pending") => ({
   partial: { label: "Pago parcial", badge: "text-bg-warning" },
   overdue: { label: "Vencida", badge: "text-bg-danger" },
   paid: { label: "Pagada", badge: "text-bg-success" },
+  voided: { label: "Anulada", badge: "text-bg-dark" },
 }[status] || { label: status, badge: "text-bg-light" });
 
 export const getConsortiumExpenseCategoryLabel = (category = "ordinary") => (
-  category === "extraordinary" ? "Extraordinaria" : "Ordinaria"
+  category === "penalty"
+    ? "Multa / penalidad"
+    : category === "extraordinary" ? "Extraordinaria" : "Ordinaria"
 );
 
 export const getConsortiumDistributionLabel = (mode = "coefficient") => ({
@@ -250,7 +284,9 @@ export const buildConsortiumLiquidationLines = ({ period = {}, obligation = {} }
     return {
       expenseId: line.expenseId || "",
       concept: line.concept || expense?.concept || "Gasto",
-      category: line.category === "extraordinary" ? "extraordinary" : "ordinary",
+      category: line.category === "penalty"
+        ? "penalty"
+        : line.category === "extraordinary" ? "extraordinary" : "ordinary",
       distributionMode: line.distributionMode || expense?.distributionMode || "coefficient",
       expenseTotalMinor: expense ? Number(expense.amountMinor || 0) : Math.abs(unitAmountMinor),
       unitAmountMinor,

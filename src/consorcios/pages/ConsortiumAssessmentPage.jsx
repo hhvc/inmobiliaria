@@ -95,6 +95,9 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
     periodKey: obligation?.periodKey,
     unitCode: unit.code || obligation?.unitId,
   });
+  const documentTitle = obligation?.source === "penalty"
+    ? "Liquidación de multa / penalidad"
+    : "Liquidación de expensas";
   const backTo = portalMode ? "/mi-consorcio" : `/admin/consorcios/${consortiumId}`;
 
   if (loading || (!portalMode && agencyLoading)) {
@@ -115,7 +118,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
       <article className="consortium-assessment-sheet">
         <header className="d-flex flex-wrap justify-content-between gap-4 border-bottom pb-3 mb-4">
           <div>
-            <p className="text-uppercase text-muted small mb-1">Liquidación de expensas</p>
+            <p className="text-uppercase text-muted small mb-1">{documentTitle}</p>
             <h1 className="h3 mb-1">{consortium.legalName || consortium.name}</h1>
             {consortium.legalName && consortium.name !== consortium.legalName && <p className="mb-1">{consortium.name}</p>}
             <p className="mb-0">{consortium.address}{consortium.city ? ` · ${consortium.city}` : ""}</p>
@@ -153,7 +156,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
         </section>
 
         <section className="mb-4">
-          <h2 className="h5">Detalle de gastos y prorrateo</h2>
+          <h2 className="h5">{obligation.source === "penalty" ? "Detalle del débito" : "Detalle de gastos y prorrateo"}</h2>
           <div className="table-responsive">
             <table className="table table-sm consortium-assessment-table">
               <thead><tr><th>Concepto</th><th>Tipo</th><th>Distribución</th><th className="text-end">Gasto general</th><th className="text-end">Imputado a la unidad</th></tr></thead>
@@ -167,9 +170,10 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
         </section>
 
         <section className="row g-3 mb-4">
-          <div className="col-md-4"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas ordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, currency)}</strong></div></div>
-          <div className="col-md-4"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas extraordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, currency)}</strong></div></div>
-          <div className="col-md-4"><div className="rounded bg-primary-subtle p-3 h-100"><small className="text-muted text-uppercase">Total del período</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas ordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas extraordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl-3"><div className="rounded bg-danger-subtle p-3 h-100"><small className="text-muted text-uppercase">Multas / penalidades</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.penaltyMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl-3"><div className="rounded bg-primary-subtle p-3 h-100"><small className="text-muted text-uppercase">Total del período</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, currency)}</strong></div></div>
         </section>
 
         <section className="rounded border p-3 mb-4">

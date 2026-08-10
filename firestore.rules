@@ -1073,7 +1073,7 @@ allow delete: if isRoot();
             request.resource.data.status == "draft"
             || (
               request.resource.data.status == "issued"
-              && request.resource.data.source == "opening_balance"
+              && request.resource.data.source in ["opening_balance", "penalty"]
             )
           )
           && request.resource.data.deleted == false;
@@ -1150,11 +1150,49 @@ allow delete: if isRoot();
           && request.resource.data.consortiumId is string
           && request.resource.data.unitId is string
           && request.resource.data.type in [
-            "opening_debit", "opening_credit", "rectification_debit", "rectification_credit"
+            "opening_debit", "opening_credit", "rectification_debit", "rectification_credit",
+            "penalty_debit", "penalty_credit"
           ]
           && request.resource.data.amountMinor is int
           && request.resource.data.amountMinor > 0;
         allow update, delete: if false;
+      }
+
+      match /condominium_penalties/{penaltyId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || (
+            resource.data.portalVisible == true
+            && hasConsortiumUnitPortalAccess(inmoId, resource.data.unitId)
+          );
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.id == penaltyId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.unitId is string
+          && request.resource.data.status == "draft"
+          && request.resource.data.portalVisible == false
+          && request.resource.data.amountMinor is int
+          && request.resource.data.amountMinor > 0;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId == resource.data.consortiumId
+          && request.resource.data.unitId == resource.data.unitId
+          && request.resource.data.amountMinor == resource.data.amountMinor
+          && request.resource.data.currency == resource.data.currency
+          && request.resource.data.evidenceStoragePath == resource.data.evidenceStoragePath
+          && request.resource.data.status in [
+            "draft", "notified", "confirmed", "challenged", "voided"
+          ];
+        allow delete: if false;
       }
 
       match /condominium_expense_documents/{documentId} {

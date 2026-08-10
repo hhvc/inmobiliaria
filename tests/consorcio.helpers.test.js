@@ -8,6 +8,8 @@ import {
   getConsortiumAccountSummary,
   getConsortiumLiquidationNumber,
   getConsortiumObligationStatus,
+  getConsortiumPenaltyStatus,
+  getConsortiumPenaltyStatusLabel,
   getDefaultConsortiumDueDate,
   majorToMinor,
 } from "../src/consorcios/utils/consorcio.helpers.js";
@@ -75,6 +77,18 @@ test("distingue saldos iniciales y calcula el saldo neto con créditos", () => {
   });
 });
 
+test("deriva el estado pagado de una multa sin perder su expediente", () => {
+  assert.equal(
+    getConsortiumPenaltyStatus({ status: "confirmed" }, { balanceMinor: 0 }),
+    "paid",
+  );
+  assert.equal(
+    getConsortiumPenaltyStatus({ status: "challenged" }, { balanceMinor: 0 }),
+    "challenged",
+  );
+  assert.equal(getConsortiumPenaltyStatusLabel("challenged").label, "Impugnada");
+});
+
 test("expone una rectificación específica aun si no integra los gastos originales", () => {
   const lines = buildConsortiumLiquidationLines({
     period: { expenses: [] },
@@ -126,6 +140,7 @@ test("normaliza importes y estados operativos", () => {
   assert.equal(majorToMinor("1234.56"), 123456);
   assert.equal(getConsortiumObligationStatus({ balanceMinor: 100, dueDate: "2026-08-01" }, "2026-08-02"), "overdue");
   assert.equal(getConsortiumObligationStatus({ balanceMinor: 0, dueDate: "2026-08-01" }, "2026-08-02"), "paid");
+  assert.equal(getConsortiumObligationStatus({ balanceMinor: 0, voided: true }, "2026-08-02"), "voided");
 });
 
 test("normaliza y deduplica los accesos por email", () => {

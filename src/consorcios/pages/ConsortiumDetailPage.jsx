@@ -6,6 +6,7 @@ import { useAuth } from "../../context/auth/useAuth";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
 import ConsortiumExpenseDocumentsPanel from "../components/ConsortiumExpenseDocumentsPanel";
 import ConsortiumPaymentReportsPanel from "../components/ConsortiumPaymentReportsPanel";
+import ConsortiumPenaltiesPanel from "../components/ConsortiumPenaltiesPanel";
 import {
   getInternalPermissions,
   getInternalRoleForInmobiliaria,
@@ -106,6 +107,7 @@ const ConsortiumDetailPage = () => {
   });
   const [openingBalanceForm, setOpeningBalanceForm] = useState(emptyOpeningBalanceForm);
   const [adjustmentForm, setAdjustmentForm] = useState(emptyAdjustmentForm);
+  const [penaltyRequest, setPenaltyRequest] = useState({ unitId: "", nonce: 0 });
   const [loading, setLoading] = useState(true);
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
@@ -456,6 +458,10 @@ const ConsortiumDetailPage = () => {
     }
   };
 
+  const openPenaltyForUnit = (unitId) => {
+    setPenaltyRequest({ unitId, nonce: Date.now() });
+  };
+
   const approvePaymentReport = async (report) => {
     if (!window.confirm(`¿Validar el pago informado por la unidad ${report.unitSnapshot?.code || report.unitId}? La deuda se actualizará inmediatamente.`)) return;
     try {
@@ -584,6 +590,7 @@ const ConsortiumDetailPage = () => {
                     <td className="text-end">
                       <div className="btn-group btn-group-sm">
                         <Link className="btn btn-outline-success" to={`/admin/consorcios/${consortiumId}/unidades/${unit.id}/cuenta-corriente`}>Cuenta</Link>
+                        {canManage && <button className="btn btn-outline-danger" type="button" onClick={() => openPenaltyForUnit(unit.id)}>Multa</button>}
                         {canManage && <button className="btn btn-outline-secondary" type="button" onClick={() => editUnit(unit)}>Editar</button>}
                         {canManage && <button className="btn btn-outline-danger" type="button" disabled={operation === `archive-unit-${unit.id}`} onClick={() => removeUnit(unit)}>Archivar</button>}
                       </div>
@@ -636,6 +643,17 @@ const ConsortiumDetailPage = () => {
           </div>
         </section>
       )}
+
+      <ConsortiumPenaltiesPanel
+        inmobiliariaId={activeInmobiliariaId}
+        consortium={{ id: consortiumId, ...consortium }}
+        units={activeUnits}
+        obligations={obligations}
+        canManage={canManage}
+        requestedUnitId={penaltyRequest.unitId}
+        requestNonce={penaltyRequest.nonce}
+        onChanged={load}
+      />
 
       <section className="card border-0 shadow-sm mb-4 consortium-section-anchor" id="liquidaciones">
         <div className="card-body p-4">
@@ -700,7 +718,7 @@ const ConsortiumDetailPage = () => {
       {selectedPeriod && selectedPeriod.status !== "draft" && (
         <section className="card border-0 shadow-sm mb-4">
           <div className="card-body p-4">
-            <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h2 className="h5 mb-1">Expensas emitidas · {getConsortiumAccountingPeriodLabel(selectedPeriod)}</h2><p className="text-muted small mb-0">Total {formatConsortiumMoney(periodSummary.total, selectedPeriod.currency)} · cobrado {formatConsortiumMoney(periodSummary.paid, selectedPeriod.currency)} · saldo {formatConsortiumMoney(periodSummary.balance, selectedPeriod.currency)}</p></div>{canManage && selectedPeriod.status === "issued" && periodSummary.balance <= 0 && <button className="btn btn-outline-success" disabled={operation === "close-period"} type="button" onClick={closePeriod}>Cerrar período</button>}</div>
+            <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h2 className="h5 mb-1">{selectedPeriod.source === "penalty" ? "Débito por multa" : "Expensas emitidas"} · {getConsortiumAccountingPeriodLabel(selectedPeriod)}</h2><p className="text-muted small mb-0">Total {formatConsortiumMoney(periodSummary.total, selectedPeriod.currency)} · cobrado {formatConsortiumMoney(periodSummary.paid, selectedPeriod.currency)} · saldo {formatConsortiumMoney(periodSummary.balance, selectedPeriod.currency)}</p></div>{canManage && selectedPeriod.status === "issued" && periodSummary.balance <= 0 && <button className="btn btn-outline-success" disabled={operation === "close-period"} type="button" onClick={closePeriod}>Cerrar período</button>}</div>
             <ConsortiumPaymentReportsPanel
               reports={paymentReports}
               periodId={selectedPeriod.id}
@@ -711,12 +729,12 @@ const ConsortiumDetailPage = () => {
             />
             <div className="table-responsive">
               <table className="table table-hover">
-                <thead><tr><th>Unidad</th><th>Ordinarias</th><th>Extraordinarias</th><th>Total</th><th>Cobrado</th><th>Saldo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead>
+                <thead><tr><th>Unidad</th><th>Ordinarias</th><th>Extraordinarias</th><th>Multas</th><th>Total</th><th>Cobrado</th><th>Saldo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead>
                 <tbody>
                   {selectedObligations.map((obligation) => {
                     const status = getConsortiumObligationStatus(obligation);
                     const state = getConsortiumObligationStatusLabel(status);
-                    return <tr key={obligation.id}><td><strong>{obligation.unitSnapshot?.code || obligation.unitId}</strong><div className="small text-muted">{obligation.unitSnapshot?.ownerName || obligation.unitSnapshot?.occupantName || "Sin responsable"}</div></td><td className="consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/admin/consorcios/${consortiumId}/liquidaciones/${obligation.id}`}>Liquidación</Link><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/unidades/${obligation.unitId}/cuenta-corriente`}>Cuenta</Link>{canManage && <button className="btn btn-outline-warning" type="button" onClick={() => selectAdjustment(obligation)}>Ajustar</button>}{canManage && Number(obligation.balanceMinor || 0) > 0 && selectedPeriod.status !== "closed" && <button className="btn btn-outline-success" type="button" onClick={() => selectPayment(obligation)}>Cobrar</button>}</div></td></tr>;
+                    return <tr key={obligation.id}><td><strong>{obligation.unitSnapshot?.code || obligation.unitId}</strong><div className="small text-muted">{obligation.unitSnapshot?.ownerName || obligation.unitSnapshot?.occupantName || "Sin responsable"}</div></td><td className="consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.penaltyMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/admin/consorcios/${consortiumId}/liquidaciones/${obligation.id}`}>Liquidación</Link><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/unidades/${obligation.unitId}/cuenta-corriente`}>Cuenta</Link>{canManage && obligation.source !== "penalty" && <button className="btn btn-outline-warning" type="button" onClick={() => selectAdjustment(obligation)}>Ajustar</button>}{canManage && Number(obligation.balanceMinor || 0) > 0 && selectedPeriod.status !== "closed" && <button className="btn btn-outline-success" type="button" onClick={() => selectPayment(obligation)}>Cobrar</button>}</div></td></tr>;
                   })}
                 </tbody>
               </table>
