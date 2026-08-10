@@ -75,6 +75,14 @@ const emptyAdjustmentForm = () => ({
   effectiveDate: todayKey(),
   reason: "",
 });
+const emptyUnitChangeForm = () => ({
+  reason: "",
+  ownerChangeKind: "replacement",
+  ownerEffectiveDate: todayKey(),
+  occupantChangeKind: "replacement",
+  occupantEffectiveDate: todayKey(),
+});
+const normalizedIdentity = (value) => value?.toString?.().trim() || "";
 
 const ConsortiumDetailPage = () => {
   const { id: consortiumId = "" } = useParams();
@@ -91,6 +99,7 @@ const ConsortiumDetailPage = () => {
   const [periodExpenses, setPeriodExpenses] = useState([]);
   const [unitForm, setUnitForm] = useState(createEmptyConsortiumUnit);
   const [editingUnitId, setEditingUnitId] = useState("");
+  const [unitChangeForm, setUnitChangeForm] = useState(emptyUnitChangeForm);
   const [expenseForm, setExpenseForm] = useState(() => ({
     ...createEmptyConsortiumExpense(),
     amountMajor: "",
@@ -201,6 +210,16 @@ const ConsortiumDetailPage = () => {
     () => units.filter((item) => item.active !== false && item.deleted !== true),
     [units],
   );
+  const editingOriginalUnit = useMemo(
+    () => units.find((item) => item.id === editingUnitId) || null,
+    [editingUnitId, units],
+  );
+  const ownerIdentityEdited = Boolean(editingOriginalUnit) && (
+    normalizedIdentity(editingOriginalUnit.ownerName) !== normalizedIdentity(unitForm.ownerName)
+    || normalizedIdentity(editingOriginalUnit.ownerTaxId) !== normalizedIdentity(unitForm.ownerTaxId)
+  );
+  const occupantIdentityEdited = Boolean(editingOriginalUnit)
+    && normalizedIdentity(editingOriginalUnit.occupantName) !== normalizedIdentity(unitForm.occupantName);
 
   const totalCoefficient = useMemo(
     () => activeUnits.reduce((sum, unit) => sum + Number(unit.coefficient || 0), 0),
@@ -223,6 +242,7 @@ const ConsortiumDetailPage = () => {
   const resetUnitForm = () => {
     setEditingUnitId("");
     setUnitForm({ ...createEmptyConsortiumUnit(), consortiumId });
+    setUnitChangeForm(emptyUnitChangeForm());
   };
 
   const submitUnit = async (event) => {
@@ -231,8 +251,12 @@ const ConsortiumDetailPage = () => {
       resetMessages();
       setOperation("unit");
       if (editingUnitId) {
-        await updateConsortiumUnit(activeInmobiliariaId, editingUnitId, { ...unitForm, consortiumId });
-        setSuccess("Unidad actualizada.");
+        await updateConsortiumUnit(activeInmobiliariaId, editingUnitId, {
+          ...unitForm,
+          consortiumId,
+          changeMetadata: unitChangeForm,
+        });
+        setSuccess("Unidad actualizada. El cambio quedó asentado en su historial.");
       } else {
         await createConsortiumUnit(activeInmobiliariaId, consortiumId, unitForm);
         setSuccess("Unidad creada.");
@@ -249,6 +273,7 @@ const ConsortiumDetailPage = () => {
   const editUnit = (unit) => {
     setEditingUnitId(unit.id);
     setUnitForm({ ...createEmptyConsortiumUnit(), ...unit });
+    setUnitChangeForm(emptyUnitChangeForm());
     document.getElementById("consortium-unit-form")?.scrollIntoView({ behavior: "smooth" });
   };
 
@@ -584,7 +609,7 @@ const ConsortiumDetailPage = () => {
                     <td><strong>{unit.code}</strong><div className="small text-muted">{[unit.floor && `Piso ${unit.floor}`, unit.apartment && `Dpto. ${unit.apartment}`].filter(Boolean).join(" · ")}</div></td>
                     <td>{CONSORTIUM_UNIT_TYPES.find((item) => item.id === unit.type)?.label || unit.type}</td>
                     <td>{Number(unit.coefficient || 0).toLocaleString("es-AR", { maximumFractionDigits: 6 })}</td>
-                    <td><div>{unit.ownerName || "Titular no informado"}</div><small className="text-muted">{unit.occupantName || "Sin ocupante informado"}</small></td>
+                    <td><div>{unit.ownerName || "Titular no informado"}</div>{unit.ownerSince && <small className="d-block text-muted">Titular desde {unit.ownerSince}</small>}<small className="d-block text-muted">{unit.occupantName || "Sin ocupante informado"}</small>{unit.occupantSince && <small className="d-block text-muted">Ocupante desde {unit.occupantSince}</small>}</td>
                     <td><div>{unit.email || ""}</div><small className="text-muted">{unit.phone || ""}</small>{Array.isArray(unit.portalEmails) && unit.portalEmails.length > 0 && <small className="d-block text-success">Portal: {unit.portalEmails.length} acceso(s)</small>}</td>
                     <td className="consortium-money text-success">{formatConsortiumMoney(unit.creditBalanceMinor, consortium.currency)}</td>
                     <td className="text-end">
@@ -613,9 +638,14 @@ const ConsortiumDetailPage = () => {
               <div className="col-md-4"><label className="form-label">Propietario / titular</label><input className="form-control" value={unitForm.ownerName} onChange={(e) => setUnitForm((c) => ({ ...c, ownerName: e.target.value }))} /></div>
               <div className="col-md-3"><label className="form-label">CUIT / DNI titular</label><input className="form-control" value={unitForm.ownerTaxId} onChange={(e) => setUnitForm((c) => ({ ...c, ownerTaxId: e.target.value }))} /></div>
               <div className="col-md-5"><label className="form-label">Ocupante</label><input className="form-control" value={unitForm.occupantName} onChange={(e) => setUnitForm((c) => ({ ...c, occupantName: e.target.value }))} /></div>
+              {!editingUnitId && <><div className="col-md-4"><label className="form-label">Titular desde</label><input className="form-control" type="date" max={todayKey()} value={unitForm.ownerSince || ""} onChange={(e) => setUnitForm((c) => ({ ...c, ownerSince: e.target.value }))} /><small className="text-muted">Opcional, si se conoce.</small></div><div className="col-md-4"><label className="form-label">Ocupante desde</label><input className="form-control" type="date" max={todayKey()} value={unitForm.occupantSince || ""} onChange={(e) => setUnitForm((c) => ({ ...c, occupantSince: e.target.value }))} /><small className="text-muted">Opcional, si se conoce.</small></div></>}
+              {editingUnitId && <div className="col-12"><div className="alert alert-warning mb-0"><strong>Esta edición quedará asentada.</strong> Se conservarán los datos anteriores, los nuevos, el motivo, la fecha y el usuario que realiza el cambio.</div></div>}
+              {editingUnitId && ownerIdentityEdited && <><div className="col-md-6"><label className="form-label">Naturaleza del cambio de titular *</label><select className="form-select" value={unitChangeForm.ownerChangeKind} onChange={(e) => setUnitChangeForm((c) => ({ ...c, ownerChangeKind: e.target.value }))}><option value="replacement">Cambio real de titular</option><option value="correction">Corrección de datos del mismo titular</option></select></div>{unitChangeForm.ownerChangeKind === "replacement" && <div className="col-md-6"><label className="form-label">Nuevo titular desde *</label><input className="form-control" type="date" max={todayKey()} value={unitChangeForm.ownerEffectiveDate} onChange={(e) => setUnitChangeForm((c) => ({ ...c, ownerEffectiveDate: e.target.value }))} required /></div>}</>}
+              {editingUnitId && occupantIdentityEdited && <><div className="col-md-6"><label className="form-label">Naturaleza del cambio de ocupante *</label><select className="form-select" value={unitChangeForm.occupantChangeKind} onChange={(e) => setUnitChangeForm((c) => ({ ...c, occupantChangeKind: e.target.value }))}><option value="replacement">Cambio real de ocupante</option><option value="correction">Corrección de datos del mismo ocupante</option></select></div>{unitChangeForm.occupantChangeKind === "replacement" && <div className="col-md-6"><label className="form-label">Nuevo ocupante desde *</label><input className="form-control" type="date" max={todayKey()} value={unitChangeForm.occupantEffectiveDate} onChange={(e) => setUnitChangeForm((c) => ({ ...c, occupantEffectiveDate: e.target.value }))} required /></div>}</>}
               <div className="col-md-4"><label className="form-label">Email</label><input className="form-control" type="email" value={unitForm.email} onChange={(e) => setUnitForm((c) => ({ ...c, email: e.target.value }))} /></div>
               <div className="col-md-4"><label className="form-label">Teléfono</label><input className="form-control" value={unitForm.phone} onChange={(e) => setUnitForm((c) => ({ ...c, phone: e.target.value }))} /></div>
               <div className="col-md-8"><label className="form-label">Emails habilitados para Mi consorcio</label><textarea className="form-control" rows="2" placeholder="Un email por línea" value={(unitForm.portalEmails || []).join("\n")} onChange={(e) => setUnitForm((c) => ({ ...c, portalEmails: e.target.value.split(/[\n,;]+/) }))} /><small className="text-muted">Deben coincidir con emails verificados de usuarios de ONO Prop.</small></div>
+              {editingUnitId && <div className="col-md-8"><label className="form-label">Motivo de la edición *</label><textarea className="form-control" rows="2" placeholder="Ej. Cambio de titular informado mediante escritura del 05/08/2026" value={unitChangeForm.reason} onChange={(e) => setUnitChangeForm((c) => ({ ...c, reason: e.target.value }))} required /><small className="text-muted">Se incorporará al historial permanente de la unidad.</small></div>}
               <div className="col-md-4 d-flex align-items-end justify-content-end"><button className="btn btn-primary" disabled={operation === "unit"} type="submit">{operation === "unit" ? "Guardando..." : editingUnitId ? "Guardar cambios" : "Agregar unidad"}</button></div>
             </div>
           </form>}

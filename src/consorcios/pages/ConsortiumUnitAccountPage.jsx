@@ -14,6 +14,7 @@ import {
   getConsortiumAdjustments,
   getConsortiumObligations,
   getConsortiumPayments,
+  getConsortiumUnitChanges,
   getConsortiumUnits,
   voidConsortiumPayment,
 } from "../services/consorcio.service";
@@ -27,6 +28,39 @@ import {
 } from "../utils/consorcio.helpers";
 import "../consorcio.css";
 
+const UNIT_CHANGE_LABELS = {
+  code: "Identificador",
+  floor: "Piso",
+  apartment: "Departamento",
+  type: "Tipo",
+  coefficient: "Coeficiente",
+  ownerName: "Titular",
+  ownerTaxId: "CUIT / DNI titular",
+  ownerSince: "Titular desde",
+  occupantName: "Ocupante",
+  occupantSince: "Ocupante desde",
+  email: "Email",
+  phone: "Teléfono",
+  portalEmails: "Emails habilitados",
+  notes: "Notas",
+  active: "Estado",
+};
+
+const formatChangeValue = (field, value) => {
+  if (Array.isArray(value)) return value.length ? value.join(", ") : "Sin informar";
+  if (field === "active") return value === false ? "Inactiva" : "Activa";
+  if (field === "coefficient" && value !== "" && value != null) {
+    return Number(value).toLocaleString("es-AR", { maximumFractionDigits: 6 });
+  }
+  return value === "" || value == null ? "Sin informar" : value.toString();
+};
+
+const formatChangeTimestamp = (value) => {
+  const millis = value?.toMillis?.() || Number(value?.seconds || 0) * 1000;
+  if (!millis) return "Fecha no disponible";
+  return new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(millis);
+};
+
 const ConsortiumUnitAccountPage = () => {
   const { id: consortiumId = "", unitId = "" } = useParams();
   const { user } = useAuth();
@@ -36,6 +70,7 @@ const ConsortiumUnitAccountPage = () => {
   const [obligations, setObligations] = useState([]);
   const [payments, setPayments] = useState([]);
   const [adjustments, setAdjustments] = useState([]);
+  const [unitChanges, setUnitChanges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -53,12 +88,13 @@ const ConsortiumUnitAccountPage = () => {
       try {
         setLoading(true);
         setError("");
-        const [consortiumData, units, obligationData, paymentData, adjustmentData] = await Promise.all([
+        const [consortiumData, units, obligationData, paymentData, adjustmentData, unitChangeData] = await Promise.all([
           getConsortiumById(activeInmobiliariaId, consortiumId),
           getConsortiumUnits(activeInmobiliariaId, consortiumId),
           getConsortiumObligations(activeInmobiliariaId, { consortiumId, unitId }),
           getConsortiumPayments(activeInmobiliariaId, { consortiumId, unitId, includeVoided: true }),
           getConsortiumAdjustments(activeInmobiliariaId, { consortiumId, unitId }),
+          getConsortiumUnitChanges(activeInmobiliariaId, { consortiumId, unitId }),
         ]);
         if (!mounted) return;
         setConsortium(consortiumData);
@@ -66,6 +102,7 @@ const ConsortiumUnitAccountPage = () => {
         setObligations(obligationData);
         setPayments(paymentData);
         setAdjustments(adjustmentData);
+        setUnitChanges(unitChangeData);
       } catch (loadError) {
         if (mounted) setError(loadError.message || "No se pudo cargar la cuenta corriente.");
       } finally {
@@ -128,6 +165,7 @@ const ConsortiumUnitAccountPage = () => {
           <Link className="text-decoration-none" to={`/admin/consorcios/${consortiumId}`}>← Volver al consorcio</Link>
           <h1 className="h3 mt-3 mb-1">Cuenta corriente · Unidad {unit?.code || unitId}</h1>
           <p className="text-muted mb-0">{consortium?.name || "Consorcio"} · {unit?.ownerName || unit?.occupantName || "Responsable no informado"}</p>
+          {(unit?.ownerSince || unit?.occupantSince) && <p className="small text-muted mb-0">{[unit?.ownerSince && `Titular desde ${unit.ownerSince}`, unit?.occupantSince && `Ocupante desde ${unit.occupantSince}`].filter(Boolean).join(" · ")}</p>}
         </div>
         <button className="btn btn-outline-primary" type="button" onClick={() => window.print()}>Imprimir / guardar PDF</button>
       </header>
@@ -145,6 +183,28 @@ const ConsortiumUnitAccountPage = () => {
             <div className="col-md-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Cobros registrados</small><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(summary.payments, currency)}</strong></div></div>
             <div className="col-md-6 col-xl-3"><div className="rounded bg-success-subtle p-3 h-100"><small className="text-muted text-uppercase">Saldo a favor sin imputar</small><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(summary.credit, currency)}</strong></div></div>
             <div className="col-md-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Saldo neto</small><strong className={`fs-5 d-block consortium-money ${summary.balance > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(summary.balance, currency)}</strong><small className="text-muted">{summary.balance < 0 ? "A favor de la unidad" : "A cargo de la unidad"}</small></div></div>
+          </div>
+
+          <h2 className="h5">Historial de datos de la unidad</h2>
+          <p className="small text-muted">Registro interno inmutable de las ediciones. Los cambios de titular u ocupante distinguen su fecha efectiva de la fecha en que fueron cargados.</p>
+          <div className="vstack gap-2 mb-4">
+            {unitChanges.map((change) => (
+              <details className="border rounded p-3" key={change.id}>
+                <summary className="d-flex flex-wrap justify-content-between gap-2">
+                  <span><strong>{change.ownerIdentityChanged ? "Cambio de titular" : change.occupantIdentityChanged ? "Cambio de ocupante" : "Edición de unidad"}</strong> · {change.reason}</span>
+                  <small className="text-muted">Registrado {formatChangeTimestamp(change.createdAt)}</small>
+                </summary>
+                <div className="small mt-3">
+                  {change.ownerIdentityChanged && <p className="mb-1"><strong>Titular:</strong> {change.ownerChangeKind === "replacement" ? `cambio efectivo desde ${change.ownerEffectiveDate}` : "corrección de datos, sin cambio de titularidad"}.</p>}
+                  {change.occupantIdentityChanged && <p className="mb-1"><strong>Ocupante:</strong> {change.occupantChangeKind === "replacement" ? `cambio efectivo desde ${change.occupantEffectiveDate}` : "corrección de datos, sin cambio de ocupación"}.</p>}
+                  <p className="mb-2"><strong>Registrado por:</strong> {change.createdByName || change.createdByEmail || change.createdBy || "Usuario no disponible"}{change.createdByName && change.createdByEmail ? ` · ${change.createdByEmail}` : ""}</p>
+                  <ul className="mb-0">
+                    {(change.changedFields || []).map((field) => <li key={field}><strong>{UNIT_CHANGE_LABELS[field] || field}:</strong> {formatChangeValue(field, change.before?.[field])} → {formatChangeValue(field, change.after?.[field])}</li>)}
+                  </ul>
+                </div>
+              </details>
+            ))}
+            {!unitChanges.length && <div className="rounded border bg-light text-muted p-3">Todavía no hay ediciones registradas. El historial comenzará con el próximo cambio.</div>}
           </div>
 
           <h2 className="h5">Expensas por período</h2>

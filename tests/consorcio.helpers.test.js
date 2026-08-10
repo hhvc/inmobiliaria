@@ -12,6 +12,7 @@ import {
   getConsortiumPenaltyStatusLabel,
   getDefaultConsortiumDueDate,
   majorToMinor,
+  validateConsortiumUnit,
 } from "../src/consorcios/utils/consorcio.helpers.js";
 import {
   getPaymentReportStatus,
@@ -156,4 +157,21 @@ test("valida comprobantes y expone estados de revisión", () => {
   assert.equal(isConsortiumDocumentFileValid({ type: "text/plain", size: 1024 }), false);
   assert.equal(isConsortiumDocumentFileValid({ type: "image/png", size: 11 * 1024 * 1024 }), false);
   assert.equal(getPaymentReportStatus("approved").label, "Aprobado");
+});
+
+test("valida las fechas de vigencia del titular y ocupante", () => {
+  assert.deepEqual(validateConsortiumUnit({
+    code: "2 B",
+    coefficient: 12.5,
+    ownerSince: "2026-08-01",
+    occupantSince: "2025-02-28",
+  }), []);
+  assert.deepEqual(validateConsortiumUnit({
+    code: "2 B",
+    ownerSince: "2026-02-30",
+    occupantSince: "31/07/2026",
+  }), [
+    "La fecha de inicio del titular no es válida.",
+    "La fecha de inicio del ocupante no es válida.",
+  ]);
 });

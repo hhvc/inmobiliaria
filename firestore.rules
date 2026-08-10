@@ -1058,6 +1058,22 @@ allow delete: if isRoot();
         allow delete: if false;
       }
 
+      match /condominium_unit_changes/{changeId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.id == changeId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.unitId is string
+          && request.resource.data.reason is string
+          && request.resource.data.changedFields is list
+          && request.resource.data.changedFields.size() > 0;
+        allow update, delete: if false;
+      }
+
       match /condominium_periods/{periodId} {
         allow read: if
           isRoot()

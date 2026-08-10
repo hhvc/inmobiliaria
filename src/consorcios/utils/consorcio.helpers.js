@@ -165,8 +165,22 @@ export const validateConsortium = (value = {}) => {
 
 export const validateConsortiumUnit = (value = {}) => {
   const errors = [];
+  const isValidDateKey = (dateKey) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey || "");
+    if (!match) return false;
+    const parsed = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    return parsed.getUTCFullYear() === Number(match[1])
+      && parsed.getUTCMonth() === Number(match[2]) - 1
+      && parsed.getUTCDate() === Number(match[3]);
+  };
   if (!value.code?.trim()) errors.push("Ingresá el identificador de la unidad.");
   if (Number(value.coefficient || 0) < 0) errors.push("El coeficiente no puede ser negativo.");
+  if (value.ownerSince && !isValidDateKey(value.ownerSince)) {
+    errors.push("La fecha de inicio del titular no es válida.");
+  }
+  if (value.occupantSince && !isValidDateKey(value.occupantSince)) {
+    errors.push("La fecha de inicio del ocupante no es válida.");
+  }
   return errors;
 };
 

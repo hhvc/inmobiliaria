@@ -36,6 +36,7 @@ import {
 const COLLECTIONS = {
   consortiums: "condominiums",
   units: "condominium_units",
+  unitChanges: "condominium_unit_changes",
   periods: "condominium_periods",
   obligations: "condominium_obligations",
   payments: "condominium_payments",
@@ -102,7 +103,9 @@ const sanitizeUnit = (value = {}) => ({
   coefficient: Math.max(0, Number(value.coefficient) || 0),
   ownerName: cleanText(value.ownerName, 220),
   ownerTaxId: cleanText(value.ownerTaxId, 32),
+  ownerSince: cleanText(value.ownerSince, 10),
   occupantName: cleanText(value.occupantName, 220),
+  occupantSince: cleanText(value.occupantSince, 10),
   email: cleanText(value.email, 220),
   phone: cleanText(value.phone, 80),
   portalEmails: normalizeConsortiumEmails(value.portalEmails),
@@ -111,6 +114,48 @@ const sanitizeUnit = (value = {}) => ({
   active: value.active !== false,
   deleted: false,
 });
+
+const UNIT_AUDIT_FIELDS = [
+  "code",
+  "floor",
+  "apartment",
+  "type",
+  "coefficient",
+  "ownerName",
+  "ownerTaxId",
+  "ownerSince",
+  "occupantName",
+  "occupantSince",
+  "email",
+  "phone",
+  "portalEmails",
+  "notes",
+  "active",
+];
+
+const unitAuditSnapshot = (unit = {}) => Object.fromEntries(
+  UNIT_AUDIT_FIELDS.map((field) => [
+    field,
+    Array.isArray(unit[field]) ? [...unit[field]] : (unit[field] ?? ""),
+  ]),
+);
+
+const auditValuesEqual = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+const hasValidDateKey = (value) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return false;
+  const parsed = new Date(`${value}T12:00:00`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+};
+
+const requireEffectiveDate = (value, label) => {
+  const normalized = cleanText(value, 10);
+  if (!hasValidDateKey(normalized)) throw new Error(`Ingresá la fecha efectiva del cambio de ${label}.`);
+  if (normalized > new Date().toISOString().slice(0, 10)) {
+    throw new Error(`La fecha efectiva del cambio de ${label} no puede ser futura.`);
+  }
+  return normalized;
+};
 
 const getAggregatedPortalEmails = (units, replacement = null) => normalizeConsortiumEmails(
   units.flatMap((unit) => {
@@ -244,6 +289,21 @@ export const getConsortiumUnits = async (inmobiliariaId, consortiumId = "") => {
     .sort((a, b) => (a.code || "").localeCompare(b.code || "", "es", { numeric: true }));
 };
 
+export const getConsortiumUnitChanges = async (
+  inmobiliariaId,
+  { consortiumId = "", unitId = "" } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const source = unitId
+    ? query(agencyCollection(inmobiliariaId, "unitChanges"), where("unitId", "==", unitId))
+    : agencyCollection(inmobiliariaId, "unitChanges");
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .sort((a, b) => timestampMillis(b.createdAt) - timestampMillis(a.createdAt));
+};
+
 export const createConsortiumUnit = async (inmobiliariaId, consortiumId, value) => {
   await assertAgency(inmobiliariaId);
   const user = currentUserOrThrow();
@@ -280,15 +340,43 @@ export const createConsortiumUnit = async (inmobiliariaId, consortiumId, value) 
 export const updateConsortiumUnit = async (inmobiliariaId, unitId, value) => {
   await assertAgency(inmobiliariaId);
   const user = currentUserOrThrow();
-  const payload = sanitizeUnit(value);
-  const errors = validateConsortiumUnit(payload);
-  if (errors.length) throw new Error(errors.join(" "));
   const unitRef = agencyDoc(inmobiliariaId, "units", unitId);
   const unitSnapshot = await getDoc(unitRef);
   if (!unitSnapshot.exists()) throw new Error("La unidad no existe.");
-  if (unitSnapshot.data().consortiumId !== payload.consortiumId) {
+  const currentUnit = unitSnapshot.data();
+  const payload = sanitizeUnit(value);
+  payload.creditBalanceMinor = Math.max(0, Math.round(Number(currentUnit.creditBalanceMinor) || 0));
+  if (currentUnit.consortiumId !== payload.consortiumId) {
     throw new Error("No se puede trasladar una unidad a otro consorcio.");
   }
+
+  const changeMetadata = value.changeMetadata || {};
+  const reason = cleanText(changeMetadata.reason, 1000);
+  if (!reason) throw new Error("Indicá el motivo de la edición para conservarlo en el historial.");
+
+  const ownerIdentityChanged = (
+    cleanText(currentUnit.ownerName, 220) !== payload.ownerName
+    || cleanText(currentUnit.ownerTaxId, 32) !== payload.ownerTaxId
+  );
+  const occupantIdentityChanged = cleanText(currentUnit.occupantName, 220) !== payload.occupantName;
+  const ownerChangeKind = changeMetadata.ownerChangeKind === "correction" ? "correction" : "replacement";
+  const occupantChangeKind = changeMetadata.occupantChangeKind === "correction" ? "correction" : "replacement";
+  let ownerEffectiveDate = "";
+  let occupantEffectiveDate = "";
+
+  payload.ownerSince = cleanText(currentUnit.ownerSince, 10);
+  payload.occupantSince = cleanText(currentUnit.occupantSince, 10);
+  if (ownerIdentityChanged && ownerChangeKind === "replacement") {
+    ownerEffectiveDate = requireEffectiveDate(changeMetadata.ownerEffectiveDate, "titular");
+    payload.ownerSince = ownerEffectiveDate;
+  }
+  if (occupantIdentityChanged && occupantChangeKind === "replacement") {
+    occupantEffectiveDate = requireEffectiveDate(changeMetadata.occupantEffectiveDate, "ocupante");
+    payload.occupantSince = occupantEffectiveDate;
+  }
+
+  const errors = validateConsortiumUnit(payload);
+  if (errors.length) throw new Error(errors.join(" "));
   const consortium = await getConsortiumById(inmobiliariaId, payload.consortiumId);
   const currentUnits = await getConsortiumUnits(inmobiliariaId, payload.consortiumId);
   const unitData = {
@@ -301,6 +389,11 @@ export const updateConsortiumUnit = async (inmobiliariaId, unitId, value) => {
     updatedBy: user.uid,
     updatedAt: serverTimestamp(),
   };
+  const before = unitAuditSnapshot(currentUnit);
+  const after = unitAuditSnapshot(unitData);
+  const changedFields = UNIT_AUDIT_FIELDS.filter((field) => !auditValuesEqual(before[field], after[field]));
+  if (!changedFields.length) throw new Error("No hay cambios para guardar.");
+  const changeRef = doc(agencyCollection(inmobiliariaId, "unitChanges"));
   const batch = writeBatch(db);
   batch.update(unitRef, unitData);
   batch.update(agencyDoc(inmobiliariaId, "consortiums", payload.consortiumId), {
@@ -308,7 +401,32 @@ export const updateConsortiumUnit = async (inmobiliariaId, unitId, value) => {
     updatedAt: serverTimestamp(),
     updatedBy: user.uid,
   });
+  batch.set(changeRef, {
+    id: changeRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId: payload.consortiumId,
+    unitId,
+    unitCodeBefore: before.code,
+    unitCodeAfter: after.code,
+    reason,
+    changedFields,
+    ownerIdentityChanged,
+    ownerChangeKind: ownerIdentityChanged ? ownerChangeKind : "",
+    ownerEffectiveDate,
+    occupantIdentityChanged,
+    occupantChangeKind: occupantIdentityChanged ? occupantChangeKind : "",
+    occupantEffectiveDate,
+    before,
+    after,
+    createdBy: user.uid,
+    createdByName: cleanText(user.displayName, 220),
+    createdByEmail: cleanText(user.email, 220),
+    createdAt: serverTimestamp(),
+  });
   await batch.commit();
+  return changeRef.id;
 };
 
 export const archiveConsortiumUnit = async (inmobiliariaId, unitId) => {
