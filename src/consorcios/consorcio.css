@@ -36,6 +36,22 @@
   max-width: 900px;
 }
 
+.consortium-assessment-page {
+  max-width: 1050px;
+}
+
+.consortium-assessment-sheet {
+  padding: 2.5rem;
+  background: #fff;
+  border: 1px solid #dce2e8;
+  border-radius: 1rem;
+  box-shadow: 0 1rem 3rem rgba(30, 41, 59, 0.12);
+}
+
+.consortium-assessment-table tfoot {
+  border-top: 2px solid #212529;
+}
+
 .consortium-receipt-sheet {
   min-height: 720px;
   padding: 3rem;
@@ -54,12 +70,14 @@
   .consortium-no-print,
   .consortium-receipt-page nav,
   .consortium-account-page nav,
+  .consortium-assessment-page nav,
   footer.site-footer {
     display: none !important;
   }
 
   .consortium-receipt-page,
-  .consortium-account-page {
+  .consortium-account-page,
+  .consortium-assessment-page {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -68,7 +86,8 @@
   }
 
   .consortium-receipt-sheet,
-  .consortium-account-card {
+  .consortium-account-card,
+  .consortium-assessment-sheet {
     min-height: 0;
     padding: 1cm;
     border: 0 !important;
@@ -83,5 +102,14 @@
   .consortium-receipt-sheet:last-child {
     break-after: auto;
     page-break-after: auto;
+  }
+
+  .consortium-assessment-sheet {
+    border-radius: 0;
+  }
+
+  .consortium-assessment-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }

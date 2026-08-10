@@ -171,3 +171,36 @@ export const getConsortiumObligationStatusLabel = (status = "pending") => ({
   overdue: { label: "Vencida", badge: "text-bg-danger" },
   paid: { label: "Pagada", badge: "text-bg-success" },
 }[status] || { label: status, badge: "text-bg-light" });
+
+export const getConsortiumExpenseCategoryLabel = (category = "ordinary") => (
+  category === "extraordinary" ? "Extraordinaria" : "Ordinaria"
+);
+
+export const getConsortiumDistributionLabel = (mode = "coefficient") => ({
+  coefficient: "Por coeficiente",
+  equal: "Partes iguales",
+  specific: "Unidad determinada",
+}[mode] || mode || "Sin especificar");
+
+export const getConsortiumLiquidationNumber = ({ periodKey = "", unitCode = "" } = {}) => {
+  const period = periodKey.toString().replace(/\D/g, "").slice(0, 6) || "SFP";
+  const unit = unitCode.toString().trim().toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 24) || "UNIDAD";
+  return `LIQ-${period}-${unit}`;
+};
+
+export const buildConsortiumLiquidationLines = ({ period = {}, obligation = {} } = {}) => {
+  const expenses = new Map(
+    (Array.isArray(period.expenses) ? period.expenses : [])
+      .map((expense) => [expense.id, expense]),
+  );
+  return (Array.isArray(obligation.breakdown) ? obligation.breakdown : []).map((line) => ({
+    expenseId: line.expenseId || "",
+    concept: line.concept || expenses.get(line.expenseId)?.concept || "Gasto",
+    category: line.category === "extraordinary" ? "extraordinary" : "ordinary",
+    distributionMode: line.distributionMode ||
+      expenses.get(line.expenseId)?.distributionMode || "coefficient",
+    expenseTotalMinor: Number(expenses.get(line.expenseId)?.amountMinor || 0),
+    unitAmountMinor: Number(line.amountMinor || 0),
+  }));
+};

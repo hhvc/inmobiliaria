@@ -152,7 +152,7 @@ const ConsortiumUnitAccountPage = () => {
                 {obligations.map((obligation) => {
                   const status = getConsortiumObligationStatus(obligation);
                   const state = getConsortiumObligationStatusLabel(status);
-                  return <tr key={obligation.id}><td>{getConsortiumPeriodLabel(obligation.periodKey)}</td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td></tr>;
+                  return <tr key={obligation.id}><td><Link to={`/admin/consorcios/${consortiumId}/liquidaciones/${obligation.id}`}>{getConsortiumPeriodLabel(obligation.periodKey)}</Link></td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td></tr>;
                 })}
                 {!obligations.length && <tr><td className="text-center text-muted py-4" colSpan="6">No hay expensas emitidas para esta unidad.</td></tr>}
               </tbody>

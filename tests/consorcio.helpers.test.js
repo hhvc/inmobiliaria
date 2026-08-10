@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildConsortiumLiquidationLines,
   calculateConsortiumAssessments,
+  getConsortiumLiquidationNumber,
   getConsortiumObligationStatus,
   getDefaultConsortiumDueDate,
   majorToMinor,
@@ -32,6 +34,22 @@ test("prorratea por coeficiente sin perder centavos", () => {
   assert.equal(result.totalAssessedMinor, 10001);
   assert.equal(result.assessments.find((item) => item.unitId === "a").totalAmountMinor, 6001);
   assert.equal(result.assessments.find((item) => item.unitId === "b").totalAmountMinor, 4000);
+});
+
+test("reconstruye las líneas de una liquidación desde su snapshot", () => {
+  const lines = buildConsortiumLiquidationLines({
+    period: { expenses: [{ id: "e1", concept: "Limpieza", amountMinor: 120000 }] },
+    obligation: { breakdown: [{ expenseId: "e1", category: "ordinary", distributionMode: "coefficient", amountMinor: 30000 }] },
+  });
+  assert.deepEqual(lines, [{
+    expenseId: "e1",
+    concept: "Limpieza",
+    category: "ordinary",
+    distributionMode: "coefficient",
+    expenseTotalMinor: 120000,
+    unitAmountMinor: 30000,
+  }]);
+  assert.equal(getConsortiumLiquidationNumber({ periodKey: "2026-08", unitCode: "2º A" }), "LIQ-202608-2-A");
 });
 
 test("combina partes iguales y un cargo particular", () => {

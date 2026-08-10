@@ -451,6 +451,12 @@ export const getConsortiumObligations = async (
     .sort((a, b) => (b.periodKey || "").localeCompare(a.periodKey || ""));
 };
 
+export const getConsortiumObligationById = async (inmobiliariaId, obligationId) => {
+  if (!inmobiliariaId || !obligationId) return null;
+  const snap = await getDoc(agencyDoc(inmobiliariaId, "obligations", obligationId));
+  return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+};
+
 export const getConsortiumPayments = async (
   inmobiliariaId,
   { consortiumId = "", obligationId = "", unitId = "", includeVoided = false } = {},

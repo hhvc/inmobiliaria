@@ -125,6 +125,7 @@ import ConsortiumDetailPage from "./consorcios/pages/ConsortiumDetailPage";
 import ConsortiumUnitAccountPage from "./consorcios/pages/ConsortiumUnitAccountPage";
 import ConsortiumReceiptPage from "./consorcios/pages/ConsortiumReceiptPage";
 import ConsortiumResidentPortalPage from "./consorcios/pages/ConsortiumResidentPortalPage";
+import ConsortiumAssessmentPage from "./consorcios/pages/ConsortiumAssessmentPage";
 
 // Control tributario inmobiliario
 import TaxManagementPage from "./tributos/pages/TaxManagementPage";
@@ -576,6 +577,19 @@ function App() {
                 />
 
                 <Route
+                  path="/admin/consorcios/:id/liquidaciones/:obligationId"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="consorcios">
+                        <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
+                          <ConsortiumAssessmentPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
                   path="/admin/consorcios/:id/recibos/:paymentId"
                   element={
                     <ProtectedRoute role="admin">
@@ -606,6 +620,15 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <ConsortiumResidentPortalPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/mi-consorcio/:inmobiliariaId/:id/liquidaciones/:obligationId"
+                  element={
+                    <ProtectedRoute>
+                      <ConsortiumAssessmentPage portalMode />
                     </ProtectedRoute>
                   }
                 />
