@@ -258,15 +258,24 @@ const validateImageDimensions = ({ width, height, imageName }) => {
     throw new Error(`No se pudo detectar la resolución de "${imageName}".`);
   }
 
-  if (width < MIN_IMAGE_WIDTH || height < MIN_IMAGE_HEIGHT) {
+  const longSide = Math.max(width, height);
+  const shortSide = Math.min(width, height);
+
+  if (
+    longSide < MIN_IMAGE_WIDTH ||
+    shortSide < MIN_IMAGE_HEIGHT
+  ) {
     throw new Error(
-      `La imagen "${imageName}" mide ${width} x ${height}px. El mínimo requerido es ${MIN_IMAGE_WIDTH} x ${MIN_IMAGE_HEIGHT}px.`,
+      `La imagen "${imageName}" mide ${width} x ${height}px. ` +
+      `El mínimo requerido es ${MIN_IMAGE_WIDTH} x ${MIN_IMAGE_HEIGHT}px ` +
+      `en cualquier orientación.`
     );
   }
 
   if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
     throw new Error(
-      `La imagen "${imageName}" mide ${width} x ${height}px. El máximo permitido es ${MAX_IMAGE_WIDTH} x ${MAX_IMAGE_HEIGHT}px.`,
+      `La imagen "${imageName}" mide ${width} x ${height}px. ` +
+      `El máximo permitido es ${MAX_IMAGE_WIDTH} x ${MAX_IMAGE_HEIGHT}px.`
     );
   }
 };
