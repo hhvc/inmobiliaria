@@ -7,6 +7,7 @@ import ConsortiumExpenseDocumentsPanel from "../components/ConsortiumExpenseDocu
 import ConsortiumPrivateDocumentButton from "../components/ConsortiumPrivateDocumentButton";
 import {
   getConsortiumExpenseDocuments,
+  getConsortiumAdjustments,
   getConsortiumPaymentReports,
   getConsortiumPeriodById,
   getMyConsortiumUnits,
@@ -19,9 +20,10 @@ import {
 } from "../utils/consorcio.constants";
 import {
   formatConsortiumMoney,
+  getConsortiumAccountingPeriodLabel,
+  getConsortiumAdjustmentTypeLabel,
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
-  getConsortiumPeriodLabel,
   majorToMinor,
   minorToMajorInput,
 } from "../utils/consorcio.helpers";
@@ -49,6 +51,7 @@ const ConsortiumResidentPortalPage = () => {
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [obligations, setObligations] = useState([]);
   const [reports, setReports] = useState([]);
+  const [adjustments, setAdjustments] = useState([]);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [expenseDocuments, setExpenseDocuments] = useState([]);
@@ -87,20 +90,26 @@ const ConsortiumResidentPortalPage = () => {
     if (!selectedUnit) {
       setObligations([]);
       setReports([]);
+      setAdjustments([]);
       return;
     }
     try {
       setDetailLoading(true);
       setError("");
-      const [obligationData, reportData] = await Promise.all([
+      const [obligationData, reportData, adjustmentData] = await Promise.all([
         getPortalUnitObligations({
           inmobiliariaId: selectedUnit.inmobiliariaId,
           unitId: selectedUnit.id,
         }),
         getConsortiumPaymentReports(selectedUnit.inmobiliariaId, { unitId: selectedUnit.id }),
+        getConsortiumAdjustments(selectedUnit.inmobiliariaId, {
+          consortiumId: selectedUnit.consortiumId,
+          unitId: selectedUnit.id,
+        }),
       ]);
       setObligations(obligationData);
       setReports(reportData);
+      setAdjustments(adjustmentData);
       setSelectedPeriodId((current) => (
         current && obligationData.some((item) => item.periodId === current)
           ? current
@@ -140,10 +149,12 @@ const ConsortiumResidentPortalPage = () => {
     return () => { mounted = false; };
   }, [selectedPeriodId, selectedUnit]);
 
-  const totalBalance = useMemo(
+  const totalDebt = useMemo(
     () => obligations.reduce((sum, item) => sum + Number(item.balanceMinor || 0), 0),
     [obligations],
   );
+  const availableCredit = Math.max(0, Number(selectedUnit?.creditBalanceMinor) || 0);
+  const totalBalance = totalDebt - availableCredit;
 
   const selectReport = (obligation) => {
     setError("");
@@ -213,15 +224,17 @@ const ConsortiumResidentPortalPage = () => {
 
       {selectedUnit && (
         <>
-          <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><div className="row g-3 align-items-end"><div className="col-lg-8"><label className="form-label">Unidad habilitada</label><select className="form-select" value={selectedUnitId} onChange={(event) => { setSelectedUnitId(event.target.value); setSelectedPeriodId(""); setReportForm(emptyReportForm()); }}>{units.map((unit) => <option key={`${unit.inmobiliariaId}_${unit.id}`} value={unit.id}>{unit.consortiumName || "Consorcio"} · Unidad {unit.code}</option>)}</select></div><div className="col-lg-4"><span className="small text-muted text-uppercase">Saldo total</span><strong className="fs-4 d-block consortium-money">{formatConsortiumMoney(totalBalance, selectedUnit.consortiumCurrency || "ARS")}</strong></div></div><div className="mt-3"><strong>{selectedUnit.consortiumName || "Consorcio"}</strong><div className="text-muted">{selectedUnit.consortiumAddress || "Domicilio no informado"} · Unidad {selectedUnit.code}</div></div></div></section>
+          <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><div className="row g-3 align-items-end"><div className="col-lg-6"><label className="form-label">Unidad habilitada</label><select className="form-select" value={selectedUnitId} onChange={(event) => { setSelectedUnitId(event.target.value); setSelectedPeriodId(""); setReportForm(emptyReportForm()); }}>{units.map((unit) => <option key={`${unit.inmobiliariaId}_${unit.id}`} value={unit.id}>{unit.consortiumName || "Consorcio"} · Unidad {unit.code}</option>)}</select></div><div className="col-sm-6 col-lg-3"><span className="small text-muted text-uppercase">Saldo a favor</span><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(availableCredit, selectedUnit.consortiumCurrency || "ARS")}</strong></div><div className="col-sm-6 col-lg-3"><span className="small text-muted text-uppercase">Saldo neto</span><strong className={`fs-4 d-block consortium-money ${totalBalance > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(totalBalance, selectedUnit.consortiumCurrency || "ARS")}</strong></div></div><div className="mt-3"><strong>{selectedUnit.consortiumName || "Consorcio"}</strong><div className="text-muted">{selectedUnit.consortiumAddress || "Domicilio no informado"} · Unidad {selectedUnit.code}</div>{availableCredit > 0 && <small className="text-muted">El saldo a favor se mantiene separado hasta que la administración confirme su imputación.</small>}</div></div></section>
 
-          <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Estado de cuenta</h2>{detailLoading ? <p className="text-muted">Cargando movimientos...</p> : <div className="table-responsive"><table className="table table-hover align-middle"><thead><tr><th>Período</th><th>Vencimiento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead><tbody>{obligations.map((obligation) => { const status = getConsortiumObligationStatus(obligation); const state = getConsortiumObligationStatusLabel(status); return <tr key={obligation.id}><td>{getConsortiumPeriodLabel(obligation.periodKey)}</td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/mi-consorcio/${selectedUnit.inmobiliariaId}/${selectedUnit.consortiumId}/liquidaciones/${obligation.id}`}>Ver PDF</Link><button className="btn btn-outline-secondary" type="button" onClick={() => setSelectedPeriodId(obligation.periodId)}>Comprobantes</button>{Number(obligation.balanceMinor || 0) > 0 && <button className="btn btn-success" type="button" onClick={() => selectReport(obligation)}>Informar pago</button>}</div></td></tr>; })}{!obligations.length && <tr><td className="text-center text-muted py-4" colSpan="7">Todavía no hay expensas emitidas.</td></tr>}</tbody></table></div>}</div></section>
+          <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Estado de cuenta</h2>{detailLoading ? <p className="text-muted">Cargando movimientos...</p> : <div className="table-responsive"><table className="table table-hover align-middle"><thead><tr><th>Período</th><th>Vencimiento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead><tbody>{obligations.map((obligation) => { const status = getConsortiumObligationStatus(obligation); const state = getConsortiumObligationStatusLabel(status); return <tr key={obligation.id}><td>{getConsortiumAccountingPeriodLabel(obligation)}</td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/mi-consorcio/${selectedUnit.inmobiliariaId}/${selectedUnit.consortiumId}/liquidaciones/${obligation.id}`}>Ver PDF</Link><button className="btn btn-outline-secondary" type="button" onClick={() => setSelectedPeriodId(obligation.periodId)}>Comprobantes</button>{Number(obligation.balanceMinor || 0) > 0 && <button className="btn btn-success" type="button" onClick={() => selectReport(obligation)}>Informar pago</button>}</div></td></tr>; })}{!obligations.length && <tr><td className="text-center text-muted py-4" colSpan="7">Todavía no hay expensas emitidas.</td></tr>}</tbody></table></div>}</div></section>
 
           {selectedPeriod && <ConsortiumExpenseDocumentsPanel inmobiliariaId={selectedUnit.inmobiliariaId} consortiumId={selectedUnit.consortiumId} period={selectedPeriod} expenses={selectedPeriod.expenses || []} documents={expenseDocuments} />}
 
+          <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Saldos iniciales y rectificaciones</h2><div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Fecha</th><th>Movimiento</th><th>Período</th><th>Motivo</th><th className="text-end">Impacto</th></tr></thead><tbody>{adjustments.map((adjustment) => { const isCredit = adjustment.direction === "credit"; return <tr key={adjustment.id}><td>{adjustment.effectiveDate}</td><td>{getConsortiumAdjustmentTypeLabel(adjustment.type)}</td><td>{getConsortiumAccountingPeriodLabel(adjustment)}</td><td>{adjustment.reason || "—"}</td><td className={`text-end consortium-money ${isCredit ? "text-success" : "text-danger"}`}>{isCredit ? "− " : "+ "}{formatConsortiumMoney(adjustment.amountMinor, adjustment.currency)}</td></tr>; })}{!adjustments.length && <tr><td className="text-center text-muted py-4" colSpan="5">No hay saldos iniciales ni rectificaciones.</td></tr>}</tbody></table></div></div></section>
+
           {reportForm.obligationId && <section id="consortium-resident-payment-report" className="card border-success shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Informar pago realizado</h2><div className="alert alert-info py-2">Este aviso no reemplaza el recibo ni cancela la deuda hasta que la administración valide el comprobante.</div><form onSubmit={submitReport}><div className="row g-3"><div className="col-md-3"><label className="form-label">Importe *</label><input className="form-control" inputMode="decimal" value={reportForm.amountMajor} onChange={(event) => setReportForm((current) => ({ ...current, amountMajor: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Fecha del pago *</label><input className="form-control" type="date" value={reportForm.date} onChange={(event) => setReportForm((current) => ({ ...current, date: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Medio</label><select className="form-select" value={reportForm.method} onChange={(event) => setReportForm((current) => ({ ...current, method: event.target.value }))}>{CONSORTIUM_PAYMENT_METHODS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div><div className="col-md-3"><label className="form-label">Referencia</label><input className="form-control" value={reportForm.reference} onChange={(event) => setReportForm((current) => ({ ...current, reference: event.target.value }))} /></div><div className="col-md-6"><label className="form-label">Comprobante *</label><input key={fileInputKey} className="form-control" type="file" accept={CONSORTIUM_DOCUMENT_ACCEPT} onChange={(event) => setReportForm((current) => ({ ...current, file: event.target.files?.[0] || null }))} required /></div><div className="col-md-6"><label className="form-label">Observaciones</label><input className="form-control" value={reportForm.notes} onChange={(event) => setReportForm((current) => ({ ...current, notes: event.target.value }))} /></div><div className="col-12 d-flex justify-content-end gap-2"><button className="btn btn-outline-secondary" type="button" onClick={() => setReportForm(emptyReportForm())}>Cancelar</button><button className="btn btn-success" disabled={operation === "report"} type="submit">{operation === "report" ? "Enviando..." : "Enviar para validación"}</button></div></div></form></div></section>}
 
-          <section className="card border-0 shadow-sm"><div className="card-body p-4"><h2 className="h5">Pagos informados</h2><div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Período</th><th>Fecha</th><th>Importe</th><th>Estado</th><th className="text-end">Comprobante</th></tr></thead><tbody>{reports.map((report) => { const state = getPaymentReportStatus(report.status); return <tr key={report.id}><td>{getConsortiumPeriodLabel(report.periodKey)}</td><td>{report.date}</td><td className="consortium-money">{formatConsortiumMoney(report.amountMinor, report.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span>{report.rejectionReason && <small className="d-block text-danger">{report.rejectionReason}</small>}</td><td className="text-end"><ConsortiumPrivateDocumentButton path={report.proofStoragePath} fileName={report.proofFileName} /></td></tr>; })}{!reports.length && <tr><td className="text-center text-muted py-4" colSpan="5">Todavía no informaste pagos.</td></tr>}</tbody></table></div></div></section>
+          <section className="card border-0 shadow-sm"><div className="card-body p-4"><h2 className="h5">Pagos informados</h2><div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Período</th><th>Fecha</th><th>Importe</th><th>Estado</th><th className="text-end">Comprobante</th></tr></thead><tbody>{reports.map((report) => { const state = getPaymentReportStatus(report.status); return <tr key={report.id}><td>{getConsortiumAccountingPeriodLabel(report)}</td><td>{report.date}</td><td className="consortium-money">{formatConsortiumMoney(report.amountMinor, report.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span>{report.rejectionReason && <small className="d-block text-danger">{report.rejectionReason}</small>}</td><td className="text-end"><ConsortiumPrivateDocumentButton path={report.proofStoragePath} fileName={report.proofFileName} /></td></tr>; })}{!reports.length && <tr><td className="text-center text-muted py-4" colSpan="5">Todavía no informaste pagos.</td></tr>}</tbody></table></div></div></section>
         </>
       )}
     </main>

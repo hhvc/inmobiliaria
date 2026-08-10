@@ -1069,7 +1069,13 @@ allow delete: if isRoot();
           && request.resource.data.inmobiliariaId == inmoId
           && request.resource.data.ownerInmobiliariaId == inmoId
           && request.resource.data.id == periodId
-          && request.resource.data.status == "draft"
+          && (
+            request.resource.data.status == "draft"
+            || (
+              request.resource.data.status == "issued"
+              && request.resource.data.source == "opening_balance"
+            )
+          )
           && request.resource.data.deleted == false;
         allow update: if
           isSignedIn()
@@ -1128,6 +1134,27 @@ allow delete: if isRoot();
           && request.resource.data.obligationId == resource.data.obligationId
           && request.resource.data.unitId == resource.data.unitId;
         allow delete: if false;
+      }
+
+      match /condominium_adjustments/{adjustmentId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || hasConsortiumUnitPortalAccess(inmoId, resource.data.unitId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.id == adjustmentId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.unitId is string
+          && request.resource.data.type in [
+            "opening_debit", "opening_credit", "rectification_debit", "rectification_credit"
+          ]
+          && request.resource.data.amountMinor is int
+          && request.resource.data.amountMinor > 0;
+        allow update, delete: if false;
       }
 
       match /condominium_expense_documents/{documentId} {

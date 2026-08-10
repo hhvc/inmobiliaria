@@ -40,6 +40,56 @@ export const getConsortiumPeriodLabel = (periodKey = "") => {
   return label.charAt(0).toUpperCase() + label.slice(1);
 };
 
+export const getConsortiumAccountingPeriodLabel = ({
+  periodKey = "",
+  source = "",
+  accountingSource = "",
+  type = "",
+} = {}) => (
+  source === "opening_balance"
+    || source === "opening_balance_migration"
+    || accountingSource === "opening_balance"
+    || type === "opening_debit"
+    || type === "opening_credit"
+    ? `Saldo inicial · ${getConsortiumPeriodLabel(periodKey)}`
+    : getConsortiumPeriodLabel(periodKey)
+);
+
+export const getConsortiumAdjustmentTypeLabel = (type = "") => ({
+  opening_debit: "Saldo inicial deudor",
+  opening_credit: "Saldo inicial a favor",
+  rectification_debit: "Nota de débito",
+  rectification_credit: "Nota de crédito",
+}[type] || type || "Ajuste");
+
+export const getConsortiumAccountSummary = ({
+  obligations = [],
+  payments = [],
+  creditBalanceMinor = 0,
+} = {}) => {
+  const activePayments = payments.filter((item) => item.voided !== true);
+  const charges = obligations.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.totalAmountMinor) || 0),
+    0,
+  );
+  const collected = activePayments.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.amountMinor) || 0),
+    0,
+  );
+  const debt = obligations.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.balanceMinor) || 0),
+    0,
+  );
+  const credit = Math.max(0, Number(creditBalanceMinor) || 0);
+  return {
+    charges,
+    payments: collected,
+    debt,
+    credit,
+    balance: debt - credit,
+  };
+};
+
 export const getDefaultConsortiumDueDate = (periodKey = "", dueDay = 10) => {
   const match = /^(\d{4})-(\d{2})$/.exec(periodKey);
   if (!match) return "";
@@ -194,13 +244,16 @@ export const buildConsortiumLiquidationLines = ({ period = {}, obligation = {} }
     (Array.isArray(period.expenses) ? period.expenses : [])
       .map((expense) => [expense.id, expense]),
   );
-  return (Array.isArray(obligation.breakdown) ? obligation.breakdown : []).map((line) => ({
-    expenseId: line.expenseId || "",
-    concept: line.concept || expenses.get(line.expenseId)?.concept || "Gasto",
-    category: line.category === "extraordinary" ? "extraordinary" : "ordinary",
-    distributionMode: line.distributionMode ||
-      expenses.get(line.expenseId)?.distributionMode || "coefficient",
-    expenseTotalMinor: Number(expenses.get(line.expenseId)?.amountMinor || 0),
-    unitAmountMinor: Number(line.amountMinor || 0),
-  }));
+  return (Array.isArray(obligation.breakdown) ? obligation.breakdown : []).map((line) => {
+    const expense = expenses.get(line.expenseId);
+    const unitAmountMinor = Number(line.amountMinor || 0);
+    return {
+      expenseId: line.expenseId || "",
+      concept: line.concept || expense?.concept || "Gasto",
+      category: line.category === "extraordinary" ? "extraordinary" : "ordinary",
+      distributionMode: line.distributionMode || expense?.distributionMode || "coefficient",
+      expenseTotalMinor: expense ? Number(expense.amountMinor || 0) : Math.abs(unitAmountMinor),
+      unitAmountMinor,
+    };
+  });
 };

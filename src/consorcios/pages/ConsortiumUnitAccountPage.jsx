@@ -11,6 +11,7 @@ import {
 } from "../../inmobiliaria/utils/inmobiliariaPermissions";
 import {
   getConsortiumById,
+  getConsortiumAdjustments,
   getConsortiumObligations,
   getConsortiumPayments,
   getConsortiumUnits,
@@ -18,9 +19,11 @@ import {
 } from "../services/consorcio.service";
 import {
   formatConsortiumMoney,
+  getConsortiumAccountingPeriodLabel,
+  getConsortiumAccountSummary,
+  getConsortiumAdjustmentTypeLabel,
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
-  getConsortiumPeriodLabel,
 } from "../utils/consorcio.helpers";
 import "../consorcio.css";
 
@@ -32,6 +35,7 @@ const ConsortiumUnitAccountPage = () => {
   const [unit, setUnit] = useState(null);
   const [obligations, setObligations] = useState([]);
   const [payments, setPayments] = useState([]);
+  const [adjustments, setAdjustments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -49,17 +53,19 @@ const ConsortiumUnitAccountPage = () => {
       try {
         setLoading(true);
         setError("");
-        const [consortiumData, units, obligationData, paymentData] = await Promise.all([
+        const [consortiumData, units, obligationData, paymentData, adjustmentData] = await Promise.all([
           getConsortiumById(activeInmobiliariaId, consortiumId),
           getConsortiumUnits(activeInmobiliariaId, consortiumId),
           getConsortiumObligations(activeInmobiliariaId, { consortiumId, unitId }),
           getConsortiumPayments(activeInmobiliariaId, { consortiumId, unitId, includeVoided: true }),
+          getConsortiumAdjustments(activeInmobiliariaId, { consortiumId, unitId }),
         ]);
         if (!mounted) return;
         setConsortium(consortiumData);
         setUnit(units.find((item) => item.id === unitId) || obligationData[0]?.unitSnapshot || null);
         setObligations(obligationData);
         setPayments(paymentData);
+        setAdjustments(adjustmentData);
       } catch (loadError) {
         if (mounted) setError(loadError.message || "No se pudo cargar la cuenta corriente.");
       } finally {
@@ -71,15 +77,11 @@ const ConsortiumUnitAccountPage = () => {
   }, [activeInmobiliariaId, consortiumId, unitId]);
 
   const currency = consortium?.currency || obligations[0]?.currency || "ARS";
-  const activePayments = useMemo(
-    () => payments.filter((item) => item.voided !== true),
-    [payments],
-  );
-  const summary = useMemo(() => ({
-    charges: obligations.reduce((sum, item) => sum + Number(item.totalAmountMinor || 0), 0),
-    payments: activePayments.reduce((sum, item) => sum + Number(item.amountMinor || 0), 0),
-    balance: obligations.reduce((sum, item) => sum + Number(item.balanceMinor || 0), 0),
-  }), [activePayments, obligations]);
+  const summary = useMemo(() => getConsortiumAccountSummary({
+    obligations,
+    payments,
+    creditBalanceMinor: unit?.creditBalanceMinor,
+  }), [obligations, payments, unit?.creditBalanceMinor]);
 
   const voidPayment = async (payment) => {
     const reason = window.prompt("Motivo de la anulación del cobro:");
@@ -139,9 +141,10 @@ const ConsortiumUnitAccountPage = () => {
             <p>{consortium?.name} · {consortium?.address}</p>
           </div>
           <div className="row g-3 mb-4">
-            <div className="col-md-4"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas emitidas</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(summary.charges, currency)}</strong></div></div>
-            <div className="col-md-4"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Cobros registrados</small><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(summary.payments, currency)}</strong></div></div>
-            <div className="col-md-4"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Saldo</small><strong className={`fs-5 d-block consortium-money ${summary.balance > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(summary.balance, currency)}</strong></div></div>
+            <div className="col-md-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas emitidas</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(summary.charges, currency)}</strong></div></div>
+            <div className="col-md-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Cobros registrados</small><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(summary.payments, currency)}</strong></div></div>
+            <div className="col-md-6 col-xl-3"><div className="rounded bg-success-subtle p-3 h-100"><small className="text-muted text-uppercase">Saldo a favor sin imputar</small><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(summary.credit, currency)}</strong></div></div>
+            <div className="col-md-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Saldo neto</small><strong className={`fs-5 d-block consortium-money ${summary.balance > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(summary.balance, currency)}</strong><small className="text-muted">{summary.balance < 0 ? "A favor de la unidad" : "A cargo de la unidad"}</small></div></div>
           </div>
 
           <h2 className="h5">Expensas por período</h2>
@@ -152,7 +155,7 @@ const ConsortiumUnitAccountPage = () => {
                 {obligations.map((obligation) => {
                   const status = getConsortiumObligationStatus(obligation);
                   const state = getConsortiumObligationStatusLabel(status);
-                  return <tr key={obligation.id}><td><Link to={`/admin/consorcios/${consortiumId}/liquidaciones/${obligation.id}`}>{getConsortiumPeriodLabel(obligation.periodKey)}</Link></td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td></tr>;
+                  return <tr key={obligation.id}><td><Link to={`/admin/consorcios/${consortiumId}/liquidaciones/${obligation.id}`}>{getConsortiumAccountingPeriodLabel(obligation)}</Link></td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td></tr>;
                 })}
                 {!obligations.length && <tr><td className="text-center text-muted py-4" colSpan="6">No hay expensas emitidas para esta unidad.</td></tr>}
               </tbody>
@@ -164,8 +167,21 @@ const ConsortiumUnitAccountPage = () => {
             <table className="table table-sm">
               <thead><tr><th>Fecha</th><th>Período</th><th>Medio</th><th>Referencia</th><th className="text-end">Importe</th><th className="consortium-no-print text-end">Recibo</th></tr></thead>
               <tbody>
-                {payments.map((payment) => <tr className={payment.voided ? "text-muted" : ""} key={payment.id}><td>{payment.date}</td><td>{getConsortiumPeriodLabel(payment.periodKey)}</td><td>{payment.method}</td><td>{payment.voided ? <><span className="badge text-bg-dark">Anulado</span><small className="d-block">{payment.voidReason}</small></> : payment.reference || "—"}</td><td className={`text-end consortium-money ${payment.voided ? "text-decoration-line-through" : ""}`}>{formatConsortiumMoney(payment.amountMinor, payment.currency)}</td><td className="consortium-no-print text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/recibos/${payment.id}`}>Ver</Link>{canManage && !payment.voided && <button className="btn btn-outline-danger" disabled={working === payment.id} type="button" onClick={() => voidPayment(payment)}>Anular</button>}</div></td></tr>)}
+                {payments.map((payment) => <tr className={payment.voided ? "text-muted" : ""} key={payment.id}><td>{payment.date}</td><td>{getConsortiumAccountingPeriodLabel(payment)}</td><td>{payment.method}</td><td>{payment.voided ? <><span className="badge text-bg-dark">Anulado</span><small className="d-block">{payment.voidReason}</small></> : payment.reference || "—"}</td><td className={`text-end consortium-money ${payment.voided ? "text-decoration-line-through" : ""}`}>{formatConsortiumMoney(payment.amountMinor, payment.currency)}</td><td className="consortium-no-print text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/recibos/${payment.id}`}>Ver</Link>{canManage && !payment.voided && <button className="btn btn-outline-danger" disabled={working === payment.id} type="button" onClick={() => voidPayment(payment)}>Anular</button>}</div></td></tr>)}
                 {!payments.length && <tr><td className="text-center text-muted py-4" colSpan="6">Todavía no hay cobros registrados.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+          <h2 className="h5 mt-4">Saldos iniciales y rectificaciones</h2>
+          <div className="table-responsive">
+            <table className="table table-sm align-middle">
+              <thead><tr><th>Fecha</th><th>Movimiento</th><th>Período</th><th>Motivo</th><th className="text-end">Impacto</th></tr></thead>
+              <tbody>
+                {adjustments.map((adjustment) => {
+                  const isCredit = adjustment.direction === "credit";
+                  return <tr key={adjustment.id}><td>{adjustment.effectiveDate}</td><td>{getConsortiumAdjustmentTypeLabel(adjustment.type)}</td><td>{getConsortiumAccountingPeriodLabel(adjustment)}</td><td>{adjustment.reason || "—"}</td><td className={`text-end consortium-money ${isCredit ? "text-success" : "text-danger"}`}>{isCredit ? "− " : "+ "}{formatConsortiumMoney(adjustment.amountMinor, adjustment.currency)}</td></tr>;
+                })}
+                {!adjustments.length && <tr><td className="text-center text-muted py-4" colSpan="5">No hay saldos iniciales ni rectificaciones.</td></tr>}
               </tbody>
             </table>
           </div>

@@ -41,6 +41,7 @@ const COLLECTIONS = {
   payments: "condominium_payments",
   expenseDocuments: "condominium_expense_documents",
   paymentReports: "condominium_payment_reports",
+  adjustments: "condominium_adjustments",
 };
 
 const agencyCollection = (inmobiliariaId, key) =>
@@ -104,6 +105,7 @@ const sanitizeUnit = (value = {}) => ({
   email: cleanText(value.email, 220),
   phone: cleanText(value.phone, 80),
   portalEmails: normalizeConsortiumEmails(value.portalEmails),
+  creditBalanceMinor: Math.max(0, Math.round(Number(value.creditBalanceMinor) || 0)),
   notes: cleanText(value.notes, 2000),
   active: value.active !== false,
   deleted: false,
@@ -457,6 +459,371 @@ export const getConsortiumObligationById = async (inmobiliariaId, obligationId) 
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 };
 
+export const getConsortiumAdjustments = async (
+  inmobiliariaId,
+  { consortiumId = "", obligationId = "", unitId = "" } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const source = unitId
+    ? query(agencyCollection(inmobiliariaId, "adjustments"), where("unitId", "==", unitId))
+    : agencyCollection(inmobiliariaId, "adjustments");
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .filter((item) => !obligationId || item.obligationId === obligationId)
+    .sort((a, b) => (
+      (b.effectiveDate || "").localeCompare(a.effectiveDate || "")
+      || timestampMillis(b.createdAt) - timestampMillis(a.createdAt)
+    ));
+};
+
+const getUnitAuditSnapshot = (unit = {}) => ({
+  code: cleanText(unit.code, 80),
+  floor: cleanText(unit.floor, 40),
+  apartment: cleanText(unit.apartment, 40),
+  ownerName: cleanText(unit.ownerName, 220),
+  occupantName: cleanText(unit.occupantName, 220),
+  coefficient: Math.max(0, Number(unit.coefficient) || 0),
+});
+
+export const recordConsortiumOpeningBalance = async ({
+  inmobiliariaId,
+  consortiumId,
+  unitId,
+  type,
+  amountMinor,
+  effectiveDate,
+  periodKey,
+  dueDate,
+  reason,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  const normalizedReason = cleanText(reason, 1000);
+  if (!unitId) throw new Error("Seleccioná una unidad.");
+  if (!amount) throw new Error("Ingresá un importe mayor a cero.");
+  if (!["debit", "credit"].includes(type)) throw new Error("Seleccioná el tipo de saldo inicial.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate || "")) throw new Error("Ingresá la fecha del saldo inicial.");
+  if (!normalizedReason) throw new Error("Ingresá el origen o motivo del saldo inicial.");
+  if (type === "debit" && !/^\d{4}-\d{2}$/.test(periodKey || "")) {
+    throw new Error("Ingresá el período al que corresponde la deuda.");
+  }
+  if (type === "debit" && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate || "")) {
+    throw new Error("Ingresá el vencimiento del saldo deudor.");
+  }
+
+  const adjustmentRef = doc(agencyCollection(inmobiliariaId, "adjustments"));
+  const unitRef = agencyDoc(inmobiliariaId, "units", unitId);
+  const periodId = type === "debit" ? `opening_${consortiumId}_${periodKey}` : "";
+  const periodRef = periodId ? agencyDoc(inmobiliariaId, "periods", periodId) : null;
+  const obligationId = periodId ? `${periodId}_${unitId}` : "";
+  const obligationRef = obligationId
+    ? agencyDoc(inmobiliariaId, "obligations", obligationId)
+    : null;
+
+  await runTransaction(db, async (transaction) => {
+    const unitSnapshot = await transaction.get(unitRef);
+    if (!unitSnapshot.exists()) throw new Error("La unidad no existe.");
+    const unit = unitSnapshot.data();
+    if (unit.consortiumId !== consortiumId || unit.deleted === true) {
+      throw new Error("La unidad no pertenece al consorcio activo.");
+    }
+    const auditUnit = getUnitAuditSnapshot(unit);
+
+    if (type === "credit") {
+      const previousCreditMinor = Math.max(0, Number(unit.creditBalanceMinor) || 0);
+      const nextCreditMinor = previousCreditMinor + amount;
+      transaction.update(unitRef, {
+        creditBalanceMinor: nextCreditMinor,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+      transaction.set(adjustmentRef, {
+        id: adjustmentRef.id,
+        schemaVersion: 1,
+        type: "opening_credit",
+        direction: "credit",
+        consortiumId,
+        unitId,
+        unitSnapshot: auditUnit,
+        obligationId: "",
+        periodId: "",
+        periodKey: effectiveDate.slice(0, 7),
+        currency: unit.consortiumCurrency || "ARS",
+        amountMinor: amount,
+        effectiveDate,
+        dueDate: "",
+        reason: normalizedReason,
+        previousCreditMinor,
+        nextCreditMinor,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      return;
+    }
+
+    const [periodSnapshot, obligationSnapshot] = await Promise.all([
+      transaction.get(periodRef),
+      transaction.get(obligationRef),
+    ]);
+    const period = periodSnapshot.exists() ? periodSnapshot.data() : null;
+    if (period && (period.consortiumId !== consortiumId || period.source !== "opening_balance")) {
+      throw new Error("El período reservado para saldos iniciales contiene datos incompatibles.");
+    }
+    const obligation = obligationSnapshot.exists() ? obligationSnapshot.data() : null;
+    const previousTotalMinor = Math.max(0, Number(obligation?.totalAmountMinor) || 0);
+    const previousBalanceMinor = Math.max(0, Number(obligation?.balanceMinor) || 0);
+    const nextTotalMinor = previousTotalMinor + amount;
+    const paidAmountMinor = Math.max(0, Number(obligation?.paidAmountMinor) || 0);
+    const nextBalanceMinor = Math.max(0, nextTotalMinor - paidAmountMinor);
+    const expenseLine = {
+      id: adjustmentRef.id,
+      concept: `Saldo inicial: ${normalizedReason}`,
+      category: "ordinary",
+      distributionMode: "specific",
+      specificUnitId: unitId,
+      amountMinor: amount,
+      notes: `Fecha de origen: ${effectiveDate}`,
+    };
+    const breakdownLine = {
+      expenseId: adjustmentRef.id,
+      concept: expenseLine.concept,
+      category: "ordinary",
+      distributionMode: "specific",
+      amountMinor: amount,
+      source: "opening_balance",
+    };
+
+    if (period) {
+      transaction.update(periodRef, {
+        status: "issued",
+        expenses: [...(Array.isArray(period.expenses) ? period.expenses : []), expenseLine],
+        totalExpensesMinor: Math.max(0, Number(period.totalExpensesMinor) || 0) + amount,
+        issuedUnitCount: Math.max(0, Number(period.issuedUnitCount) || 0) + (obligation ? 0 : 1),
+        updatedAt: serverTimestamp(),
+        updatedBy: user.uid,
+      });
+    } else {
+      transaction.set(periodRef, {
+        id: periodId,
+        schemaVersion: 1,
+        consortiumId,
+        periodKey,
+        dueDate,
+        currency: unit.consortiumCurrency || "ARS",
+        status: "issued",
+        source: "opening_balance",
+        expenses: [expenseLine],
+        totalExpensesMinor: amount,
+        issuedUnitCount: 1,
+        deleted: false,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        createdBy: user.uid,
+        updatedBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        issuedAt: serverTimestamp(),
+        issuedBy: user.uid,
+      });
+    }
+
+    if (obligation) {
+      transaction.update(obligationRef, {
+        ordinaryMinor: Math.max(0, Number(obligation.ordinaryMinor) || 0) + amount,
+        totalAmountMinor: nextTotalMinor,
+        balanceMinor: nextBalanceMinor,
+        status: getConsortiumObligationStatus({ ...obligation, balanceMinor: nextBalanceMinor }),
+        breakdown: [...(Array.isArray(obligation.breakdown) ? obligation.breakdown : []), breakdownLine],
+        adjustmentIds: [...(Array.isArray(obligation.adjustmentIds) ? obligation.adjustmentIds : []), adjustmentRef.id],
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      transaction.set(obligationRef, {
+        id: obligationId,
+        schemaVersion: 1,
+        source: "opening_balance",
+        unitId,
+        unitSnapshot: auditUnit,
+        ordinaryMinor: amount,
+        extraordinaryMinor: 0,
+        totalAmountMinor: amount,
+        paidAmountMinor: 0,
+        balanceMinor: amount,
+        status: getConsortiumObligationStatus({ balanceMinor: amount, dueDate }),
+        breakdown: [breakdownLine],
+        paymentIds: [],
+        adjustmentIds: [adjustmentRef.id],
+        consortiumId,
+        periodId,
+        periodKey,
+        dueDate,
+        currency: unit.consortiumCurrency || "ARS",
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        createdBy: user.uid,
+        updatedBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    }
+
+    transaction.set(adjustmentRef, {
+      id: adjustmentRef.id,
+      schemaVersion: 1,
+      type: "opening_debit",
+      direction: "debit",
+      category: "ordinary",
+      consortiumId,
+      unitId,
+      unitSnapshot: auditUnit,
+      obligationId,
+      periodId,
+      periodKey,
+      currency: unit.consortiumCurrency || "ARS",
+      amountMinor: amount,
+      effectiveDate,
+      dueDate,
+      reason: normalizedReason,
+      previousTotalMinor,
+      nextTotalMinor,
+      previousBalanceMinor,
+      nextBalanceMinor,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    });
+  });
+  return { adjustmentId: adjustmentRef.id, periodId, obligationId };
+};
+
+export const adjustConsortiumObligation = async ({
+  inmobiliariaId,
+  obligationId,
+  type,
+  category = "ordinary",
+  amountMinor,
+  effectiveDate,
+  reason,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  const normalizedReason = cleanText(reason, 1000);
+  if (!["debit", "credit"].includes(type)) throw new Error("Seleccioná débito o crédito.");
+  if (!["ordinary", "extraordinary"].includes(category)) throw new Error("Seleccioná el tipo de expensa.");
+  if (!amount) throw new Error("Ingresá un importe mayor a cero.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate || "")) throw new Error("Ingresá la fecha del ajuste.");
+  if (!normalizedReason) throw new Error("Ingresá el motivo del ajuste.");
+
+  const adjustmentRef = doc(agencyCollection(inmobiliariaId, "adjustments"));
+  const obligationRef = agencyDoc(inmobiliariaId, "obligations", obligationId);
+  await runTransaction(db, async (transaction) => {
+    const obligationSnapshot = await transaction.get(obligationRef);
+    if (!obligationSnapshot.exists()) throw new Error("La expensa no existe.");
+    const obligation = obligationSnapshot.data();
+    const periodRef = agencyDoc(inmobiliariaId, "periods", obligation.periodId);
+    const periodSnapshot = await transaction.get(periodRef);
+    if (!periodSnapshot.exists() || periodSnapshot.data().status === "draft") {
+      throw new Error("Solo se pueden ajustar liquidaciones emitidas.");
+    }
+    const period = periodSnapshot.data();
+    const categoryField = category === "extraordinary" ? "extraordinaryMinor" : "ordinaryMinor";
+    const categoryAmountMinor = Math.max(0, Number(obligation[categoryField]) || 0);
+    const previousTotalMinor = Math.max(0, Number(obligation.totalAmountMinor) || 0);
+    const previousBalanceMinor = Math.max(0, Number(obligation.balanceMinor) || 0);
+    const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor) || 0);
+    if (type === "credit" && amount > previousBalanceMinor) {
+      throw new Error("La nota de crédito no puede superar el saldo pendiente. Registrá el excedente como saldo inicial a favor.");
+    }
+    if (type === "credit" && amount > categoryAmountMinor) {
+      throw new Error("La nota de crédito supera el importe disponible en el tipo de expensa seleccionado.");
+    }
+    const signedAmount = type === "debit" ? amount : -amount;
+    const nextCategoryMinor = categoryAmountMinor + signedAmount;
+    const nextTotalMinor = previousTotalMinor + signedAmount;
+    const nextBalanceMinor = Math.max(0, nextTotalMinor - paidAmountMinor);
+    const nextStatus = getConsortiumObligationStatus({
+      ...obligation,
+      balanceMinor: nextBalanceMinor,
+      paidAmountMinor,
+    });
+    const obligationUpdate = {
+      [categoryField]: nextCategoryMinor,
+      totalAmountMinor: nextTotalMinor,
+      balanceMinor: nextBalanceMinor,
+      status: nextStatus,
+      breakdown: [...(Array.isArray(obligation.breakdown) ? obligation.breakdown : []), {
+        expenseId: adjustmentRef.id,
+        concept: `${type === "debit" ? "Nota de débito" : "Nota de crédito"}: ${normalizedReason}`,
+        category,
+        distributionMode: "specific",
+        amountMinor: signedAmount,
+        source: "rectification",
+      }],
+      adjustmentIds: [...(Array.isArray(obligation.adjustmentIds) ? obligation.adjustmentIds : []), adjustmentRef.id],
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    };
+    if (!Number.isFinite(Number(obligation.originalTotalAmountMinor))) {
+      obligationUpdate.originalTotalAmountMinor = previousTotalMinor;
+      obligationUpdate.originalOrdinaryMinor = Math.max(0, Number(obligation.ordinaryMinor) || 0);
+      obligationUpdate.originalExtraordinaryMinor = Math.max(0, Number(obligation.extraordinaryMinor) || 0);
+      obligationUpdate.originalBreakdown = Array.isArray(obligation.breakdown) ? obligation.breakdown : [];
+    }
+    transaction.update(obligationRef, obligationUpdate);
+    const previousAdjustmentNetMinor = Number(period.adjustmentNetMinor) || 0;
+    const adjustmentNetMinor = previousAdjustmentNetMinor + signedAmount;
+    const periodUpdate = {
+      status: type === "debit" && period.status === "closed" ? "issued" : period.status,
+      adjustmentNetMinor,
+      adjustedTotalExpensesMinor: Math.max(0, Number(period.totalExpensesMinor) || 0) + adjustmentNetMinor,
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    };
+    if (type === "debit" && period.status === "closed") {
+      periodUpdate.reopenedAt = serverTimestamp();
+      periodUpdate.reopenedBy = user.uid;
+      periodUpdate.reopenReason = normalizedReason;
+    }
+    transaction.update(periodRef, periodUpdate);
+    transaction.set(adjustmentRef, {
+      id: adjustmentRef.id,
+      schemaVersion: 1,
+      type: type === "debit" ? "rectification_debit" : "rectification_credit",
+      direction: type,
+      category,
+      consortiumId: obligation.consortiumId,
+      unitId: obligation.unitId,
+      unitSnapshot: obligation.unitSnapshot || {},
+      obligationId,
+      periodId: obligation.periodId,
+      periodKey: obligation.periodKey,
+      source: obligation.source || "monthly_assessment",
+      currency: obligation.currency || "ARS",
+      amountMinor: amount,
+      effectiveDate,
+      dueDate: obligation.dueDate || "",
+      reason: normalizedReason,
+      previousTotalMinor,
+      nextTotalMinor,
+      previousBalanceMinor,
+      nextBalanceMinor,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    });
+  });
+  return adjustmentRef.id;
+};
+
 export const getConsortiumPayments = async (
   inmobiliariaId,
   { consortiumId = "", obligationId = "", unitId = "", includeVoided = false } = {},
@@ -508,6 +875,7 @@ export const registerConsortiumPayment = async ({
       consortiumId: obligation.consortiumId,
       periodId: obligation.periodId,
       periodKey: obligation.periodKey,
+      source: obligation.source || "monthly_assessment",
       unitId: obligation.unitId,
       unitSnapshot: obligation.unitSnapshot || {},
       currency: obligation.currency || "ARS",
@@ -812,6 +1180,7 @@ export const submitConsortiumPaymentReport = async ({
       obligationId,
       periodId: obligation.periodId,
       periodKey: obligation.periodKey,
+      accountingSource: obligation.source || "monthly_assessment",
       unitSnapshot: obligation.unitSnapshot || { code: unit.code || "" },
       currency: obligation.currency || "ARS",
       amountMinor: amount,
@@ -870,6 +1239,7 @@ export const approveConsortiumPaymentReport = async ({ inmobiliariaId, reportId 
       consortiumId: report.consortiumId,
       periodId: report.periodId,
       periodKey: report.periodKey,
+      accountingSource: report.accountingSource || obligation.source || "monthly_assessment",
       unitId: report.unitId,
       unitSnapshot: report.unitSnapshot || obligation.unitSnapshot || {},
       currency: report.currency || obligation.currency || "ARS",

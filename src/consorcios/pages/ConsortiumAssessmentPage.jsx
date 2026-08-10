@@ -12,11 +12,11 @@ import {
   buildConsortiumLiquidationLines,
   formatConsortiumMoney,
   getConsortiumDistributionLabel,
+  getConsortiumAccountingPeriodLabel,
   getConsortiumExpenseCategoryLabel,
   getConsortiumLiquidationNumber,
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
-  getConsortiumPeriodLabel,
 } from "../utils/consorcio.helpers";
 import "../consorcio.css";
 
@@ -123,7 +123,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
           </div>
           <div className="text-end">
             <span className="badge text-bg-light text-dark border">{liquidationNumber}</span>
-            <strong className="d-block mt-2">{getConsortiumPeriodLabel(obligation.periodKey)}</strong>
+            <strong className="d-block mt-2">{getConsortiumAccountingPeriodLabel(obligation)}</strong>
             <small className="d-block text-muted">Emitida: {formatTimestamp(period.issuedAt)}</small>
           </div>
         </header>
@@ -161,7 +161,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
                 {lines.map((line, index) => <tr key={`${line.expenseId}_${index}`}><td>{line.concept}</td><td>{getConsortiumExpenseCategoryLabel(line.category)}</td><td>{getConsortiumDistributionLabel(line.distributionMode)}</td><td className="text-end consortium-money">{formatConsortiumMoney(line.expenseTotalMinor, currency)}</td><td className="text-end consortium-money fw-semibold">{formatConsortiumMoney(line.unitAmountMinor, currency)}</td></tr>)}
                 {!lines.length && <tr><td className="text-center text-muted py-3" colSpan="5">No hay conceptos detallados.</td></tr>}
               </tbody>
-              <tfoot><tr><th colSpan="3">Totales</th><th className="text-end consortium-money">{formatConsortiumMoney(period.totalExpensesMinor, currency)}</th><th className="text-end consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, currency)}</th></tr></tfoot>
+              <tfoot><tr><th colSpan="3">Totales actualizados</th><th className="text-end consortium-money">{formatConsortiumMoney(period.adjustedTotalExpensesMinor ?? period.totalExpensesMinor, currency)}</th><th className="text-end consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, currency)}</th></tr></tfoot>
             </table>
           </div>
         </section>
@@ -182,7 +182,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
 
         <footer className="small text-muted border-top pt-3">
           <p className="mb-1">Documento de gestión emitido por ONO Prop a partir de la liquidación aprobada. No reemplaza el recibo de pago ni un comprobante fiscal.</p>
-          <p className="mb-0">Los importes imputados corresponden a la fotografía del prorrateo al momento de emisión; pagos y saldo reflejan el estado actual registrado.</p>
+          <p className="mb-0">El detalle conserva los conceptos emitidos y agrega las rectificaciones auditadas; pagos y saldo reflejan el estado actual registrado.</p>
         </footer>
       </article>
     </main>

@@ -33,6 +33,7 @@ export const createEmptyConsortiumUnit = () => ({
   email: "",
   phone: "",
   portalEmails: [],
+  creditBalanceMinor: 0,
   notes: "",
   active: true,
   deleted: false,

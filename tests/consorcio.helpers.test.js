@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   buildConsortiumLiquidationLines,
   calculateConsortiumAssessments,
+  getConsortiumAccountingPeriodLabel,
+  getConsortiumAccountSummary,
   getConsortiumLiquidationNumber,
   getConsortiumObligationStatus,
   getDefaultConsortiumDueDate,
@@ -50,6 +52,42 @@ test("reconstruye las líneas de una liquidación desde su snapshot", () => {
     unitAmountMinor: 30000,
   }]);
   assert.equal(getConsortiumLiquidationNumber({ periodKey: "2026-08", unitCode: "2º A" }), "LIQ-202608-2-A");
+});
+
+test("distingue saldos iniciales y calcula el saldo neto con créditos", () => {
+  assert.equal(
+    getConsortiumAccountingPeriodLabel({ periodKey: "2026-07", source: "opening_balance" }),
+    "Saldo inicial · Julio de 2026",
+  );
+  assert.deepEqual(getConsortiumAccountSummary({
+    obligations: [{ totalAmountMinor: 120000, balanceMinor: 70000 }],
+    payments: [
+      { amountMinor: 50000, voided: false },
+      { amountMinor: 10000, voided: true },
+    ],
+    creditBalanceMinor: 20000,
+  }), {
+    charges: 120000,
+    payments: 50000,
+    debt: 70000,
+    credit: 20000,
+    balance: 50000,
+  });
+});
+
+test("expone una rectificación específica aun si no integra los gastos originales", () => {
+  const lines = buildConsortiumLiquidationLines({
+    period: { expenses: [] },
+    obligation: { breakdown: [{
+      expenseId: "ajuste-1",
+      concept: "Nota de crédito: diferencia de medición",
+      category: "ordinary",
+      distributionMode: "specific",
+      amountMinor: -2500,
+    }] },
+  });
+  assert.equal(lines[0].expenseTotalMinor, 2500);
+  assert.equal(lines[0].unitAmountMinor, -2500);
 });
 
 test("combina partes iguales y un cargo particular", () => {
