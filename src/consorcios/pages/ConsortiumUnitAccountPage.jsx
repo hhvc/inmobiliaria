@@ -18,6 +18,7 @@ import {
   getConsortiumUnits,
   voidConsortiumPayment,
 } from "../services/consorcio.service";
+import { getConsortiumCommunications } from "../services/consorcioCommunication.service";
 import {
   formatConsortiumMoney,
   getConsortiumAccountingPeriodLabel,
@@ -26,6 +27,7 @@ import {
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
 } from "../utils/consorcio.helpers";
+import { getConsortiumCommunicationStatus } from "../utils/consorcioNotification.helpers";
 import "../consorcio.css";
 
 const UNIT_CHANGE_LABELS = {
@@ -37,10 +39,14 @@ const UNIT_CHANGE_LABELS = {
   ownerName: "Titular",
   ownerTaxId: "CUIT / DNI titular",
   ownerSince: "Titular desde",
+  ownerEmail: "Email del titular",
   occupantName: "Ocupante",
   occupantSince: "Ocupante desde",
+  occupantEmail: "Email del ocupante",
+  notificationPreference: "Destinatarios de liquidaciones",
   email: "Email",
   phone: "Teléfono",
+  manualPortalEmails: "Accesos adicionales",
   portalEmails: "Emails habilitados",
   notes: "Notas",
   active: "Estado",
@@ -49,6 +55,12 @@ const UNIT_CHANGE_LABELS = {
 const formatChangeValue = (field, value) => {
   if (Array.isArray(value)) return value.length ? value.join(", ") : "Sin informar";
   if (field === "active") return value === false ? "Inactiva" : "Activa";
+  if (field === "notificationPreference") return ({
+    owner: "Titular",
+    occupant: "Ocupante",
+    both: "Titular y ocupante",
+    none: "Sin envío por email",
+  }[value] || "Titular");
   if (field === "coefficient" && value !== "" && value != null) {
     return Number(value).toLocaleString("es-AR", { maximumFractionDigits: 6 });
   }
@@ -71,6 +83,7 @@ const ConsortiumUnitAccountPage = () => {
   const [payments, setPayments] = useState([]);
   const [adjustments, setAdjustments] = useState([]);
   const [unitChanges, setUnitChanges] = useState([]);
+  const [communications, setCommunications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -88,13 +101,14 @@ const ConsortiumUnitAccountPage = () => {
       try {
         setLoading(true);
         setError("");
-        const [consortiumData, units, obligationData, paymentData, adjustmentData, unitChangeData] = await Promise.all([
+        const [consortiumData, units, obligationData, paymentData, adjustmentData, unitChangeData, communicationData] = await Promise.all([
           getConsortiumById(activeInmobiliariaId, consortiumId),
           getConsortiumUnits(activeInmobiliariaId, consortiumId),
           getConsortiumObligations(activeInmobiliariaId, { consortiumId, unitId }),
           getConsortiumPayments(activeInmobiliariaId, { consortiumId, unitId, includeVoided: true }),
           getConsortiumAdjustments(activeInmobiliariaId, { consortiumId, unitId }),
           getConsortiumUnitChanges(activeInmobiliariaId, { consortiumId, unitId }),
+          getConsortiumCommunications(activeInmobiliariaId, { consortiumId, unitId }),
         ]);
         if (!mounted) return;
         setConsortium(consortiumData);
@@ -103,6 +117,7 @@ const ConsortiumUnitAccountPage = () => {
         setPayments(paymentData);
         setAdjustments(adjustmentData);
         setUnitChanges(unitChangeData);
+        setCommunications(communicationData);
       } catch (loadError) {
         if (mounted) setError(loadError.message || "No se pudo cargar la cuenta corriente.");
       } finally {
@@ -205,6 +220,17 @@ const ConsortiumUnitAccountPage = () => {
               </details>
             ))}
             {!unitChanges.length && <div className="rounded border bg-light text-muted p-3">Todavía no hay ediciones registradas. El historial comenzará con el próximo cambio.</div>}
+          </div>
+
+          <h2 className="h5">Historial de comunicaciones</h2>
+          <div className="table-responsive mb-4">
+            <table className="table table-sm align-middle">
+              <thead><tr><th>Fecha</th><th>Período</th><th>Tipo</th><th>Destinatarios</th><th>Resultado</th></tr></thead>
+              <tbody>
+                {communications.map((communication) => { const state = getConsortiumCommunicationStatus(communication.status); return <tr key={communication.id}><td>{formatChangeTimestamp(communication.createdAt)}</td><td>{communication.periodKey || "—"}</td><td>{{ manual: "Manual", issue: "Emisión", before_due: "Próximo vencimiento", overdue: "Mora" }[communication.kind] || communication.kind}</td><td>{(communication.recipientSnapshot || []).map((recipient) => recipient.email).join(", ") || "—"}</td><td><span className={`badge ${state.badge}`}>{state.label}</span>{communication.deliveryError && <small className="d-block text-danger">{communication.deliveryError}</small>}</td></tr>; })}
+                {!communications.length && <tr><td className="text-center text-muted py-3" colSpan="5">Todavía no se registraron comunicaciones para esta unidad.</td></tr>}
+              </tbody>
+            </table>
           </div>
 
           <h2 className="h5">Expensas por período</h2>

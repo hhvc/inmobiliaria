@@ -174,3 +174,8 @@ export {
 } from "./tax.js";
 
 export { rentalGenerateMonthlyObligations } from "./rentals.js";
+
+export {
+  consortiumSendCommunications,
+  consortiumSyncMailStatus,
+} from "./consortium.js";

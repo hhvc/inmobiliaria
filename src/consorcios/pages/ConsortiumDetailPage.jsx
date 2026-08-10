@@ -5,6 +5,7 @@ import SEO from "../../components/SEO";
 import { useAuth } from "../../context/auth/useAuth";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
 import ConsortiumExpenseDocumentsPanel from "../components/ConsortiumExpenseDocumentsPanel";
+import ConsortiumCommunicationsPanel from "../components/ConsortiumCommunicationsPanel";
 import ConsortiumPaymentReportsPanel from "../components/ConsortiumPaymentReportsPanel";
 import ConsortiumPenaltiesPanel from "../components/ConsortiumPenaltiesPanel";
 import {
@@ -53,6 +54,7 @@ import {
   createEmptyConsortiumExpense,
   createEmptyConsortiumUnit,
 } from "../utils/consorcio.schema";
+import { getConsortiumUnitNotificationRecipients } from "../utils/consorcioNotification.helpers";
 import "../consorcio.css";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -271,8 +273,19 @@ const ConsortiumDetailPage = () => {
   };
 
   const editUnit = (unit) => {
+    const notificationEmails = new Set(
+      getConsortiumUnitNotificationRecipients(unit).map((item) => item.email),
+    );
     setEditingUnitId(unit.id);
-    setUnitForm({ ...createEmptyConsortiumUnit(), ...unit });
+    setUnitForm({
+      ...createEmptyConsortiumUnit(),
+      ...unit,
+      ownerEmail: unit.ownerEmail || unit.email || "",
+      email: unit.ownerEmail ? unit.email || "" : "",
+      manualPortalEmails: Array.isArray(unit.manualPortalEmails)
+        ? unit.manualPortalEmails
+        : (unit.portalEmails || []).filter((email) => !notificationEmails.has(email)),
+    });
     setUnitChangeForm(emptyUnitChangeForm());
     document.getElementById("consortium-unit-form")?.scrollIntoView({ behavior: "smooth" });
   };
@@ -610,7 +623,7 @@ const ConsortiumDetailPage = () => {
                     <td>{CONSORTIUM_UNIT_TYPES.find((item) => item.id === unit.type)?.label || unit.type}</td>
                     <td>{Number(unit.coefficient || 0).toLocaleString("es-AR", { maximumFractionDigits: 6 })}</td>
                     <td><div>{unit.ownerName || "Titular no informado"}</div>{unit.ownerSince && <small className="d-block text-muted">Titular desde {unit.ownerSince}</small>}<small className="d-block text-muted">{unit.occupantName || "Sin ocupante informado"}</small>{unit.occupantSince && <small className="d-block text-muted">Ocupante desde {unit.occupantSince}</small>}</td>
-                    <td><div>{unit.email || ""}</div><small className="text-muted">{unit.phone || ""}</small>{Array.isArray(unit.portalEmails) && unit.portalEmails.length > 0 && <small className="d-block text-success">Portal: {unit.portalEmails.length} acceso(s)</small>}</td>
+                    <td><div>{unit.ownerEmail || unit.email || ""}</div>{unit.occupantEmail && <small className="d-block">Ocupante: {unit.occupantEmail}</small>}<small className="d-block text-muted">{unit.phone || ""}</small>{Array.isArray(unit.portalEmails) && unit.portalEmails.length > 0 && <small className="d-block text-success">Portal: {unit.portalEmails.length} acceso(s)</small>}</td>
                     <td className="consortium-money text-success">{formatConsortiumMoney(unit.creditBalanceMinor, consortium.currency)}</td>
                     <td className="text-end">
                       <div className="btn-group btn-group-sm">
@@ -642,9 +655,12 @@ const ConsortiumDetailPage = () => {
               {editingUnitId && <div className="col-12"><div className="alert alert-warning mb-0"><strong>Esta edición quedará asentada.</strong> Se conservarán los datos anteriores, los nuevos, el motivo, la fecha y el usuario que realiza el cambio.</div></div>}
               {editingUnitId && ownerIdentityEdited && <><div className="col-md-6"><label className="form-label">Naturaleza del cambio de titular *</label><select className="form-select" value={unitChangeForm.ownerChangeKind} onChange={(e) => setUnitChangeForm((c) => ({ ...c, ownerChangeKind: e.target.value }))}><option value="replacement">Cambio real de titular</option><option value="correction">Corrección de datos del mismo titular</option></select></div>{unitChangeForm.ownerChangeKind === "replacement" && <div className="col-md-6"><label className="form-label">Nuevo titular desde *</label><input className="form-control" type="date" max={todayKey()} value={unitChangeForm.ownerEffectiveDate} onChange={(e) => setUnitChangeForm((c) => ({ ...c, ownerEffectiveDate: e.target.value }))} required /></div>}</>}
               {editingUnitId && occupantIdentityEdited && <><div className="col-md-6"><label className="form-label">Naturaleza del cambio de ocupante *</label><select className="form-select" value={unitChangeForm.occupantChangeKind} onChange={(e) => setUnitChangeForm((c) => ({ ...c, occupantChangeKind: e.target.value }))}><option value="replacement">Cambio real de ocupante</option><option value="correction">Corrección de datos del mismo ocupante</option></select></div>{unitChangeForm.occupantChangeKind === "replacement" && <div className="col-md-6"><label className="form-label">Nuevo ocupante desde *</label><input className="form-control" type="date" max={todayKey()} value={unitChangeForm.occupantEffectiveDate} onChange={(e) => setUnitChangeForm((c) => ({ ...c, occupantEffectiveDate: e.target.value }))} required /></div>}</>}
-              <div className="col-md-4"><label className="form-label">Email</label><input className="form-control" type="email" value={unitForm.email} onChange={(e) => setUnitForm((c) => ({ ...c, email: e.target.value }))} /></div>
+              {editingUnitId && ((ownerIdentityEdited && unitChangeForm.ownerChangeKind === "replacement") || (occupantIdentityEdited && unitChangeForm.occupantChangeKind === "replacement")) && <div className="col-12"><small className="text-danger">Verificá también los emails y la preferencia de envío: al guardar se revocarán de esta unidad los accesos anteriores que no permanezcan como accesos adicionales.</small></div>}
+              <div className="col-md-4"><label className="form-label">Email del titular</label><input className="form-control" type="email" value={unitForm.ownerEmail || ""} onChange={(e) => setUnitForm((c) => ({ ...c, ownerEmail: e.target.value }))} /></div>
+              <div className="col-md-4"><label className="form-label">Email del ocupante</label><input className="form-control" type="email" value={unitForm.occupantEmail || ""} onChange={(e) => setUnitForm((c) => ({ ...c, occupantEmail: e.target.value }))} /></div>
+              <div className="col-md-4"><label className="form-label">Enviar liquidaciones a</label><select className="form-select" value={unitForm.notificationPreference || "owner"} onChange={(e) => setUnitForm((c) => ({ ...c, notificationPreference: e.target.value }))}><option value="owner">Titular</option><option value="occupant">Ocupante</option><option value="both">Titular y ocupante</option><option value="none">No enviar por email</option></select></div>
               <div className="col-md-4"><label className="form-label">Teléfono</label><input className="form-control" value={unitForm.phone} onChange={(e) => setUnitForm((c) => ({ ...c, phone: e.target.value }))} /></div>
-              <div className="col-md-8"><label className="form-label">Emails habilitados para Mi consorcio</label><textarea className="form-control" rows="2" placeholder="Un email por línea" value={(unitForm.portalEmails || []).join("\n")} onChange={(e) => setUnitForm((c) => ({ ...c, portalEmails: e.target.value.split(/[\n,;]+/) }))} /><small className="text-muted">Deben coincidir con emails verificados de usuarios de ONO Prop.</small></div>
+              <div className="col-md-8"><label className="form-label">Accesos adicionales a Mi consorcio</label><textarea className="form-control" rows="2" placeholder="Un email por línea" value={(unitForm.manualPortalEmails || []).join("\n")} onChange={(e) => setUnitForm((c) => ({ ...c, manualPortalEmails: e.target.value.split(/[\n,;]+/) }))} /><small className="text-muted">Los destinatarios elegidos arriba se habilitan automáticamente. Agregá aquí otros usuarios autorizados.</small></div>
               {editingUnitId && <div className="col-md-8"><label className="form-label">Motivo de la edición *</label><textarea className="form-control" rows="2" placeholder="Ej. Cambio de titular informado mediante escritura del 05/08/2026" value={unitChangeForm.reason} onChange={(e) => setUnitChangeForm((c) => ({ ...c, reason: e.target.value }))} required /><small className="text-muted">Se incorporará al historial permanente de la unidad.</small></div>}
               <div className="col-md-4 d-flex align-items-end justify-content-end"><button className="btn btn-primary" disabled={operation === "unit"} type="submit">{operation === "unit" ? "Guardando..." : editingUnitId ? "Guardar cambios" : "Agregar unidad"}</button></div>
             </div>
@@ -742,6 +758,17 @@ const ConsortiumDetailPage = () => {
           canManage={canManage}
           beforeUpload={selectedPeriod.status === "draft" ? () => saveExpenses({ showSuccess: false }) : undefined}
           onChanged={load}
+        />
+      )}
+
+      {selectedPeriod && selectedPeriod.status !== "draft" && !selectedPeriod.source && (
+        <ConsortiumCommunicationsPanel
+          inmobiliariaId={activeInmobiliariaId}
+          consortium={{ id: consortiumId, ...consortium }}
+          period={selectedPeriod}
+          obligations={selectedObligations}
+          units={activeUnits}
+          canManage={canManage}
         />
       )}
 

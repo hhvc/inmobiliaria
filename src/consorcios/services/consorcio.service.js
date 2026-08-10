@@ -32,11 +32,16 @@ import {
   normalizeConsortiumEmails,
   safeConsortiumFileName,
 } from "../utils/consorcioPortal.helpers";
+import {
+  getConsortiumUnitNotificationRecipients,
+  normalizeConsortiumDeliveryPreference,
+} from "../utils/consorcioNotification.helpers";
 
 const COLLECTIONS = {
   consortiums: "condominiums",
   units: "condominium_units",
   unitChanges: "condominium_unit_changes",
+  communications: "condominium_communications",
   periods: "condominium_periods",
   obligations: "condominium_obligations",
   payments: "condominium_payments",
@@ -93,27 +98,42 @@ const sanitizeConsortium = (value = {}) => ({
   deleted: false,
 });
 
-const sanitizeUnit = (value = {}) => ({
-  schemaVersion: 1,
-  consortiumId: cleanText(value.consortiumId, 128),
-  code: cleanText(value.code, 80),
-  floor: cleanText(value.floor, 40),
-  apartment: cleanText(value.apartment, 40),
-  type: cleanText(value.type, 40) || "apartment",
-  coefficient: Math.max(0, Number(value.coefficient) || 0),
-  ownerName: cleanText(value.ownerName, 220),
-  ownerTaxId: cleanText(value.ownerTaxId, 32),
-  ownerSince: cleanText(value.ownerSince, 10),
-  occupantName: cleanText(value.occupantName, 220),
-  occupantSince: cleanText(value.occupantSince, 10),
-  email: cleanText(value.email, 220),
-  phone: cleanText(value.phone, 80),
-  portalEmails: normalizeConsortiumEmails(value.portalEmails),
-  creditBalanceMinor: Math.max(0, Math.round(Number(value.creditBalanceMinor) || 0)),
-  notes: cleanText(value.notes, 2000),
-  active: value.active !== false,
-  deleted: false,
-});
+const sanitizeUnit = (value = {}) => {
+  const notificationPreference = normalizeConsortiumDeliveryPreference(value.notificationPreference);
+  const ownerEmail = normalizeConsortiumEmails([value.ownerEmail])[0] || "";
+  const occupantEmail = normalizeConsortiumEmails([value.occupantEmail])[0] || "";
+  const manualPortalEmails = normalizeConsortiumEmails(value.manualPortalEmails ?? value.portalEmails);
+  const unit = {
+    schemaVersion: 1,
+    consortiumId: cleanText(value.consortiumId, 128),
+    code: cleanText(value.code, 80),
+    floor: cleanText(value.floor, 40),
+    apartment: cleanText(value.apartment, 40),
+    type: cleanText(value.type, 40) || "apartment",
+    coefficient: Math.max(0, Number(value.coefficient) || 0),
+    ownerName: cleanText(value.ownerName, 220),
+    ownerTaxId: cleanText(value.ownerTaxId, 32),
+    ownerSince: cleanText(value.ownerSince, 10),
+    ownerEmail,
+    occupantName: cleanText(value.occupantName, 220),
+    occupantSince: cleanText(value.occupantSince, 10),
+    occupantEmail,
+    notificationPreference,
+    email: cleanText(value.email, 220),
+    phone: cleanText(value.phone, 80),
+    manualPortalEmails,
+    portalEmails: [],
+    creditBalanceMinor: Math.max(0, Math.round(Number(value.creditBalanceMinor) || 0)),
+    notes: cleanText(value.notes, 2000),
+    active: value.active !== false,
+    deleted: false,
+  };
+  unit.portalEmails = normalizeConsortiumEmails([
+    ...manualPortalEmails,
+    ...getConsortiumUnitNotificationRecipients(unit).map((item) => item.email),
+  ]);
+  return unit;
+};
 
 const UNIT_AUDIT_FIELDS = [
   "code",
@@ -124,10 +144,14 @@ const UNIT_AUDIT_FIELDS = [
   "ownerName",
   "ownerTaxId",
   "ownerSince",
+  "ownerEmail",
   "occupantName",
   "occupantSince",
+  "occupantEmail",
+  "notificationPreference",
   "email",
   "phone",
+  "manualPortalEmails",
   "portalEmails",
   "notes",
   "active",

@@ -1074,6 +1074,30 @@ allow delete: if isRoot();
         allow update, delete: if false;
       }
 
+      match /condominium_notification_settings/{settingId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.id == settingId
+          && request.resource.data.consortiumId == settingId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.consortiumId == settingId
+          && request.resource.data.consortiumId == settingId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId;
+        allow delete: if false;
+      }
+
+      match /condominium_communications/{communicationId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create, update, delete: if false;
+      }
+
       match /condominium_periods/{periodId} {
         allow read: if
           isRoot()

@@ -12,7 +12,8 @@
     "test:omi": "node --test omi.helpers.test.js",
     "test:arca": "node --test arca.helpers.test.js",
     "test:tax": "node --test tax.helpers.test.js",
-    "test:parcelas": "node --test parcelas.helpers.test.js"
+    "test:parcelas": "node --test parcelas.helpers.test.js",
+    "test:consorcios": "node --test consortium.helpers.test.js"
   },
   "engines": {
     "node": "22"
