@@ -23,6 +23,7 @@ const emptyProfile = {
   issuerCuit: "",
   pointOfSale: 0,
   active: true,
+  productionIssuanceEnabled: false,
   registrationLookup: null,
 };
 
@@ -86,6 +87,12 @@ const ArcaAdminPage = () => {
 
   const save = async (event) => {
     event.preventDefault();
+    const storedProfile = profiles.find((item) => item.id === editingId);
+    const enablesProduction = form.productionIssuanceEnabled === true
+      && storedProfile?.productionIssuanceEnabled !== true;
+    if (enablesProduction && !window.confirm(
+      `Vas a habilitar la emisión de comprobantes REALES para CUIT ${normalizeCuit(form.issuerCuit)} · PV ${form.pointOfSale}. Esta habilitación no emite por sí sola, pero permitirá solicitar CAE desde los contratos. ¿Continuar?`,
+    )) return;
     try {
       setWorking(true);
       setError("");
@@ -117,6 +124,7 @@ const ArcaAdminPage = () => {
       issuerCuit: profile.issuerCuit || "",
       pointOfSale: Number(profile.pointOfSale || 0),
       active: profile.active === true,
+      productionIssuanceEnabled: profile.productionIssuanceEnabled === true,
       registrationLookup: profile.registrationLookup || null,
     });
     setRegistrationPreview(null);
@@ -302,7 +310,16 @@ const ArcaAdminPage = () => {
                 </div>
               </div>
               <div className="col-12"><small className="text-muted">Estos datos se imprimen en la representación del comprobante. Antes de habilitar producción deberán estar completos.</small></div>
-              <div className="col-12"><div className="form-check"><input id="arcaProfileActive" className="form-check-input" type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} /><label className="form-check-label" htmlFor="arcaProfileActive">Perfil activo para preparar comprobantes</label></div></div>
+              <div className="col-12"><div className="form-check"><input id="arcaProfileActive" className="form-check-input" type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked, ...(!event.target.checked ? { productionIssuanceEnabled: false } : {}) })} /><label className="form-check-label" htmlFor="arcaProfileActive">Perfil activo para preparar comprobantes</label></div></div>
+              <div className="col-12">
+                <div className="border border-danger rounded p-3 bg-danger-subtle">
+                  <div className="form-check">
+                    <input id="arcaProductionEnabled" className="form-check-input" type="checkbox" disabled={!form.active} checked={form.productionIssuanceEnabled} onChange={(event) => setForm({ ...form, productionIssuanceEnabled: event.target.checked })} />
+                    <label className="form-check-label fw-semibold" htmlFor="arcaProductionEnabled">Habilitar emisión real en ARCA Producción</label>
+                  </div>
+                  <small className="d-block mt-1">Requiere perfil completo, constancia real y prueba PROD vigente. Cada factura seguirá exigiendo vista previa y doble confirmación.</small>
+                </div>
+              </div>
             </div>
             <div className="d-flex gap-2 mt-3"><button className="btn btn-primary" disabled={working}>{working ? "Guardando..." : "Guardar perfil"}</button>{editingId && <button className="btn btn-outline-secondary" type="button" onClick={() => { setEditingId(""); setForm({ ...emptyProfile, inmobiliariaId: agencies[0]?.id || "" }); setRegistrationPreview(null); }}>Cancelar</button>}</div>
           </form>
@@ -312,14 +329,14 @@ const ArcaAdminPage = () => {
       <section className="card border-0 shadow-sm">
         <div className="card-body p-4">
           <h2 className="h5">Perfiles configurados</h2>
-          <p className="small text-muted">“Probar HOMO” usa las credenciales de homologación. Las acciones PROD son de solo lectura y están reservadas a la administración raíz.</p>
+          <p className="small text-muted">“Probar HOMO” usa las credenciales de homologación. Probar y consultar PROD son acciones de solo lectura. Emitir exige además habilitar expresamente el perfil.</p>
           {loading ? <p className="text-muted">Cargando...</p> : profiles.length === 0 ? <p className="text-muted mb-0">Todavía no hay perfiles fiscales.</p> : (
             <div className="table-responsive">
               <table className="table align-middle">
                 <thead><tr><th>Perfil</th><th>Inmobiliaria</th><th>Configuración</th><th>Últimas pruebas</th><th className="text-end">Acciones</th></tr></thead>
                 <tbody>{profiles.map((profile) => (
                   <tr key={profile.id}>
-                    <td><strong>{profile.name}</strong><small className="d-block text-muted">{profile.active ? "Activo" : "Inactivo"}</small></td>
+                    <td><strong>{profile.name}</strong><small className="d-block text-muted">{profile.active ? "Activo" : "Inactivo"}</small><span className={`badge mt-1 ${profile.productionIssuanceEnabled ? "text-bg-danger" : "text-bg-light text-dark border"}`}>{profile.productionIssuanceEnabled ? "Emisión PROD habilitada" : "PROD sin emisión"}</span></td>
                     <td>{agencyNames[profile.inmobiliariaId] || profile.inmobiliariaId}</td>
                     <td>CUIT {profile.issuerCuit}<small className="d-block text-muted">Factura C · PV {profile.pointOfSale}</small></td>
                     <td>

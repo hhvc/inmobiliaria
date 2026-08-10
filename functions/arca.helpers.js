@@ -197,6 +197,19 @@ const normalizeRegistryActivity = (value = {}) => ({
     period: cleanArcaText(value.periodo),
 });
 
+export const buildProductionConfirmationText = ({
+    pointOfSale,
+    proposedVoucherNumber,
+} = {}) => {
+    const normalizedPointOfSale = Math.max(0, Math.trunc(Number(pointOfSale) || 0));
+    const normalizedVoucherNumber = Math.max(
+        0,
+        Math.trunc(Number(proposedVoucherNumber) || 0),
+    );
+    if (!normalizedPointOfSale || !normalizedVoucherNumber) return "";
+    return `EMITIR ${normalizedPointOfSale}-${normalizedVoucherNumber}`;
+};
+
 const normalizeRegistryTax = (value = {}) => ({
     id: cleanArcaText(value.idImpuesto),
     description: cleanArcaText(value.descripcionImpuesto),

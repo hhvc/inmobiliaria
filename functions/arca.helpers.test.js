@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     buildArcaRegistrationRequest,
+    buildProductionConfirmationText,
     buildWsaaTra,
     buildWsfeCaeRequest,
     createArcaRequestId,
@@ -227,6 +228,14 @@ test("la idempotencia depende del emisor, punto, tipo y obligación", () => {
     assert.equal(first, same);
     assert.notEqual(first, other);
     assert.notEqual(first, production);
+});
+
+test("genera una confirmación productiva ligada al punto y número", () => {
+    assert.equal(buildProductionConfirmationText({
+        pointOfSale: 4,
+        proposedVoucherNumber: 27,
+    }), "EMITIR 4-27");
+    assert.equal(buildProductionConfirmationText({pointOfSale: 0}), "");
 });
 
 test("un comprobante productivo exige habilitación explícita", () => {

@@ -12,6 +12,7 @@ import {
     buildWsaaLoginCmsEnvelope,
     buildWsaaTra,
     buildWsfeCaeRequest,
+    buildProductionConfirmationText,
     buildWsfeDummyRequest,
     buildWsfeLastAuthorizedRequest,
     buildWsfePointsOfSaleRequest,
@@ -209,6 +210,12 @@ const assertProductionProfileForAgency = (profile, inmobiliariaId) => {
         throw new HttpsError(
             "failed-precondition",
             "El perfil fiscal está inactivo. Activá el perfil antes de utilizarlo.",
+        );
+    }
+    if (profile.productionIssuanceEnabled !== true) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La emisión real no está habilitada para este perfil fiscal. Habilitala expresamente desde Administración ARCA.",
         );
     }
 };
@@ -500,6 +507,8 @@ const normalizeProfilePayload = (value = {}) => ({
     issuerIvaConditionId: 6,
     credentialAlias: ARCA_ENVIRONMENTS.homo.credentialAlias,
     active: value.active !== false,
+    productionIssuanceEnabled: value.active !== false &&
+        value.productionIssuanceEnabled === true,
     ...(normalizeArcaCuit(value.registrationLookup?.personCuit) ? {
         registrationLookup: {
             source: "ws_sr_constancia_inscripcion",
@@ -562,7 +571,10 @@ export const arcaGetOverview = onCall({region: REGION}, async (request) => {
         environment: "homo",
         productionEnabled: access.isRoot,
         productionPreviewEnabled: access.isRoot,
-        productionInvoiceIssuanceEnabled: access.isRoot,
+        productionInvoiceIssuanceEnabled: access.isRoot && profiles.some(
+            (profile) => profile.active === true &&
+                profile.productionIssuanceEnabled === true,
+        ),
         receiverIvaConditions: ARCA_RECEIVER_IVA_CONDITIONS,
         profiles: profiles.filter((profile) => profile.active === true),
         drafts: await listDrafts(inmobiliariaId),
@@ -684,15 +696,48 @@ export const arcaUpsertIssuerProfile = onCall({region: REGION}, async (request) 
         `${profile.inmobiliariaId}_${profile.issuerCuit}`;
     const ref = profileRef(profileId);
     const existing = await ref.get();
-    await ref.set({
+    const existingProfile = existing.data() || {};
+    const productionAccessChanged =
+        (existingProfile.productionIssuanceEnabled === true) !==
+        profile.productionIssuanceEnabled;
+    if (profile.productionIssuanceEnabled) {
+        assertProductionPreparationReady({...existingProfile, ...profile});
+    }
+    const batch = db.batch();
+    batch.set(ref, {
         ...profile,
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: request.auth.uid,
+        ...(productionAccessChanged && profile.productionIssuanceEnabled ? {
+            productionEnabledAt: FieldValue.serverTimestamp(),
+            productionEnabledBy: request.auth.uid,
+        } : {}),
+        ...(productionAccessChanged && !profile.productionIssuanceEnabled ? {
+            productionDisabledAt: FieldValue.serverTimestamp(),
+            productionDisabledBy: request.auth.uid,
+        } : {}),
         ...(existing.exists ? {} : {
             createdAt: FieldValue.serverTimestamp(),
             createdBy: request.auth.uid,
         }),
     }, {merge: true});
+    if (productionAccessChanged) {
+        const auditRef = db.collection(AUDIT_COLLECTION).doc();
+        batch.set(auditRef, {
+            action: profile.productionIssuanceEnabled ?
+                "arca_production_profile_enabled" :
+                "arca_production_profile_disabled",
+            environment: "prod",
+            inmobiliariaId: profile.inmobiliariaId,
+            profileId,
+            issuerCuit: profile.issuerCuit,
+            pointOfSale: Number(profile.pointOfSale),
+            enabled: profile.productionIssuanceEnabled,
+            performedBy: request.auth.uid,
+            performedAt: FieldValue.serverTimestamp(),
+        });
+    }
+    await batch.commit();
     return {profile: serializeValue({id: ref.id, ...profile})};
 });
 
@@ -1225,7 +1270,7 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
         const profile = await getProfile(
             requestedProfileId || sourceDraft.issuerProfileId,
         );
-        assertProfileForAgency(profile, inmobiliariaId);
+        assertProductionProfileForAgency(profile, inmobiliariaId);
         const documents = await getRentalDocuments({
             inmobiliariaId,
             contractId: sourceDraft.contractId,
@@ -1273,6 +1318,10 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
             environment: "prod",
         });
         const observedAt = new Date().toISOString();
+        const confirmationText = buildProductionConfirmationText({
+            pointOfSale: profile.pointOfSale,
+            proposedVoucherNumber: lastAuthorizedVoucher + 1,
+        });
         const preview = {
             id: previewId,
             requestId: previewId,
@@ -1314,6 +1363,7 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
             issuanceBlockedReason: "",
             lastAuthorizedVoucher,
             proposedVoucherNumber: lastAuthorizedVoucher + 1,
+            confirmationText,
             sequenceObservedAt: observedAt,
             sequenceReserved: false,
             certificate: {
@@ -1654,11 +1704,10 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
     timeoutSeconds: 60,
 }, async (request) => {
     await assertRoot(request.auth?.uid);
-    if (request.data?.confirmProduction !== true ||
-        cleanText(request.data?.confirmationText, 30).toUpperCase() !== "EMITIR") {
+    if (request.data?.confirmProduction !== true) {
         throw new HttpsError(
             "failed-precondition",
-            "La emisión real requiere escribir EMITIR y confirmar expresamente la operación.",
+            "La emisión real requiere una confirmación expresa.",
         );
     }
     const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
@@ -1685,6 +1734,16 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
         throw new HttpsError(
             "failed-precondition",
             "La vista previa cambió. Revisala nuevamente antes de emitir.",
+        );
+    }
+    const expectedConfirmationText = preview.confirmationText ||
+        buildProductionConfirmationText(preview);
+    if (!expectedConfirmationText ||
+        cleanText(request.data?.confirmationText, 60).toUpperCase() !==
+        expectedConfirmationText) {
+        throw new HttpsError(
+            "failed-precondition",
+            `La emisión real requiere escribir exactamente ${expectedConfirmationText || "la confirmación indicada"}.`,
         );
     }
     const profile = await getProfile(preview.issuerProfileId);
@@ -1756,6 +1815,27 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
             environment: "prod",
         });
         const voucherNumber = parseWsfeLastAuthorizedResponse(lastResponse) + 1;
+        if (!["pending_reconciliation", "authorizing"].includes(previousStatus) &&
+            voucherNumber !== Number(preview.proposedVoucherNumber)) {
+            const sequenceObservedAt = new Date().toISOString();
+            const confirmationText = buildProductionConfirmationText({
+                pointOfSale: profile.pointOfSale,
+                proposedVoucherNumber: voucherNumber,
+            });
+            await ref.update({
+                status: "production_preview",
+                lastAuthorizedVoucher: voucherNumber - 1,
+                proposedVoucherNumber: voucherNumber,
+                sequenceObservedAt,
+                confirmationText,
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedBy: request.auth.uid,
+            });
+            throw new HttpsError(
+                "failed-precondition",
+                "La numeración real cambió desde la vista previa. La actualizamos sin emitir; revisala y confirmá nuevamente.",
+            );
+        }
         await ref.update({
             proposedVoucherNumber: voucherNumber,
             authorizationRequestStartedAt: FieldValue.serverTimestamp(),
