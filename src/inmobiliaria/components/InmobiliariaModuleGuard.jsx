@@ -14,6 +14,11 @@ const MODULE_LABELS = {
     usuarios: "Usuarios de inmobiliaria",
     reportes: "Reportes",
     instagram: "Instagram propio",
+    tasaciones: "Tasaciones",
+    parcelas: "Parcelas y normativa urbana",
+    alquileres: "Administración de alquileres",
+    consorcios: "Administración de consorcios",
+    tributos: "Control tributario inmobiliario",
 };
 
 const getRoleFlags = (user) => {
@@ -25,10 +30,6 @@ const getRoleFlags = (user) => {
             primaryRole === "root" ||
             user?.role === "root" ||
             roles.includes("root"),
-        isAdmin:
-            primaryRole === "admin" ||
-            user?.role === "admin" ||
-            roles.includes("admin"),
     };
 };
 
@@ -59,7 +60,7 @@ const InmobiliariaModuleGuard = ({ moduleId, children }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const { isRoot, isAdmin } = getRoleFlags(user);
+    const { isRoot } = getRoleFlags(user);
 
     const activeInmobiliaria = useMemo(() => {
         return inmobiliarias.find((inmo) => inmo.id === activeInmobiliariaId) || null;
@@ -113,25 +114,11 @@ const InmobiliariaModuleGuard = ({ moduleId, children }) => {
             return;
         }
 
-        if (isAdmin) {
-            loadInmobiliarias();
-        } else {
-            setLoading(false);
-        }
-    }, [isAdmin, isRoot, user]);
+        loadInmobiliarias();
+    }, [isRoot, user]);
 
     if (isRoot) {
         return children;
-    }
-
-    if (!isAdmin) {
-        return (
-            <main className="container py-5">
-                <div className="alert alert-warning">
-                    Esta sección está disponible para usuarios administradores.
-                </div>
-            </main>
-        );
     }
 
     if (loading) {

@@ -10,6 +10,12 @@
     "test:instagram": "node --test tests/instagram.helpers.test.js",
     "test:instagram-reels": "node --test tests/instagramReels.test.js",
     "test:billing": "node --test tests/billing.helpers.test.js",
+    "test:tasaciones": "node --test tests/tasacion.helpers.test.js",
+    "test:mapa": "node --test tests/mapa.helpers.test.js",
+    "test:tributos": "node --test tests/tax.helpers.test.js",
+    "test:consorcios": "node --test tests/consorcio.helpers.test.js",
+    "test:auth": "node --test tests/auth.helpers.test.js",
+    "test:arca-invoice": "node --test tests/arcaInvoice.helpers.test.js",
     "test:whatsapp": "node --test tests/whatsapp.helpers.test.js",
     "test:emprendimientos": "node --test tests/emprendimientoSchema.test.js",
     "test:unidades": "node --test tests/emprendimientoUnits.test.js",
@@ -19,7 +25,8 @@
     "test:mercadolibre": "node --test tests/mercadoLibreDistribution.helpers.test.js tests/mercadoLibreNotifications.helpers.test.js",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy",
-    "seo:sitemap": "node scripts/generate-sitemap.mjs"
+    "seo:sitemap": "node scripts/generate-sitemap.mjs",
+    "mapa:geocodificar": "node scripts/geocode-inmuebles.mjs"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
@@ -28,11 +35,14 @@
     "firebase": "^12.4.0",
     "firebase-functions": "^6.6.0",
     "heic2any": "^0.0.4",
+    "leaflet": "^1.9.4",
+    "qrcode": "^1.5.4",
     "react": "^19.1.1",
     "react-bootstrap": "^2.10.10",
     "react-dom": "^19.1.1",
     "react-easy-crop": "^5.5.6",
     "react-icons": "^5.5.0",
+    "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.9.4"
   },
   "devDependencies": {

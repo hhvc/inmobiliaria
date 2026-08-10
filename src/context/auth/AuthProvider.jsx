@@ -4,6 +4,8 @@ import {
   signOut,
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
+  reload,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
@@ -18,6 +20,38 @@ import {
   validateActiveInmobiliariaId,
   clearActiveInmobiliariaId,
 } from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
+import {
+  getPrimaryAuthProviderId,
+  isEmailVerificationPending,
+  isFreshPasswordAccount,
+} from "./auth.helpers";
+
+const buildUserWithRole = (firebaseUser, userData = {}) => {
+  const role = userData.role || "usuario";
+  const roles = Array.isArray(userData.roles) ? userData.roles : [role];
+  const inmobiliarias = Array.isArray(userData.inmobiliarias)
+    ? userData.inmobiliarias
+    : [];
+  return {
+    ...firebaseUser,
+    role,
+    status: userData.status || "activo",
+    roles,
+    primaryRole: userData.primaryRole || role,
+    inmobiliarias,
+    inmobiliariaId: inmobiliarias.length === 1 ? inmobiliarias[0] : null,
+    emailVerified: firebaseUser.emailVerified === true,
+    emailVerificationRequired: userData.emailVerificationRequired === true,
+    emailVerificationPending: isEmailVerificationPending(firebaseUser, userData),
+    authProvider: userData.authProvider || getPrimaryAuthProviderId(firebaseUser),
+    userData,
+  };
+};
+
+const getVerificationContinueUrl = () => {
+  const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
+  return `${siteUrl.replace(/\/$/, "")}/verificar-email?comprobar=1`;
+};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -44,6 +78,14 @@ export const AuthProvider = ({ children }) => {
           return "Email inválido.";
         case "auth/too-many-requests":
           return "Demasiados intentos. Espera un momento.";
+        case "auth/invalid-phone-number":
+          return "El número de celular no es válido.";
+        case "auth/invalid-verification-code":
+          return "El código ingresado no es correcto.";
+        case "auth/code-expired":
+          return "El código venció. Solicitá uno nuevo.";
+        case "auth/operation-not-allowed":
+          return "Este método de acceso todavía no está habilitado.";
         case "auth/popup-closed-by-user":
           return "Ventana cerrada.";
         default:
@@ -77,7 +119,11 @@ export const AuthProvider = ({ children }) => {
           : [];
 
         if (!userSnap.exists()) {
-          await setDoc(userRef, {
+          const authProvider = additionalData.authProvider ||
+            getPrimaryAuthProviderId(userData);
+          const emailVerificationRequired =
+            additionalData.emailVerificationRequired === true;
+          const createdUserData = {
             /* =========================
              IDENTIDAD
              ========================= */
@@ -87,6 +133,9 @@ export const AuthProvider = ({ children }) => {
             displayName:
               userData.displayName || additionalData.displayName || "",
             photoURL: userData.photoURL || "",
+            authProvider,
+            emailVerificationRequired,
+            emailVerificationRequestedAt: emailVerificationRequired ? now : null,
 
             /* =========================
              ROLES (retro + nuevo)
@@ -109,16 +158,31 @@ export const AuthProvider = ({ children }) => {
             status: "activo",
             createdAt: now,
             lastLogin: now,
-          });
+          };
+          await setDoc(userRef, createdUserData);
 
           console.log(
             "✅ Usuario creado en Firestore (roles + inmobiliarias normalizadas)",
           );
+          return createdUserData;
         } else {
-          // Solo datos de sesión (NO tocar roles ni inmobiliarias)
-          await updateDoc(userRef, {
-            lastLogin: now,
-          });
+          const existingData = userSnap.data() || {};
+          if (
+            additionalData.emailVerificationRequired === true &&
+            existingData.emailVerificationRequired !== true
+          ) {
+            const verificationData = {
+              emailVerificationRequired: true,
+              emailVerificationRequestedAt: now,
+              authProvider: "password",
+            };
+            await updateDoc(userRef, verificationData);
+            return { ...existingData, ...verificationData };
+          }
+          if (!isEmailVerificationPending(userData, existingData)) {
+            await updateDoc(userRef, { lastLogin: now });
+          }
+          return existingData;
         }
       } catch (error) {
         console.error("❌ Error en createUserInFirestore:", error);
@@ -143,79 +207,28 @@ export const AuthProvider = ({ children }) => {
         if (userSnap.exists()) {
           const userData = userSnap.data();
 
-          const role = userData.role || "usuario";
-          const roles = Array.isArray(userData.roles) ? userData.roles : [role];
-
-          const inmobiliarias = Array.isArray(userData.inmobiliarias)
-            ? userData.inmobiliarias
-            : [];
-
-          return {
-            ...firebaseUser,
-
-            /* =========================
-             ESTADO / UX
-             ========================= */
-
-            role,
-            status: userData.status || "activo",
-
-            /* =========================
-             PERMISOS
-             ========================= */
-
-            roles,
-            primaryRole: userData.primaryRole || role,
-
-            /* =========================
-             CONTEXTO DE DOMINIO
-             ========================= */
-
-            inmobiliarias,
-
-            // 👉 inmobiliaria activa (derivada)
-            inmobiliariaId:
-              inmobiliarias.length === 1 ? inmobiliarias[0] : null,
-
-            /* =========================
-             DATOS CRUDOS
-             ========================= */
-
-            userData,
-          };
+          return buildUserWithRole(firebaseUser, userData);
         }
 
         // =========================
         // Usuario NO existe → crear
         // =========================
-        await createUserInFirestore(firebaseUser);
-
-        return {
-          ...firebaseUser,
-          role: "usuario",
-          primaryRole: "usuario",
-          status: "activo",
-          roles: ["usuario"],
-          inmobiliarias: [],
-          inmobiliariaId: null,
-          userData: {},
-        };
+        const createdData = await createUserInFirestore(firebaseUser, {
+          authProvider: getPrimaryAuthProviderId(firebaseUser),
+          emailVerificationRequired: isFreshPasswordAccount(firebaseUser),
+        });
+        return buildUserWithRole(firebaseUser, createdData);
       } catch (error) {
         console.error("❌ Error obteniendo datos del usuario:", error);
 
         // =========================
         // Fallback ultra seguro
         // =========================
-        return {
-          ...firebaseUser,
-          role: "usuario",
-          primaryRole: "usuario",
-          status: "activo",
-          roles: ["usuario"],
-          inmobiliarias: [],
-          inmobiliariaId: null,
-          userData: {},
+        const fallbackData = {
+          emailVerificationRequired: isFreshPasswordAccount(firebaseUser),
+          authProvider: getPrimaryAuthProviderId(firebaseUser),
         };
+        return buildUserWithRole(firebaseUser, fallbackData);
       }
     },
     [createUserInFirestore],
@@ -249,15 +262,70 @@ export const AuthProvider = ({ children }) => {
           await updateProfile(userCredential.user, { displayName });
         }
 
-        const userWithRole = await getUserWithRole(userCredential.user);
+        const createdData = await createUserInFirestore(userCredential.user, {
+          displayName,
+          authProvider: "password",
+          emailVerificationRequired: true,
+        });
+        auth.languageCode = "es";
+        let verificationEmailSent = true;
+        try {
+          await sendEmailVerification(userCredential.user, {
+            url: getVerificationContinueUrl(),
+          });
+        } catch (verificationError) {
+          verificationEmailSent = false;
+          console.error("No se pudo enviar el email de verificación:", verificationError);
+        }
+        const userWithRole = {
+          ...buildUserWithRole(userCredential.user, createdData),
+          verificationEmailSent,
+        };
         setUser(userWithRole);
         return userWithRole;
       } catch (error) {
         throw new Error(handleError(error, "Error al registrarse."));
       }
     },
-    [getUserWithRole, handleError],
+    [createUserInFirestore, handleError],
   );
+
+  const resendVerificationEmail = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser?.email) {
+      throw new Error("No hay una cuenta de email activa.");
+    }
+    try {
+      auth.languageCode = "es";
+      await sendEmailVerification(currentUser, {
+        url: getVerificationContinueUrl(),
+      });
+      return true;
+    } catch (error) {
+      throw new Error(
+        handleError(error, "No se pudo reenviar el email de verificación."),
+      );
+    }
+  }, [handleError]);
+
+  const refreshEmailVerification = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) throw new Error("La sesión ya no está activa.");
+    try {
+      await reload(currentUser);
+      const refreshedUser = auth.currentUser;
+      if (refreshedUser?.emailVerified) {
+        await refreshedUser.getIdToken(true);
+      }
+      const userWithRole = await getUserWithRole(refreshedUser);
+      setUser(userWithRole);
+      return userWithRole.emailVerificationPending !== true;
+    } catch (error) {
+      throw new Error(
+        handleError(error, "No se pudo comprobar la verificación."),
+      );
+    }
+  }, [getUserWithRole, handleError]);
 
   const signInWithEmail = useCallback(
     async (email, password) => {
@@ -307,29 +375,7 @@ export const AuthProvider = ({ children }) => {
           recaptchaVerifierRef.current = null;
         }
 
-        const waitForRecaptchaEnterprise = () => {
-          return new Promise((resolve, reject) => {
-            let attempts = 0;
-            const maxAttempts = 50;
-            const checkInterval = setInterval(() => {
-              if (window.grecaptcha && window.grecaptcha.enterprise) {
-                clearInterval(checkInterval);
-                resolve();
-              } else {
-                attempts++;
-                if (attempts >= maxAttempts) {
-                  clearInterval(checkInterval);
-                  reject(
-                    new Error("Timeout: reCAPTCHA Enterprise no se cargó."),
-                  );
-                }
-              }
-            }, 100);
-          });
-        };
-
-        await waitForRecaptchaEnterprise();
-
+        auth.languageCode = "es";
         const verifier = new RecaptchaVerifier(auth, elementId, {
           size: "invisible",
           callback: () => {
@@ -346,6 +392,7 @@ export const AuthProvider = ({ children }) => {
 
         recaptchaVerifierRef.current = verifier;
         await verifier.render();
+        setRecaptchaReady(true);
         return verifier;
       } catch (error) {
         console.error("❌ Error en setupPhoneAuth:", error);
@@ -557,6 +604,8 @@ export const AuthProvider = ({ children }) => {
     signInWithGoogle,
     signUpWithEmail,
     signInWithEmail,
+    resendVerificationEmail,
+    refreshEmailVerification,
     resetPassword,
     setupPhoneAuth,
     sendSMSCode,
@@ -566,6 +615,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     confirmationResult,
     recaptchaReady,
+    emailVerificationPending: user?.emailVerificationPending === true,
     updateUserRole,
     hasRole,
     isActive,

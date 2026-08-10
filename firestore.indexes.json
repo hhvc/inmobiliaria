@@ -48,6 +48,14 @@
   // ]
   "indexes": [
     {
+      "collectionGroup": "obligations",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dueDateKey", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "billing_contracts",
       "queryScope": "COLLECTION",
       "fields": [

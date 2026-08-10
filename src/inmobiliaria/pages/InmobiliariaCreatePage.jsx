@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
+import { updateCommercialLead } from "../../billing/services/billing.service";
 import InmobiliariaForm from "../components/InmobiliariaForm";
 import {
   createInmobiliaria,
@@ -53,6 +54,14 @@ const buildInitialVerificationDocuments = () => {
 
 export default function InmobiliariaCreatePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const commercialLeadId = searchParams.get("commercialLeadId") || "";
+  const requestedCatalogItemId = searchParams.get("catalogItemId") || "";
+  const prefillData = useMemo(() => ({
+    nombre: searchParams.get("nombre") || "",
+    email: searchParams.get("email") || "",
+    telefono: searchParams.get("telefono") || "",
+  }), [searchParams]);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -133,11 +142,33 @@ export default function InmobiliariaCreatePage() {
         });
       }
 
+      if (commercialLeadId) {
+        try {
+          await updateCommercialLead({
+            leadId: commercialLeadId,
+            status: "won",
+            linkedInmobiliariaId: inmobiliariaId,
+            nextActionDateKey: "",
+            note: "Inmobiliaria creada desde la oportunidad comercial.",
+          });
+        } catch (leadError) {
+          console.error("No se pudo vincular la oportunidad comercial:", leadError);
+        }
+      }
+
       alert(
         "✅ Inmobiliaria creada correctamente. Queda operativa, pero pendiente de documentación para validar.",
       );
 
-      navigate("/admin/inmobiliarias");
+      if (commercialLeadId) {
+        const params = new URLSearchParams({
+          inmobiliariaId,
+          ...(requestedCatalogItemId ? { contratar: requestedCatalogItemId } : {}),
+        });
+        navigate(`/admin/inmobiliaria/cuenta-corriente?${params.toString()}`);
+      } else {
+        navigate("/admin/inmobiliarias");
+      }
     } catch (err) {
       console.error("Error creando inmobiliaria:", err);
       setError(err?.message || "Ocurrió un error al crear la inmobiliaria");
@@ -179,6 +210,7 @@ export default function InmobiliariaCreatePage() {
 
       <InmobiliariaForm
         initialData={null}
+        prefillData={commercialLeadId ? prefillData : null}
         onSubmit={handleSubmit}
         onCancel={handleCancel}
         loading={loading}

@@ -60,8 +60,9 @@ const PrivacyPolicyPage = () => {
           </li>
           <li>
             <strong>Consultas y contactos:</strong> nombre, correo, teléfono,
-            mensaje, inmueble consultado, origen, fecha y seguimiento de la
-            interacción.
+            mensaje, inmueble o servicio consultado, tamaño aproximado de la
+            operación, código promocional, origen, campaña, fecha y seguimiento
+            de la interacción.
           </li>
           <li>
             <strong>Datos de integraciones:</strong> identificadores de cuenta,

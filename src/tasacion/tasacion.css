@@ -1,0 +1,217 @@
+.tasacion-workspace {
+  --tasacion-ink: #17324d;
+  --tasacion-accent: #176b87;
+}
+
+.tasacion-stepper {
+  position: sticky;
+  top: 0.5rem;
+  z-index: 8;
+}
+
+.tasacion-workspace .card-header h2,
+.tasacion-report h1,
+.tasacion-report h2 {
+  color: var(--tasacion-ink);
+}
+
+.tasacion-comparable {
+  border-left: 4px solid var(--tasacion-accent) !important;
+}
+
+.tasacion-report {
+  overflow: hidden;
+  color: #263746;
+}
+
+.tasacion-report-logo {
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
+  object-fit: contain;
+  border: 1px solid #dee2e6;
+  border-radius: 0.75rem;
+  background: #fff;
+  padding: 0.35rem;
+}
+
+.tasacion-report-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.055em;
+}
+
+.tasacion-watermark {
+  position: absolute;
+  inset: 38% auto auto 50%;
+  z-index: 0;
+  transform: translate(-50%, -50%) rotate(-28deg);
+  color: rgba(178, 34, 34, 0.075);
+  font-size: clamp(2.2rem, 8vw, 6rem);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.tasacion-conclusion {
+  background: #eef7fa;
+  border: 1px solid #c5e3eb;
+}
+
+.tasacion-final-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--tasacion-ink);
+}
+
+.tasacion-final-value strong {
+  font-size: clamp(1.5rem, 4vw, 2.5rem);
+}
+
+.tasacion-report-map.ono-map {
+  min-height: 340px;
+  border: 1px solid #ced4da;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.tasacion-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.tasacion-photo-grid figure {
+  border: 1px solid #dee2e6;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #f8f9fa;
+}
+
+.tasacion-photo-grid img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.tasacion-photo-grid figcaption {
+  padding: 0.4rem 0.55rem;
+  color: #6c757d;
+  font-size: 0.72rem;
+}
+
+.tasacion-verification-box {
+  border: 1px solid #8ec5d6;
+  border-left: 5px solid var(--tasacion-accent);
+  border-radius: 0.5rem;
+  background: #f1f9fb;
+  padding: 1rem;
+}
+
+.tasacion-verification-box strong,
+.tasacion-verification-box span {
+  display: block;
+}
+
+.tasacion-signature-block {
+  width: min(360px, 100%);
+  margin: 2.75rem 0 1.5rem auto;
+  text-align: center;
+}
+
+.tasacion-signature-block > * {
+  display: block;
+}
+
+.tasacion-signature-line {
+  border-top: 1px solid #263746;
+  margin-bottom: 0.5rem;
+}
+
+.tasacion-report-footer {
+  color: #5f6f7c;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+@media (max-width: 767.98px) {
+  .tasacion-photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    font-size: 10.5pt;
+  }
+
+  body > *,
+  #root > * {
+    visibility: hidden;
+  }
+
+  .tasacion-workspace,
+  .tasacion-workspace * {
+    visibility: visible;
+  }
+
+  .tasacion-workspace {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+
+  .tasacion-report {
+    box-shadow: none !important;
+  }
+
+  .tasacion-report .card-body {
+    padding: 0 !important;
+  }
+
+  .no-print,
+  nav,
+  footer {
+    display: none !important;
+  }
+
+  .tasacion-report section,
+  .tasacion-comparables-table tr,
+  .tasacion-photo-grid figure,
+  .tasacion-signature-block {
+    break-inside: avoid;
+  }
+
+  .tasacion-report-map.ono-map,
+  .tasacion-report-map .ono-map-canvas {
+    min-height: 88mm !important;
+    height: 88mm !important;
+  }
+
+  .tasacion-photo-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .tasacion-report-logo {
+    width: 18mm;
+    height: 18mm;
+    flex-basis: 18mm;
+  }
+
+  .tasacion-watermark {
+    position: fixed;
+  }
+}

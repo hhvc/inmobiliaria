@@ -2,49 +2,73 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://onoprop.com/</loc>
-    <lastmod>2026-08-03</lastmod>
+    <lastmod>2026-08-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmuebles</loc>
-    <lastmod>2026-08-03</lastmod>
+    <lastmod>2026-08-10</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/mapa</loc>
+    <lastmod>2026-08-10</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/emprendimientos</loc>
-    <lastmod>2026-08-03</lastmod>
+    <lastmod>2026-08-10</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/planes</loc>
+    <lastmod>2026-08-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/privacidad</loc>
-    <lastmod>2026-08-03</lastmod>
+    <lastmod>2026-08-10</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/terminos</loc>
-    <lastmod>2026-08-03</lastmod>
+    <lastmod>2026-08-10</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/eliminacion-de-datos</loc>
-    <lastmod>2026-08-03</lastmod>
+    <lastmod>2026-08-10</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/inmobiliaria/canada-al-lago</loc>
+    <lastmod>2026-08-07</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/departamento-en-san-vicente-0jKk0O3UpVY3lu51SrYl</loc>
+    <lastmod>2026-08-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/inmobiliaria/ladoctaprop</loc>
-    <lastmod>2026-08-03</lastmod>
+    <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-colinas-de-velez-sarfield-393-m-110-mil-piscina-3-dor-0BbgcgzPfMJmdtdEJ7te</loc>
-    <lastmod>2026-07-21</lastmod>
+    <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -80,7 +104,7 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-dpto-av-patria-300-2-dorm-XE9k1hpiItwU2Jx99sDS</loc>
-    <lastmod>2026-07-30</lastmod>
+    <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -103,8 +127,14 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/inmobiliaria/nace-negocios-inmobiliarios</loc>
+    <lastmod>2026-08-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/inmobiliaria/hvc</loc>
-    <lastmod>2026-07-17</lastmod>
+    <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>

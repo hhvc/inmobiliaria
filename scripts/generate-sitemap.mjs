@@ -27,9 +27,19 @@ const STATIC_ROUTES = [
         priority: "0.9",
     },
     {
+        path: "/mapa",
+        changefreq: "daily",
+        priority: "0.9",
+    },
+    {
         path: "/emprendimientos",
         changefreq: "daily",
         priority: "0.9",
+    },
+    {
+        path: "/planes",
+        changefreq: "weekly",
+        priority: "0.8",
     },
     {
         path: "/privacidad",

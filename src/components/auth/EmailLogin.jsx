@@ -1,228 +1,200 @@
 import { useState } from "react";
+
 import { useAuth } from "../../context/auth/useAuth";
 
-const EmailLogin = ({ onSwitchToGoogle }) => {
+const validatePassword = (password) => {
+  if (password.length < 6) return "Usá al menos 6 caracteres.";
+  if (!/(?=.*[a-z])/.test(password)) return "Agregá al menos una minúscula.";
+  if (!/(?=.*[A-Z])/.test(password)) return "Agregá al menos una mayúscula.";
+  return "";
+};
+
+const EmailLogin = () => {
   const { signInWithEmail, signUpWithEmail, resetPassword } = useAuth();
-  const [isLogin, setIsLogin] = useState(true);
-  const [isResetting, setIsResetting] = useState(false);
+  const [mode, setMode] = useState("login");
   const [formData, setFormData] = useState({
     email: "",
     password: "",
     displayName: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [passwordError, setPasswordError] = useState("");
+  const [isError, setIsError] = useState(false);
+  const passwordError = mode === "register" && formData.password
+    ? validatePassword(formData.password)
+    : "";
 
-  // Función para validar contraseña
-  const validatePassword = (password) => {
-    if (password.length < 6) {
-      return "La contraseña debe tener al menos 6 caracteres";
-    }
-    if (!/(?=.*[a-z])/.test(password)) {
-      return "La contraseña debe contener al menos una letra minúscula";
-    }
-    if (!/(?=.*[A-Z])/.test(password)) {
-      return "La contraseña debe contener al menos una letra mayúscula";
-    }
-    return "";
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setFormData((current) => ({ ...current, [name]: value }));
+    setMessage("");
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleSubmit = async (event) => {
+    event.preventDefault();
     setLoading(true);
     setMessage("");
-    setPasswordError("");
-
+    setIsError(false);
     try {
-      if (isResetting) {
-        await resetPassword(formData.email);
-        setMessage("Se ha enviado un email para restablecer tu contraseña");
-        setIsResetting(false);
-      } else if (isLogin) {
-        await signInWithEmail(formData.email, formData.password);
-        setMessage("Inicio de sesión exitoso");
-      } else {
-        // Validar contraseña antes de registrar
-        const passwordValidation = validatePassword(formData.password);
-        if (passwordValidation) {
-          setPasswordError(passwordValidation);
-          setLoading(false);
-          return;
-        }
-
-        await signUpWithEmail(
-          formData.email,
-          formData.password,
-          formData.displayName
-        );
-        setMessage("Registro exitoso");
+      if (mode === "reset") {
+        await resetPassword(formData.email.trim());
+        setMessage("Te enviamos un enlace para restablecer tu contraseña.");
+        return;
       }
+      if (mode === "register") {
+        const validation = validatePassword(formData.password);
+        if (validation) throw new Error(validation);
+        await signUpWithEmail(
+          formData.email.trim(),
+          formData.password,
+          formData.displayName.trim(),
+        );
+        return;
+      }
+      await signInWithEmail(formData.email.trim(), formData.password);
     } catch (error) {
-      setMessage(`Error: ${error.message}`);
+      setIsError(true);
+      setMessage(error.message || "No se pudo completar el acceso.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
-    }));
-
-    // Validar contraseña en tiempo real solo en registro
-    if (name === "password" && !isLogin) {
-      const error = validatePassword(value);
-      setPasswordError(error);
-    }
+  const switchMode = (nextMode) => {
+    setMode(nextMode);
+    setMessage("");
+    setIsError(false);
+    setShowPassword(false);
   };
-
-  if (isResetting) {
-    return (
-      <div>
-        <h5>Recuperar Contraseña</h5>
-        <form onSubmit={handleSubmit}>
-          <div className="mb-3">
-            <input
-              type="email"
-              name="email"
-              className="form-control"
-              placeholder="Email"
-              value={formData.email}
-              onChange={handleChange}
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            className="btn btn-primary w-100"
-            disabled={loading}
-          >
-            {loading ? "Enviando..." : "Enviar Email de Recuperación"}
-          </button>
-          <button
-            type="button"
-            className="btn btn-link w-100"
-            onClick={() => setIsResetting(false)}
-          >
-            Volver al login
-          </button>
-        </form>
-        {message && <div className="alert alert-info mt-3">{message}</div>}
-      </div>
-    );
-  }
 
   return (
     <div>
-      <h5>{isLogin ? "Iniciar Sesión" : "Registrarse"}</h5>
+      <div className="mb-3">
+        <h3 className="h6 mb-1">
+          {mode === "login" && "Accedé con tu email"}
+          {mode === "register" && "Creá tu cuenta"}
+          {mode === "reset" && "Recuperá tu contraseña"}
+        </h3>
+        <p className="text-muted small mb-0">
+          {mode === "register"
+            ? "Las cuentas nuevas deben confirmar su dirección de email."
+            : "Tus datos se transmiten de forma segura."}
+        </p>
+      </div>
+
       <form onSubmit={handleSubmit}>
-        {!isLogin && (
+        {mode === "register" && (
           <div className="mb-3">
+            <label className="form-label" htmlFor="authDisplayName">Nombre completo</label>
             <input
+              id="authDisplayName"
               type="text"
               name="displayName"
-              className="form-control"
-              placeholder="Nombre completo"
+              className="form-control auth-control"
+              autoComplete="name"
+              placeholder="Cómo querés que te llamemos"
               value={formData.displayName}
               onChange={handleChange}
               required
             />
           </div>
         )}
+
         <div className="mb-3">
+          <label className="form-label" htmlFor="authEmail">Email</label>
           <input
+            id="authEmail"
             type="email"
             name="email"
-            className="form-control"
-            placeholder="Email"
+            className="form-control auth-control"
+            autoComplete="email"
+            placeholder="nombre@empresa.com"
             value={formData.email}
             onChange={handleChange}
             required
           />
         </div>
-        <div className="mb-3">
-          <input
-            type="password"
-            name="password"
-            className={`form-control ${
-              passwordError && !isLogin ? "is-invalid" : ""
-            }`}
-            placeholder="Contraseña"
-            value={formData.password}
-            onChange={handleChange}
-            required
-          />
-          {!isLogin && passwordError && (
-            <div className="invalid-feedback">{passwordError}</div>
-          )}
-          {!isLogin && !passwordError && formData.password && (
-            <div className="valid-feedback">✓ Contraseña válida</div>
-          )}
-          {!isLogin && (
-            <small className="form-text text-muted">
-              La contraseña debe tener al menos 6 caracteres, una mayúscula y
-              una minúscula
-            </small>
-          )}
-        </div>
+
+        {mode !== "reset" && (
+          <div className="mb-3">
+            <div className="d-flex justify-content-between align-items-center">
+              <label className="form-label" htmlFor="authPassword">Contraseña</label>
+              {mode === "login" && (
+                <button
+                  type="button"
+                  className="auth-inline-link"
+                  onClick={() => switchMode("reset")}
+                >
+                  ¿La olvidaste?
+                </button>
+              )}
+            </div>
+            <div className="input-group">
+              <input
+                id="authPassword"
+                type={showPassword ? "text" : "password"}
+                name="password"
+                className={`form-control auth-control ${passwordError ? "is-invalid" : ""}`}
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                placeholder="Tu contraseña"
+                value={formData.password}
+                onChange={handleChange}
+                required
+              />
+              <button
+                type="button"
+                className="btn btn-outline-secondary auth-password-toggle"
+                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                onClick={() => setShowPassword((current) => !current)}
+              >
+                {showPassword ? "Ocultar" : "Ver"}
+              </button>
+              {passwordError && <div className="invalid-feedback">{passwordError}</div>}
+            </div>
+            {mode === "register" && !passwordError && (
+              <div className="form-text">Mínimo 6 caracteres, mayúscula y minúscula.</div>
+            )}
+          </div>
+        )}
+
         <button
           type="submit"
-          className="btn btn-primary w-100"
-          disabled={loading || (!isLogin && passwordError && formData.password)}
+          className="btn btn-primary auth-submit-button w-100"
+          disabled={loading || Boolean(passwordError)}
         >
-          {loading
-            ? "Procesando..."
-            : isLogin
-            ? "Iniciar Sesión"
-            : "Registrarse"}
+          {loading && "Procesando..."}
+          {!loading && mode === "login" && "Ingresar"}
+          {!loading && mode === "register" && "Crear cuenta"}
+          {!loading && mode === "reset" && "Enviar enlace"}
         </button>
       </form>
 
-      <div className="mt-3 text-center">
-        <button
-          type="button"
-          className="btn btn-link"
-          onClick={() => {
-            setIsLogin(!isLogin);
-            setPasswordError(""); // Limpiar error al cambiar modo
-          }}
-        >
-          {isLogin
-            ? "¿No tienes cuenta? Regístrate"
-            : "¿Ya tienes cuenta? Inicia sesión"}
-        </button>
-        {isLogin && (
-          <button
-            type="button"
-            className="btn btn-link d-block w-100"
-            onClick={() => setIsResetting(true)}
-          >
-            ¿Olvidaste tu contraseña?
-          </button>
-        )}
-      </div>
-
-      <div className="mt-3">
-        <button
-          onClick={onSwitchToGoogle}
-          className="btn btn-outline-primary w-100"
-        >
-          Continuar con Google
-        </button>
-      </div>
-
       {message && (
-        <div
-          className={`alert ${
-            message.includes("Error") ? "alert-danger" : "alert-info"
-          } mt-3`}
-        >
+        <div className={`alert ${isError ? "alert-danger" : "alert-success"} py-2 small mt-3 mb-0`}>
           {message}
         </div>
       )}
+
+      <div className="auth-mode-footer">
+        {mode === "login" && (
+          <>
+            ¿Todavía no tenés cuenta?{" "}
+            <button type="button" onClick={() => switchMode("register")}>Crearla</button>
+          </>
+        )}
+        {mode === "register" && (
+          <>
+            ¿Ya tenés cuenta?{" "}
+            <button type="button" onClick={() => switchMode("login")}>Ingresar</button>
+          </>
+        )}
+        {mode === "reset" && (
+          <button type="button" onClick={() => switchMode("login")}>
+            ← Volver al ingreso
+          </button>
+        )}
+      </div>
     </div>
   );
 };

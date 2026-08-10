@@ -39,9 +39,18 @@ const Navbar = () => {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [navbarInmobiliaria, setNavbarInmobiliaria] = useState(null);
 
-  const { user, logout, hasRole } = useAuth();
+  const { user, logout, hasRole, emailVerificationPending } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    if (!user || !showLoginModal) return;
+    setShowLoginModal(false);
+    document.body.classList.remove("modal-open");
+    if (emailVerificationPending) {
+      navigate("/verificar-email", { state: { from: location } });
+    }
+  }, [emailVerificationPending, location, navigate, showLoginModal, user]);
 
   const { slug: contextDomainSlug, inmobiliaria: domainInmobiliaria } =
     useDomainAgency();
@@ -107,6 +116,16 @@ const Navbar = () => {
   const canCreateInmuebles =
     isRoot || isAdmin || hasModule("inmuebles") || hasRole?.("root");
 
+  const canViewTasaciones = isRoot || hasModule("tasaciones") || hasRole?.("root");
+
+  const canViewRentals = isRoot || hasModule("alquileres") || hasRole?.("root");
+
+  const canViewConsortiums = isRoot || hasModule("consorcios") || hasRole?.("root");
+
+  const canViewTaxes = isRoot || hasModule("tributos") || hasRole?.("root");
+
+  const canViewParcelas = isRoot || hasModule("parcelas") || hasRole?.("root");
+
   const brandTarget = isPortalDomain
     ? "/"
     : isCustomAgencyDomain
@@ -150,12 +169,20 @@ const Navbar = () => {
         to: "/inmuebles",
       },
       {
+        label: "Mapa",
+        to: "/mapa",
+      },
+      {
         label: "Emprendimientos",
         to: "/emprendimientos",
       },
       {
         label: "Inmobiliarias",
         to: "/inmobiliarias",
+      },
+      {
+        label: "Planes",
+        to: "/planes",
       },
       {
         label: "Publicar",
@@ -356,6 +383,16 @@ const Navbar = () => {
                         <hr className="dropdown-divider" />
                       </li>
 
+                      <li>
+                        <Link
+                          className="dropdown-item"
+                          to="/mi-consorcio"
+                          onClick={closeMenus}
+                        >
+                          Mi consorcio
+                        </Link>
+                      </li>
+
                       {isAdminUser && (
                         <>
                           <li>
@@ -401,6 +438,54 @@ const Navbar = () => {
                             </>
                           )}
 
+                          {canViewTasaciones && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/tasaciones"
+                                onClick={closeMenus}
+                              >
+                                Tasaciones
+                              </Link>
+                            </li>
+                          )}
+
+                          {canViewRentals && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/alquileres"
+                                onClick={closeMenus}
+                              >
+                                Administración de alquileres
+                              </Link>
+                            </li>
+                          )}
+
+                          {canViewConsortiums && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/consorcios"
+                                onClick={closeMenus}
+                              >
+                                Administración de consorcios
+                              </Link>
+                            </li>
+                          )}
+
+                          {canViewTaxes && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/tributos"
+                                onClick={closeMenus}
+                              >
+                                Control tributario
+                              </Link>
+                            </li>
+                          )}
+
                           <li>
                             <hr className="dropdown-divider" />
                           </li>
@@ -442,6 +527,16 @@ const Navbar = () => {
                           <li>
                             <Link
                               className="dropdown-item"
+                              to="/admin/arca"
+                              onClick={closeMenus}
+                            >
+                              Integración ARCA
+                            </Link>
+                          </li>
+
+                          <li>
+                            <Link
+                              className="dropdown-item"
                               to="/admin/dashboard"
                               onClick={closeMenus}
                             >
@@ -463,6 +558,18 @@ const Navbar = () => {
                             <hr className="dropdown-divider" />
                           </li>
                         </>
+                      )}
+
+                      {canViewParcelas && (
+                        <li>
+                          <Link
+                            className="dropdown-item"
+                            to="/admin/inmobiliaria/parcelas"
+                            onClick={closeMenus}
+                          >
+                            Parcelas y normativa urbana
+                          </Link>
+                        </li>
                       )}
 
                       <li>
@@ -555,7 +662,7 @@ const Navbar = () => {
           onClick={closeLoginModal}
         >
           <div
-            className="modal-dialog modal-dialog-centered"
+            className="modal-dialog modal-dialog-centered auth-modal"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="modal-content">
@@ -571,7 +678,7 @@ const Navbar = () => {
               </div>
 
               <div className="modal-body">
-                <Login />
+                <Login compact />
               </div>
             </div>
           </div>

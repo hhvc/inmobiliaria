@@ -18,6 +18,7 @@ export const BILLING_CONTRACT_STATUS = {
     cancelled: "Cancelado",
     rejected: "Rechazado",
     suspended: "Suspendido",
+    completed: "Finalizado",
 };
 
 export const BILLING_CONTRACT_BADGES = {
@@ -31,11 +32,13 @@ export const BILLING_CONTRACT_BADGES = {
     cancelled: "text-bg-secondary",
     rejected: "text-bg-dark",
     suspended: "text-bg-danger",
+    completed: "text-bg-secondary",
 };
 
 export const BILLING_ENTRY_LABELS = {
     contract_charge: "Cargo de contratación",
     recurring_charge: "Cargo recurrente",
+    interest_charge: "Interés moratorio",
     payment: "Pago",
     manual_charge: "Cargo manual",
     manual_credit: "Crédito manual",
@@ -82,6 +85,35 @@ export const minorAmountToMajorInput = (amountMinor) => {
     return (Number(amountMinor) / 100).toString();
 };
 
+export const percentToBasisPoints = (value) => {
+    if (value === null || value === undefined || value === "") return 0;
+    const normalized = value.toString().trim().replace(",", ".");
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return null;
+    return Math.round(parsed * 100);
+};
+
+export const basisPointsToPercentInput = (value) => {
+    return (Number(value || 0) / 100).toString();
+};
+
+export const tnaPercentToMillionths = (value) => {
+    if (value === null || value === undefined || value === "") return null;
+    const normalized = value.toString().trim().replace(",", ".");
+    const parsed = Number(normalized);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 10000) return null;
+    return Math.round(parsed * 1000000);
+};
+
+export const tnaMillionthsToPercent = (value) => Number(value || 0) / 1000000;
+
+export const formatBillingPercent = (value, maximumFractionDigits = 6) => {
+    return new Intl.NumberFormat("es-AR", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits,
+    }).format(Number(value || 0));
+};
+
 export const formatBillingDate = (value, { withTime = false } = {}) => {
     if (!value) return "-";
     const date = new Date(Number(value));
@@ -110,7 +142,10 @@ export const getCatalogPricingSummary = (item = {}) => {
         const price = component.quoteRequired
             ? "A convenir"
             : formatMoneyMinor(component.amountMinor, component.currency);
-        return `${component.label}: ${price} · ${getRecurrenceLabel(component.recurrence)}`;
+        const market = component.countryCode
+            ? ` · Mercado ${component.countryCode}`
+            : "";
+        return `${component.label}: ${price} · ${getRecurrenceLabel(component.recurrence)}${market}`;
     });
 };
 
@@ -128,6 +163,8 @@ export const buildEmptyCatalogItem = () => ({
     name: "",
     description: "",
     active: true,
+    publiclyVisible: true,
+    featured: false,
     displayOrder: 0,
     allowQuantity: false,
     unitLabel: "servicio",

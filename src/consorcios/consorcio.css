@@ -1,0 +1,87 @@
+.consortium-workspace {
+  max-width: 1280px;
+}
+
+.consortium-workspace .card,
+.consortium-receipt-sheet {
+  border-radius: 1rem;
+}
+
+.consortium-summary-card {
+  min-height: 8rem;
+}
+
+.consortium-section-anchor {
+  scroll-margin-top: 1rem;
+}
+
+.consortium-expense-list {
+  max-height: 28rem;
+  overflow-y: auto;
+}
+
+.consortium-unit-table th,
+.consortium-unit-table td,
+.consortium-account-table th,
+.consortium-account-table td {
+  vertical-align: middle;
+}
+
+.consortium-money {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.consortium-receipt-page {
+  max-width: 900px;
+}
+
+.consortium-receipt-sheet {
+  min-height: 720px;
+  padding: 3rem;
+  background: #fff;
+  border: 1px solid #dce2e8;
+  box-shadow: 0 1rem 3rem rgba(30, 41, 59, 0.12);
+}
+
+.consortium-signature-line {
+  margin-top: 5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #212529;
+}
+
+@media print {
+  .consortium-no-print,
+  .consortium-receipt-page nav,
+  .consortium-account-page nav,
+  footer.site-footer {
+    display: none !important;
+  }
+
+  .consortium-receipt-page,
+  .consortium-account-page {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    padding: 0 !important;
+  }
+
+  .consortium-receipt-sheet,
+  .consortium-account-card {
+    min-height: 0;
+    padding: 1cm;
+    border: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .consortium-receipt-sheet {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .consortium-receipt-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+}

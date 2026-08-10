@@ -1,4 +1,4 @@
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
 
 import {
@@ -15,6 +15,13 @@ import InmuebleGallery from "./InmuebleGallery";
 import InmuebleVideos from "./InmuebleVideos";
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 import { getEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
+import MapPointPicker from "../../mapa/components/MapPointPicker";
+import { getParcelAtPoint } from "../../mapa/services/parcelas.service";
+import { normalizeMapCoordinates } from "../../mapa/utils/mapa.helpers";
+import {
+  getStoredParcelSummary,
+  mergeParcelResultIntoInmueble,
+} from "../utils/inmuebleParcel.helpers";
 
 import {
   AMENITIES_LABELS,
@@ -55,6 +62,19 @@ const DEFAULT_NETWORK_DATA = {
   ownerPhone: "",
 };
 
+const parcelNumberFormatter = new Intl.NumberFormat("es-AR", {
+  maximumFractionDigits: 2,
+});
+
+const parcelMoneyFormatter = new Intl.NumberFormat("es-AR", {
+  style: "currency",
+  currency: "ARS",
+  maximumFractionDigits: 0,
+});
+
+const hasDisplayValue = (value) =>
+  value !== undefined && value !== null && value !== "";
+
 const normalizeRole = (role = "") => {
   const value = role.toString().trim().toLowerCase();
 
@@ -88,6 +108,9 @@ const normalizeInmobiliariaDoc = (docSnap) => {
     razonSocial: data.razonSocial || "",
     slug: data.slug || "",
     activa: data.activa !== false,
+    modulosSuscriptos: Array.isArray(data.modulosSuscriptos)
+      ? data.modulosSuscriptos
+      : [],
   };
 };
 
@@ -110,6 +133,14 @@ const InmuebleForm = ({
   const [loadingInmobiliarias, setLoadingInmobiliarias] = useState(false);
   const [emprendimientos, setEmprendimientos] = useState([]);
   const [loadingEmprendimientos, setLoadingEmprendimientos] = useState(false);
+  const [locationValidationError, setLocationValidationError] = useState("");
+  const [parcelLoading, setParcelLoading] = useState(false);
+  const [parcelError, setParcelError] = useState("");
+  const [parcelMessage, setParcelMessage] = useState("");
+  const valuesRef = useRef(values);
+  const parcelRequestRef = useRef(0);
+
+  valuesRef.current = values;
 
   const imageManager = useInmuebleImages(values?.images ?? []);
 
@@ -131,6 +162,10 @@ const InmuebleForm = ({
 
   const selectedInmobiliariaId =
     values?.inmobiliariaId || inmobiliariaId || activeInmobiliariaId || "";
+  const selectedInmobiliaria = inmobiliariasById[selectedInmobiliariaId] || null;
+  const canUseParcelData =
+    userHasRole(user, "root") ||
+    selectedInmobiliaria?.modulosSuscriptos?.includes("parcelas");
 
   const selectorInmobiliariaIds = useMemo(() => {
     return Array.from(
@@ -281,6 +316,13 @@ const InmuebleForm = ({
     ...(values?.medidas || {}),
   };
 
+  const parcelCoordinates = normalizeMapCoordinates(
+    values?.direccion?.lat ?? values?.direccion?.latitude,
+    values?.direccion?.lng ?? values?.direccion?.longitude,
+  );
+  const parcelSummary = getStoredParcelSummary(values?.datosParcelarios || {});
+  const hasStoredParcel = Boolean(values?.datosParcelarios?.parcel);
+
   const amenitiesForTipo = selectedTipo ? getAmenitiesForTipo(selectedTipo) : [];
   const serviciosForTipo = selectedTipo ? getServiciosForTipo(selectedTipo) : [];
 
@@ -292,10 +334,83 @@ const InmuebleForm = ({
     handleNestedChange("networkData", field, value);
   };
 
+  const queryAndApplyParcel = async (location = parcelCoordinates) => {
+    const normalizedLocation = normalizeMapCoordinates(
+      location?.latitude,
+      location?.longitude,
+    );
+
+    if (!canUseParcelData || !normalizedLocation) return;
+
+    const requestId = parcelRequestRef.current + 1;
+    parcelRequestRef.current = requestId;
+
+    try {
+      setParcelLoading(true);
+      setParcelError("");
+      setParcelMessage("");
+      const result = await getParcelAtPoint({
+        inmobiliariaId: selectedInmobiliariaId,
+        latitude: normalizedLocation.latitude,
+        longitude: normalizedLocation.longitude,
+      });
+
+      if (parcelRequestRef.current !== requestId) return;
+
+      if (!result?.parcel) {
+        setParcelError(
+          "No encontramos una parcela en ese punto. Acercá el mapa y marcá dentro del lote, no sobre la calle.",
+        );
+        return;
+      }
+
+      const merged = mergeParcelResultIntoInmueble({
+        values: valuesRef.current,
+        result,
+      });
+      handleNestedChange("superficie", "", merged.superficie);
+      handleNestedChange("datosParcelarios", "", merged.datosParcelarios);
+
+      setParcelMessage(
+        merged.completedFields.length > 0
+          ? `Datos parcelarios vinculados. Se completó: ${merged.completedFields.join(
+              ", ",
+            )}.`
+          : "Datos parcelarios y normativa vinculados. No se reemplazaron campos cargados manualmente.",
+      );
+    } catch (error) {
+      if (parcelRequestRef.current !== requestId) return;
+      setParcelError(error.message || "No se pudo consultar la parcela.");
+    } finally {
+      if (parcelRequestRef.current === requestId) {
+        setParcelLoading(false);
+      }
+    }
+  };
+
   const videoValues = normalizeInmuebleVideos(values?.videos || []);
 
   const onSubmit = (e) => {
     e.preventDefault();
+
+    const mapCoordinates = normalizeMapCoordinates(
+      values?.direccion?.lat ?? values?.direccion?.latitude,
+      values?.direccion?.lng ?? values?.direccion?.longitude,
+    );
+    const willPublish = !forceDraft && Boolean(values?.publicarEnPortal);
+    if (willPublish && !mapCoordinates) {
+      setLocationValidationError(
+        "Para publicar en el portal tenés que buscar la dirección o marcar un punto en el mapa.",
+      );
+      window.setTimeout(() => {
+        document
+          .getElementById("inmueble-map-location")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }, 50);
+      return;
+    }
+
+    setLocationValidationError("");
 
     const finalInmobiliariaId =
       values?.inmobiliariaId || inmobiliariaId || activeInmobiliariaId;
@@ -330,6 +445,14 @@ const InmuebleForm = ({
     handleSubmit({
       ...values,
       ...normalizedDetails,
+
+      direccion: {
+        ...(values?.direccion || {}),
+        precisionMapa:
+          values?.direccion?.precisionMapa === "precisa"
+            ? "precisa"
+            : "aproximada",
+      },
 
       images: isEditMode ? images : values?.images || [],
       videos: videoValues,
@@ -661,7 +784,7 @@ const InmuebleForm = ({
       {/* =========================
           Ubicación
          ========================= */}
-      <div className="card mb-4">
+      <div className="card mb-4" id="inmueble-map-location">
         <div className="card-header fw-semibold">Ubicación</div>
         <div className="card-body row g-3">
           <div className="col-md-4">
@@ -710,6 +833,242 @@ const InmuebleForm = ({
               <div className="invalid-feedback">{errors.ciudad}</div>
             )}
           </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Provincia</label>
+            <input
+              className="form-control"
+              value={values?.direccion?.provincia || ""}
+              onChange={(e) =>
+                handleNestedChange("direccion", "provincia", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">País</label>
+            <input
+              className="form-control"
+              value={values?.direccion?.pais || ""}
+              onChange={(e) =>
+                handleNestedChange("direccion", "pais", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-12">
+            <label className="form-label d-block">
+              Precisión que se mostrará públicamente
+            </label>
+            <div className="d-flex flex-wrap gap-4">
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="radio"
+                  id="map-precision-exact"
+                  name="mapPrecision"
+                  checked={values?.direccion?.precisionMapa === "precisa"}
+                  onChange={() =>
+                    handleNestedChange("direccion", "precisionMapa", "precisa")
+                  }
+                />
+                <label className="form-check-label" htmlFor="map-precision-exact">
+                  Dirección precisa
+                </label>
+              </div>
+              <div className="form-check">
+                <input
+                  className="form-check-input"
+                  type="radio"
+                  id="map-precision-approximate"
+                  name="mapPrecision"
+                  checked={values?.direccion?.precisionMapa !== "precisa"}
+                  onChange={() =>
+                    handleNestedChange(
+                      "direccion",
+                      "precisionMapa",
+                      "aproximada",
+                    )
+                  }
+                />
+                <label
+                  className="form-check-label"
+                  htmlFor="map-precision-approximate"
+                >
+                  Dirección aproximada
+                </label>
+              </div>
+            </div>
+            <div className="form-text">
+              Precisa muestra el punto y la calle con altura. Aproximada reduce la
+              precisión pública, aunque conserva el punto internamente.
+            </div>
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Latitud</label>
+            <input
+              type="number"
+              step="any"
+              className="form-control"
+              value={values?.direccion?.lat ?? ""}
+              onChange={(e) =>
+                handleNestedChange("direccion", "lat", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-md-3">
+            <label className="form-label">Longitud</label>
+            <input
+              type="number"
+              step="any"
+              className="form-control"
+              value={values?.direccion?.lng ?? ""}
+              onChange={(e) =>
+                handleNestedChange("direccion", "lng", e.target.value)
+              }
+            />
+          </div>
+
+          <div className="col-12">
+            <MapPointPicker
+              latitude={values?.direccion?.lat}
+              longitude={values?.direccion?.lng}
+              addressQuery={[
+                values?.direccion?.calle,
+                values?.direccion?.numero,
+                values?.direccion?.barrio,
+                values?.direccion?.ciudad,
+                values?.direccion?.provincia,
+                values?.direccion?.pais,
+              ]
+                .filter(Boolean)
+                .join(", ")}
+              onChange={({ latitude, longitude }) => {
+                handleNestedChange("direccion", "lat", latitude);
+                handleNestedChange("direccion", "lng", longitude);
+                setLocationValidationError("");
+                queryAndApplyParcel({ latitude, longitude });
+              }}
+            />
+            {locationValidationError && (
+              <div className="alert alert-danger mt-2 mb-0">
+                {locationValidationError}
+              </div>
+            )}
+          </div>
+
+          {canUseParcelData && (
+            <div className="col-12">
+              <div className="border rounded-3 bg-light p-3">
+                <div className="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                  <div>
+                    <h3 className="h6 mb-1">Parcelas y normativa urbana</h3>
+                    <p className="small text-muted mb-0">
+                      Al buscar una dirección o marcar el lote, ONO Prop consulta
+                      la fuente oficial y completa únicamente campos vacíos.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-outline-primary"
+                    disabled={!parcelCoordinates || parcelLoading}
+                    onClick={() => queryAndApplyParcel()}
+                  >
+                    {parcelLoading
+                      ? "Consultando..."
+                      : hasStoredParcel
+                        ? "Actualizar desde parcela"
+                        : "Consultar parcela"}
+                  </button>
+                </div>
+
+                {!parcelCoordinates && (
+                  <div className="form-text mt-2">
+                    Primero buscá la dirección o seleccioná un punto en el mapa.
+                  </div>
+                )}
+                {parcelError && (
+                  <div className="alert alert-warning py-2 mt-2 mb-0">
+                    {parcelError}
+                  </div>
+                )}
+                {parcelMessage && (
+                  <div className="alert alert-success py-2 mt-2 mb-0">
+                    {parcelMessage}
+                  </div>
+                )}
+
+                {hasStoredParcel && (
+                  <div className="row g-2 mt-2 small">
+                    <div className="col-md-4">
+                      <span className="text-muted">Nomenclatura:</span>{" "}
+                      <strong>{parcelSummary.nomenclature || "Sin dato"}</strong>
+                    </div>
+                    <div className="col-md-4">
+                      <span className="text-muted">Cuenta:</span>{" "}
+                      <strong>{parcelSummary.accountNumber || "Sin dato"}</strong>
+                    </div>
+                    <div className="col-md-4">
+                      <span className="text-muted">Terreno:</span>{" "}
+                      <strong>
+                        {hasDisplayValue(parcelSummary.landArea)
+                          ? `${parcelNumberFormatter.format(parcelSummary.landArea)} m²`
+                          : "Sin dato"}
+                      </strong>
+                    </div>
+                    <div className="col-md-4">
+                      <span className="text-muted">Mejoras catastrales:</span>{" "}
+                      <strong>
+                        {hasDisplayValue(parcelSummary.improvementsArea)
+                          ? `${parcelNumberFormatter.format(
+                              parcelSummary.improvementsArea,
+                            )} m²`
+                          : "Sin dato"}
+                      </strong>
+                    </div>
+                    <div className="col-md-4">
+                      <span className="text-muted">Zona / FOS / FOT:</span>{" "}
+                      <strong>
+                        {[
+                          parcelSummary.zone,
+                          hasDisplayValue(parcelSummary.fos)
+                            ? `FOS ${parcelSummary.fos}`
+                            : "",
+                          hasDisplayValue(parcelSummary.fot)
+                            ? `FOT ${parcelSummary.fot}`
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Sin dato"}
+                      </strong>
+                    </div>
+                    <div className="col-md-4">
+                      <span className="text-muted">Valuación fiscal:</span>{" "}
+                      <strong>
+                        {hasDisplayValue(parcelSummary.totalValuation)
+                          ? parcelMoneyFormatter.format(
+                              parcelSummary.totalValuation,
+                            )
+                          : "Sin dato"}
+                      </strong>
+                    </div>
+                    {parcelSummary.permittedUse && (
+                      <div className="col-12">
+                        <span className="text-muted">Uso:</span>{" "}
+                        <strong>{parcelSummary.permittedUse}</strong>
+                      </div>
+                    )}
+                    <div className="col-12 text-muted">
+                      Fuente: {values.datosParcelarios.provider}. Información
+                      orientativa sujeta a verificación catastral y municipal.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

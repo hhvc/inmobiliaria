@@ -73,6 +73,31 @@ const TermsPage = () => {
           ocasionar la suspensión de módulos o de la cuenta, sin perjuicio de
           las obligaciones pendientes.
         </p>
+        <p>
+          Cada contratación puede establecer fechas de inicio y finalización,
+          un plazo de pago y bonificaciones porcentuales o de importe fijo. Las
+          bonificaciones se aplican primero en porcentaje y luego como monto
+          fijo, sin que el cargo resultante pueda ser inferior a cero.
+        </p>
+        <p>
+          Los códigos promocionales están sujetos a vigencia, servicios
+          alcanzados, disponibilidad y límites de uso. Un código válido queda
+          reservado al enviar la solicitud y se confirma al aprobarse la
+          contratación. Si ONO Prop rechaza la solicitud, la reserva se libera.
+          Salvo indicación expresa, el monto fijo se aplica a cada obligación
+          alcanzada por la bonificación.
+        </p>
+        <p>
+          Las obligaciones impagas podrán devengar intereses moratorios según
+          la Tasa Nominal Anual general informada por ONO Prop para cada fecha y
+          moneda, convertida a tasa diaria sobre base de 365 días. Si no se
+          publica una nueva tasa, continuará vigente la última cargada. El
+          primer interés se liquidará al día siguiente del vencimiento por los
+          días transcurridos desde el inicio del período facturado hasta el
+          vencimiento inclusive; desde entonces se capitalizará diariamente.
+          Los pagos se imputarán a las obligaciones más antiguas, primero a
+          intereses y después a capital, salvo acuerdo documentado diferente.
+        </p>
       </section>
 
       <section>

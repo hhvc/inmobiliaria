@@ -1,7 +1,12 @@
-import { useState, useEffect, useRef } from "react";
-import { useAuth } from "../../context/auth/useAuth";
+import { useEffect, useRef, useState } from "react";
 
-const PhoneLogin = ({ onSwitchToEmail, onSwitchToGoogle }) => {
+import { useAuth } from "../../context/auth/useAuth";
+import {
+  buildArgentinaMobileE164,
+  normalizeArgentinaMobileDigits,
+} from "../../context/auth/auth.helpers";
+
+const PhoneLogin = () => {
   const {
     setupPhoneAuth,
     sendSMSCode,
@@ -10,261 +15,186 @@ const PhoneLogin = ({ onSwitchToEmail, onSwitchToGoogle }) => {
     confirmationResult,
     recaptchaReady,
   } = useAuth();
-
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState("phone");
   const [phoneDigits, setPhoneDigits] = useState("");
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [showRecaptcha, setShowRecaptcha] = useState(false);
-
+  const [isError, setIsError] = useState(false);
+  const [recaptchaAttempt, setRecaptchaAttempt] = useState(0);
   const mountedRef = useRef(true);
-  const recaptchaInitializedRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      cancelPhoneAuth();
-    };
-  }, [cancelPhoneAuth]);
-
-  // Inicializar reCAPTCHA de forma oculta
-  useEffect(() => {
-    if (step !== 1 || recaptchaInitializedRef.current) return;
-
-    const initializeRecaptcha = async () => {
+    if (step !== "phone") return undefined;
+    let cancelled = false;
+    const initialize = async () => {
       try {
-        setMessage("Configurando verificación de seguridad...");
-        console.log("🔄 PhoneLogin: Inicializando reCAPTCHA...");
-
-        if (!mountedRef.current) return;
-
-        // Mostrar temporalmente el reCAPTCHA para inicialización
-        setShowRecaptcha(true);
-
-        // Pequeño delay para asegurar que el DOM esté listo
-        await new Promise((resolve) => setTimeout(resolve, 100));
-
-        console.log("🔄 PhoneLogin: Llamando a setupPhoneAuth...");
-        await setupPhoneAuth("recaptcha-container");
-        recaptchaInitializedRef.current = true;
-
-        if (mountedRef.current) {
-          // Ocultar después de la inicialización
-          setShowRecaptcha(false);
-          setMessage("");
-          console.log("✅ PhoneLogin: reCAPTCHA Enterprise inicializado");
-        }
+        setMessage("Preparando verificación segura...");
+        setIsError(false);
+        await setupPhoneAuth("phone-sign-in-button");
+        if (!cancelled && mountedRef.current) setMessage("");
       } catch (error) {
-        console.error("❌ PhoneLogin: Error inicializando reCAPTCHA:", error);
-        if (mountedRef.current) {
-          setShowRecaptcha(false);
-          setMessage(
-            `Error de seguridad: ${error.message}. Recarga la página.`
-          );
-          recaptchaInitializedRef.current = false;
+        if (!cancelled && mountedRef.current) {
+          setIsError(true);
+          setMessage(error.message || "No se pudo preparar la verificación.");
         }
       }
     };
+    initialize();
+    return () => {
+      cancelled = true;
+    };
+  }, [recaptchaAttempt, setupPhoneAuth, step]);
 
-    initializeRecaptcha();
-  }, [step, setupPhoneAuth]);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    cancelPhoneAuth();
+  }, [cancelPhoneAuth]);
 
   useEffect(() => {
-    if (confirmationResult && step === 1) {
-      console.log(
-        "✅ PhoneLogin: confirmationResult recibido, avanzando a paso 2"
-      );
-      setStep(2);
-    }
-  }, [confirmationResult, step]);
+    if (confirmationResult) setStep("code");
+  }, [confirmationResult]);
 
-  const handleSendCode = async (e) => {
-    e.preventDefault();
-    if (loading) return;
-
-    console.log("🔄 PhoneLogin: Iniciando envío de código...");
-    console.log("🔍 PhoneLogin: recaptchaReady:", recaptchaReady);
-
-    if (!recaptchaReady) {
-      setMessage(
-        "La verificación de seguridad no está lista. Espera un momento."
-      );
+  const handleSendCode = async (event) => {
+    event.preventDefault();
+    const phoneNumber = buildArgentinaMobileE164(phoneDigits);
+    if (!phoneNumber) {
+      setIsError(true);
+      setMessage("Ingresá código de área y número: deben ser 10 dígitos.");
       return;
     }
-
-    const digits = phoneDigits.replace(/\D/g, "");
-    if (digits.length !== 10) {
-      setMessage("Ingresa código de área + número (10 dígitos en total)");
-      return;
-    }
-
-    const fullPhone = `+549${digits}`;
-    setLoading(true);
-    setMessage("Enviando código...");
-
     try {
-      console.log("🔄 PhoneLogin: Llamando a sendSMSCode...");
-      await sendSMSCode(fullPhone);
-      setMessage("✓ Código enviado por SMS. Revisa tu teléfono.");
+      setLoading(true);
+      setMessage("");
+      setIsError(false);
+      await sendSMSCode(phoneNumber);
+      setMessage("Código enviado. Revisá los SMS de tu celular.");
     } catch (error) {
-      console.error("❌ PhoneLogin: Error en sendSMSCode:", error);
-      setMessage(`✗ ${error.message || "Error al enviar SMS."}`);
+      setIsError(true);
+      setMessage(error.message || "No se pudo enviar el código.");
+      cancelPhoneAuth();
+      setRecaptchaAttempt((current) => current + 1);
     } finally {
       if (mountedRef.current) setLoading(false);
     }
   };
 
-  const handleVerifyCode = async (e) => {
-    e.preventDefault();
-    if (loading) return;
-
-    setLoading(true);
-    setMessage("");
-
+  const handleVerifyCode = async (event) => {
+    event.preventDefault();
     try {
+      setLoading(true);
+      setMessage("");
+      setIsError(false);
       await verifySMSCode(code);
-      setMessage("✓ Verificación exitosa. Redirigiendo...");
     } catch (error) {
-      console.error("❌ PhoneLogin: Error en verifySMSCode:", error);
-      setMessage(`✗ ${error.message || "Error al verificar el código."}`);
+      setIsError(true);
+      setMessage(error.message || "No se pudo verificar el código.");
     } finally {
       if (mountedRef.current) setLoading(false);
     }
   };
 
-  const handleBackToPhone = () => {
+  const changeNumber = () => {
     cancelPhoneAuth();
-    recaptchaInitializedRef.current = false;
-    setStep(1);
+    setStep("phone");
     setCode("");
     setMessage("");
-    setShowRecaptcha(false);
+    setIsError(false);
+    setRecaptchaAttempt((current) => current + 1);
   };
-
-  const displayedFullPhone = `+549${phoneDigits.replace(/\D/g, "")}`;
 
   return (
     <div>
-      <h5>Iniciar con Teléfono</h5>
+      <div className="mb-3">
+        <h3 className="h6 mb-1">
+          {step === "phone" ? "Ingresá con tu celular" : "Confirmá el código"}
+        </h3>
+        <p className="text-muted small mb-0">
+          {step === "phone"
+            ? "Por ahora disponible para celulares argentinos."
+            : `Enviamos un SMS a +54 9 ${phoneDigits}.`}
+        </p>
+      </div>
 
-      {step === 1 && (
+      {step === "phone" ? (
         <form onSubmit={handleSendCode}>
-          <div className="mb-3">
-            <label className="form-label">Solo celulares de Argentina</label>
-            <div className="input-group">
-              <span className="input-group-text">+54 9</span>
-              <input
-                type="tel"
-                className="form-control"
-                placeholder="1198765432"
-                value={phoneDigits}
-                onChange={(e) =>
-                  setPhoneDigits(e.target.value.replace(/\D/g, ""))
-                }
-                required
-                disabled={loading}
-                maxLength={10}
-              />
-            </div>
-            <small className="form-text text-muted">
-              Ingresa código de área + número (10 dígitos). Ej: 3511234567
-            </small>
+          <label className="form-label" htmlFor="authPhone">Número de celular</label>
+          <div className="input-group mb-2">
+            <span className="input-group-text auth-phone-prefix">+54 9</span>
+            <input
+              id="authPhone"
+              type="tel"
+              className="form-control auth-control"
+              inputMode="numeric"
+              autoComplete="tel-national"
+              placeholder="351 547 8785"
+              value={phoneDigits}
+              maxLength={10}
+              disabled={loading}
+              onChange={(event) => {
+                setPhoneDigits(normalizeArgentinaMobileDigits(event.target.value));
+                setMessage("");
+              }}
+              required
+            />
           </div>
-
-          {/* Contenedor reCAPTCHA - completamente oculto */}
-          <div
-            style={{
-              display: showRecaptcha ? "block" : "none",
-              width: "1px",
-              height: "1px",
-              overflow: "hidden",
-            }}
-          />
-
+          <div className="form-text mb-3">
+            Código de área sin 0 + número sin 15. Ejemplo: 3515478785.
+          </div>
           <button
+            id="phone-sign-in-button"
             type="submit"
-            className="btn btn-primary w-100"
-            disabled={
-              loading ||
-              !recaptchaReady ||
-              phoneDigits.replace(/\D/g, "").length !== 10
-            }
+            className="btn btn-primary auth-submit-button w-100"
+            disabled={loading || !recaptchaReady || phoneDigits.length !== 10}
           >
-            {loading ? "Enviando código..." : "Enviar código por SMS"}
+            {loading ? "Enviando..." : "Enviar código por SMS"}
           </button>
         </form>
-      )}
-
-      {step === 2 && (
+      ) : (
         <form onSubmit={handleVerifyCode}>
-          <div className="mb-3">
-            <p>
-              Verificando: <strong>{displayedFullPhone}</strong>
-            </p>
-            <input
-              type="text"
-              className="form-control"
-              placeholder="123456"
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              required
-              maxLength={6}
-              disabled={loading}
-            />
-            <small className="form-text text-muted">
-              Ingresa el código de 6 dígitos que recibiste por SMS
-            </small>
-          </div>
+          <label className="form-label" htmlFor="authPhoneCode">Código de 6 dígitos</label>
+          <input
+            id="authPhoneCode"
+            type="text"
+            className="form-control auth-control auth-code-input"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder="000000"
+            value={code}
+            maxLength={6}
+            disabled={loading}
+            onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+            required
+          />
           <button
             type="submit"
-            className="btn btn-success w-100"
+            className="btn btn-primary auth-submit-button w-100 mt-3"
             disabled={loading || code.length !== 6}
           >
-            {loading ? "Verificando..." : "Verificar código"}
+            {loading ? "Verificando..." : "Verificar e ingresar"}
           </button>
           <button
             type="button"
-            className="btn btn-link w-100"
-            onClick={handleBackToPhone}
+            className="auth-inline-link w-100 text-center mt-3"
             disabled={loading}
+            onClick={changeNumber}
           >
-            ← Cambiar número
+            Cambiar número
           </button>
         </form>
       )}
 
-      <div className="mt-3">
-        <button
-          onClick={onSwitchToEmail}
-          className="btn btn-outline-secondary w-100 mb-2"
-          disabled={loading}
-        >
-          Usar email
-        </button>
-        <button
-          onClick={onSwitchToGoogle}
-          className="btn btn-outline-primary w-100"
-          disabled={loading}
-        >
-          Continuar con Google
-        </button>
-      </div>
-
       {message && (
-        <div
-          className={`alert ${
-            message.includes("✗")
-              ? "alert-danger"
-              : message.includes("✓")
-              ? "alert-success"
-              : "alert-info"
-          } mt-3`}
-        >
+        <div className={`alert ${isError ? "alert-danger" : "alert-info"} py-2 small mt-3 mb-0`}>
           {message}
         </div>
       )}
+
+      <p className="auth-phone-disclosure mb-0">
+        Al continuar aceptás recibir un SMS de verificación. Google procesa el número
+        para prevenir fraude y abuso; pueden aplicarse cargos de tu operadora.
+      </p>
     </div>
   );
 };

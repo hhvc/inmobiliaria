@@ -66,6 +66,11 @@ const INITIAL_VALUES = {
     numero: "",
     barrio: "",
     ciudad: "",
+    provincia: "Córdoba",
+    pais: "Argentina",
+    lat: null,
+    lng: null,
+    precisionMapa: "precisa",
   },
 
   superficie: {

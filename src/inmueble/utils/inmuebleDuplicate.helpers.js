@@ -49,6 +49,7 @@ export const buildInmuebleDuplicateValues = ({
     amenities: cloneObject(source.amenities),
     servicios: cloneObject(source.servicios),
     medidas: cloneObject(source.medidas),
+    datosParcelarios: cloneObject(source.datosParcelarios),
 
     ambientes:
       source.caracteristicas?.ambientes ?? source.ambientes ?? "",

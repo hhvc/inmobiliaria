@@ -32,12 +32,43 @@ const callBillingFunction = async (name, payload = {}) => {
     }
 };
 
+const createBillingOperationId = (prefix) => {
+    if (typeof crypto !== "undefined" && crypto.randomUUID) {
+        return `${prefix}-${crypto.randomUUID()}`;
+    }
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+};
+
+export const getPublicBillingCatalog = () => {
+    return callBillingFunction("billingGetPublicCatalog");
+};
+
+export const createCommercialLead = (payload) => {
+    return callBillingFunction("billingCreateCommercialLead", payload);
+};
+
+export const updateCommercialLead = (payload) => {
+    return callBillingFunction("billingUpdateCommercialLead", payload);
+};
+
 export const getBillingAgencyOverview = (inmobiliariaId) => {
     return callBillingFunction("billingGetAgencyOverview", { inmobiliariaId });
 };
 
 export const getBillingAdminOverview = () => {
     return callBillingFunction("billingGetAdminOverview");
+};
+
+export const upsertBillingInterestRate = (payload) => {
+    return callBillingFunction("billingUpsertInterestRate", payload);
+};
+
+export const upsertBillingPromotion = (payload) => {
+    return callBillingFunction("billingUpsertPromotion", payload);
+};
+
+export const runBillingMaintenance = () => {
+    return callBillingFunction("billingRunMaintenance");
 };
 
 export const upsertBillingCatalogItem = ({ itemId = "", item }) => {
@@ -73,6 +104,13 @@ export const approveBillingContract = (payload) => {
 
 export const activateBillingContract = (payload) => {
     return callBillingFunction("billingActivateContract", payload);
+};
+
+export const amendBillingContractFinancialTerms = (payload) => {
+    return callBillingFunction("billingAmendContractFinancialTerms", {
+        ...payload,
+        amendmentId: payload.amendmentId || createBillingOperationId("amendment"),
+    });
 };
 
 export const requestBillingCancellation = (payload) => {

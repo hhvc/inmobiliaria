@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useInmobiliariaForm } from "../hooks/useInmobiliariaForm";
 import { validateImageFile } from "../../utils/imageUtils";
 import ImageCropModal from "../../components/common/ImageCropModal";
@@ -69,6 +69,7 @@ const validateImageAdvanced = async (file, rules) => {
 
 const InmobiliariaForm = ({
   initialData = null,
+  prefillData = null,
   onSubmit,
   onCancel,
   loading = false,
@@ -80,6 +81,25 @@ const InmobiliariaForm = ({
 
   const [imageErrors, setImageErrors] = useState({});
   const [cropState, setCropState] = useState(null);
+  const prefillAppliedRef = useRef(false);
+
+  useEffect(() => {
+    if (isEditMode || !prefillData || prefillAppliedRef.current) return;
+    prefillAppliedRef.current = true;
+    const fields = {
+      nombre: prefillData.nombre || "",
+      razonSocial: prefillData.razonSocial || prefillData.nombre || "",
+      slug: prefillData.slug || slugify(prefillData.nombre || ""),
+      "configuracion.contacto.email": prefillData.email || "",
+      "configuracion.contacto.telefono": prefillData.telefono || "",
+      "configuracion.contacto.whatsapp": prefillData.telefono || "",
+    };
+    Object.entries(fields).forEach(([path, value]) => {
+      if (value) updateField(path, value);
+    });
+    // La precarga se aplica una sola vez al crear desde una oportunidad comercial.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, prefillData]);
 
   // Manejar cambio de nombre con generación automática de slug
   const handleNombreChange = (e) => {

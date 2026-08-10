@@ -19,6 +19,27 @@ const textToLines = (value = "") => value
 
 const listToText = (value = []) => (Array.isArray(value) ? value.join("\n") : "");
 
+const BILLING_MODULE_OPTIONS = [
+    { id: "inmuebles", label: "Administración de inmuebles" },
+    { id: "consultas", label: "Consultas y solicitudes" },
+    { id: "tasaciones", label: "Módulo Tasaciones" },
+    { id: "alquileres", label: "Administración de alquileres" },
+    { id: "consorcios", label: "Administración de consorcios" },
+    { id: "tributos", label: "Control tributario inmobiliario" },
+    { id: "parcelas", label: "Parcelas y normativa urbana" },
+    { id: "dominios", label: "Dominios propios" },
+    { id: "branding", label: "Personalización visual" },
+    { id: "usuarios", label: "Administración de usuarios" },
+    { id: "instagram", label: "Integración Instagram" },
+    { id: "mercadolibre", label: "Integración Mercado Libre" },
+];
+
+const getModuleIds = (value = "") => textToLines(value.replace(/,/g, "\n"));
+
+const getModuleLabel = (moduleId = "") =>
+    BILLING_MODULE_OPTIONS.find((option) => option.id === moduleId)?.label ||
+    moduleId;
+
 const normalizeBenefitForm = (benefits = []) => {
     const benefit = benefits.find((item) => item.type === "highlight_credits");
     return {
@@ -42,8 +63,25 @@ const CatalogSummaryCard = ({ item, onEdit }) => (
                         {item.active === false ? "Oculto" : "Publicado"}
                     </span>
                 </div>
+                <div className="d-flex flex-wrap gap-1 mb-2">
+                    {item.publiclyVisible !== false && (
+                        <span className="badge text-bg-primary">Visible en /planes</span>
+                    )}
+                    {item.featured === true && (
+                        <span className="badge text-bg-warning">Destacado</span>
+                    )}
+                </div>
                 <div className="small text-muted mb-2">{item.code}</div>
                 <p className="small flex-grow-1">{item.description || "Sin descripción."}</p>
+                {Array.isArray(item.moduleGrants) && item.moduleGrants.length > 0 && (
+                    <div className="d-flex flex-wrap gap-1 mb-2">
+                        {item.moduleGrants.map((moduleId) => (
+                            <span className="badge text-bg-light border" key={moduleId}>
+                                {getModuleLabel(moduleId)}
+                            </span>
+                        ))}
+                    </div>
+                )}
                 <ul className="small ps-3">
                     {getCatalogPricingSummary(item).map((line) => (
                         <li key={line}>{line}</li>
@@ -74,6 +112,10 @@ const BillingCatalogEditor = ({ catalog = [], onChanged }) => {
     const catalogOptions = useMemo(() => catalog.filter(
         (item) => item.id !== editingId,
     ), [catalog, editingId]);
+    const selectedModuleIds = useMemo(
+        () => new Set(getModuleIds(modulesText)),
+        [modulesText],
+    );
 
     const resetForm = () => {
         setEditingId("");
@@ -153,6 +195,16 @@ const BillingCatalogEditor = ({ catalog = [], onChanged }) => {
             ...current,
             requirements: current.requirements.filter((_, position) => position !== index),
         }));
+    };
+
+    const toggleModule = (moduleId, enabled) => {
+        const next = new Set(getModuleIds(modulesText));
+        if (enabled) {
+            next.add(moduleId);
+        } else {
+            next.delete(moduleId);
+        }
+        setModulesText(Array.from(next).join("\n"));
     };
 
     const handleSeed = async () => {
@@ -333,7 +385,41 @@ const BillingCatalogEditor = ({ catalog = [], onChanged }) => {
                                     }))}
                                 />
                                 <label className="form-check-label" htmlFor="catalog-active">
-                                    Visible y contratable
+                                    Activo y contratable
+                                </label>
+                            </div>
+                        </div>
+                        <div className="col-md-3 d-flex align-items-end">
+                            <div className="form-check mb-2">
+                                <input
+                                    id="catalog-public"
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    checked={form.publiclyVisible !== false}
+                                    onChange={(event) => setForm((current) => ({
+                                        ...current,
+                                        publiclyVisible: event.target.checked,
+                                    }))}
+                                />
+                                <label className="form-check-label" htmlFor="catalog-public">
+                                    Mostrar en la página de planes
+                                </label>
+                            </div>
+                        </div>
+                        <div className="col-md-3 d-flex align-items-end">
+                            <div className="form-check mb-2">
+                                <input
+                                    id="catalog-featured"
+                                    className="form-check-input"
+                                    type="checkbox"
+                                    checked={form.featured === true}
+                                    onChange={(event) => setForm((current) => ({
+                                        ...current,
+                                        featured: event.target.checked,
+                                    }))}
+                                />
+                                <label className="form-check-label" htmlFor="catalog-featured">
+                                    Destacar comercialmente
                                 </label>
                             </div>
                         </div>
@@ -376,18 +462,50 @@ const BillingCatalogEditor = ({ catalog = [], onChanged }) => {
                             />
                         </div>
                         <div className="col-md-6">
-                            <label className="form-label">
-                                Módulos habilitados (uno por línea)
-                            </label>
-                            <textarea
-                                className="form-control"
-                                rows="4"
-                                value={modulesText}
-                                onChange={(event) => setModulesText(event.target.value)}
-                                placeholder="dominios&#10;branding&#10;instagram"
-                            />
+                            <fieldset>
+                                <legend className="form-label mb-2">
+                                    Módulos que habilita el servicio
+                                </legend>
+                                <div className="row g-2">
+                                    {BILLING_MODULE_OPTIONS.map((option) => (
+                                        <div className="col-12 col-lg-6" key={option.id}>
+                                            <div className="form-check">
+                                                <input
+                                                    id={`catalog-module-${option.id}`}
+                                                    className="form-check-input"
+                                                    type="checkbox"
+                                                    checked={selectedModuleIds.has(option.id)}
+                                                    onChange={(event) => toggleModule(
+                                                        option.id,
+                                                        event.target.checked,
+                                                    )}
+                                                />
+                                                <label
+                                                    className="form-check-label"
+                                                    htmlFor={`catalog-module-${option.id}`}
+                                                >
+                                                    {option.label}
+                                                </label>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </fieldset>
+                            <details className="mt-2">
+                                <summary className="small text-muted">
+                                    Ver o agregar códigos de módulos avanzados
+                                </summary>
+                                <textarea
+                                    className="form-control mt-2"
+                                    rows="3"
+                                    value={modulesText}
+                                    onChange={(event) => setModulesText(event.target.value)}
+                                    placeholder="Un código por línea"
+                                />
+                            </details>
                             <div className="form-text">
-                                Se agregan al contrato activo sin quitar módulos heredados.
+                                Al activarse el contrato, estos permisos se agregan a la
+                                inmobiliaria sin quitar los otorgados por otros servicios.
                             </div>
                         </div>
                     </div>
@@ -439,7 +557,7 @@ const BillingCatalogEditor = ({ catalog = [], onChanged }) => {
                                         </select>
                                     </div>
                                     <div className="col-md-1">
-                                        <label className="form-label small">País</label>
+                                        <label className="form-label small">País de tarifa</label>
                                         <input
                                             className="form-control text-uppercase"
                                             maxLength="2"

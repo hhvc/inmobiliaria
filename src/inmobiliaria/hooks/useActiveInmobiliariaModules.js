@@ -55,7 +55,7 @@ const getStoredActiveInmobiliariaId = (user) => {
         localStorage.getItem("onoprop.activeInmobiliariaId") ||
         "";
 
-    if (stored && inmobiliarias.includes(stored)) {
+    if (stored && (hasRole(user, "root") || inmobiliarias.includes(stored))) {
         return stored;
     }
 

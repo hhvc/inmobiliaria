@@ -500,6 +500,10 @@ const HomePage = () => {
                   Soy inmobiliaria
                 </Link>
 
+                <Link to="/planes" className="btn btn-outline-primary">
+                  Ver planes y servicios
+                </Link>
+
                 <Link
                   to="/inmobiliaria/ladoctaprop"
                   className="btn btn-outline-secondary"

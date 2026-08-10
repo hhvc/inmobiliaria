@@ -54,6 +54,11 @@ const EMPTY_VALUES = {
     numero: "",
     barrio: "",
     ciudad: "",
+    provincia: "Córdoba",
+    pais: "Argentina",
+    lat: null,
+    lng: null,
+    precisionMapa: "aproximada",
   },
 
   superficie: {

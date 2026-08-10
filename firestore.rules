@@ -7,8 +7,26 @@ service cloud.firestore {
        Helpers generales
        ============================ */
 
-    function isSignedIn() {
+    function isRawSignedIn() {
       return request.auth != null;
+    }
+
+    function emailVerificationSatisfied() {
+      return isRawSignedIn()
+        && (
+          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          || !get(
+            /databases/$(database)/documents/users/$(request.auth.uid)
+          ).data.keys().hasAny(["emailVerificationRequired"])
+          || get(
+            /databases/$(database)/documents/users/$(request.auth.uid)
+          ).data.emailVerificationRequired != true
+          || request.auth.token.email_verified == true
+        );
+    }
+
+    function isSignedIn() {
+      return isRawSignedIn() && emailVerificationSatisfied();
     }
 
     function userDoc() {
@@ -79,6 +97,41 @@ function isSelfCreatedInmobiliaria(inmoId) {
         && inmoId in userInmobiliarias();
     }
 
+    function hasVerifiedAuthEmail() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string;
+    }
+
+    function dataAllowsConsortiumEmail(data) {
+      return hasVerifiedAuthEmail()
+        && data.keys().hasAny(["portalEmails"])
+        && data.portalEmails is list
+        && request.auth.token.email in data.portalEmails;
+    }
+
+    function consortiumPath(inmoId, consortiumId) {
+      return /databases/$(database)/documents/inmobiliarias/$(inmoId)/condominiums/$(consortiumId);
+    }
+
+    function consortiumUnitPath(inmoId, unitId) {
+      return /databases/$(database)/documents/inmobiliarias/$(inmoId)/condominium_units/$(unitId);
+    }
+
+    function consortiumObligationPath(inmoId, obligationId) {
+      return /databases/$(database)/documents/inmobiliarias/$(inmoId)/condominium_obligations/$(obligationId);
+    }
+
+    function hasConsortiumPortalAccess(inmoId, consortiumId) {
+      return exists(consortiumPath(inmoId, consortiumId))
+        && dataAllowsConsortiumEmail(get(consortiumPath(inmoId, consortiumId)).data);
+    }
+
+    function hasConsortiumUnitPortalAccess(inmoId, unitId) {
+      return exists(consortiumUnitPath(inmoId, unitId))
+        && dataAllowsConsortiumEmail(get(consortiumUnitPath(inmoId, unitId)).data);
+    }
+
     function isOwner(resource) {
       return isSignedIn()
         && resource != null
@@ -94,6 +147,78 @@ function isSelfCreatedInmobiliaria(inmoId) {
         && resource.data.estado == "activo"
         && resource.data.deleted == false
         && resource.data.publicarEnPortal == true;
+    }
+
+    function isEditableTasacionStatus(status) {
+      return status == "borrador" || status == "observada";
+    }
+
+    function isValidTasacionTransition(fromStatus, toStatus) {
+      return (
+        (fromStatus == "borrador" && toStatus == "en_revision")
+        || (fromStatus == "observada" && toStatus == "en_revision")
+        || (
+          fromStatus == "en_revision"
+          && (toStatus == "observada" || toStatus == "aprobada")
+        )
+        || (
+          fromStatus == "aprobada"
+          && (toStatus == "observada" || toStatus == "emitida")
+        )
+        || (
+          fromStatus == "emitida"
+          && (toStatus == "entregada" || toStatus == "anulada")
+        )
+        || (fromStatus == "entregada" && toStatus == "anulada")
+      );
+    }
+
+    function tasacionTransitionChangesOnlyWorkflowFields(fromStatus, toStatus) {
+      return (
+        (
+          (fromStatus == "borrador" || fromStatus == "observada")
+          && toStatus == "en_revision"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "review", "workflow", "updatedAt", "updatedBy"
+          ])
+        )
+        || (
+          fromStatus == "en_revision"
+          && (toStatus == "observada" || toStatus == "aprobada")
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "review", "workflow", "updatedAt", "updatedBy"
+          ])
+        )
+        || (
+          fromStatus == "aprobada"
+          && toStatus == "observada"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "review", "workflow", "updatedAt", "updatedBy"
+          ])
+        )
+        || (
+          fromStatus == "aprobada"
+          && toStatus == "emitida"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "review", "workflow", "issuance",
+            "calculationSnapshot", "updatedAt", "updatedBy"
+          ])
+        )
+        || (
+          fromStatus == "emitida"
+          && toStatus == "entregada"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "workflow", "delivery", "updatedAt", "updatedBy"
+          ])
+        )
+        || (
+          (fromStatus == "emitida" || fromStatus == "entregada")
+          && toStatus == "anulada"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "estado", "workflow", "annulment", "updatedAt", "updatedBy"
+          ])
+        )
+      );
     }
 
     function isPublicEmprendimiento(resource) {
@@ -291,6 +416,21 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
     && request.resource.data.activeInmobiliariaId in existingUserInmobiliarias();
 }
 
+      function selfCanRequireEmailVerification() {
+  return isRawSignedIn()
+    && request.auth.uid == userId
+    && request.resource.data
+      .diff(resource.data)
+      .affectedKeys()
+      .hasOnly([
+        "emailVerificationRequired",
+        "emailVerificationRequestedAt",
+        "authProvider"
+      ])
+    && request.resource.data.emailVerificationRequired == true
+    && request.resource.data.authProvider == "password";
+}
+
       function existingUserRoles() {
   return resource.data.keys().hasAny(["roles"])
     && resource.data.roles is list
@@ -396,7 +536,7 @@ function adminCanApproveUserInmobiliariaLink() {
 }
 
       allow get: if
-        isSignedIn()
+        isRawSignedIn()
         && (
           request.auth.uid == userId
           || isRoot()
@@ -420,7 +560,8 @@ allow update: if
   || adminCanOnlyChangeOwnInmobiliariaLinks()
   || selfCanCompleteInmobiliariaRegistration()
   || adminCanApproveUserInmobiliariaLink()
-  || selfCanChangeActiveInmobiliaria();
+  || selfCanChangeActiveInmobiliaria()
+  || selfCanRequireEmailVerification();
 
       allow delete: if isRoot();
     }
@@ -702,6 +843,541 @@ allow delete: if isRoot();
           isRoot()
           || adminHasInmobiliaria(inmoId);
       }
+
+      /* ============================
+         SUBCOLECCIÓN TASACIONES
+         Expedientes privados por inmobiliaria.
+         Los documentos emitidos o anulados son inmutables.
+         ============================ */
+
+      match /tasaciones/{tasacionId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId);
+
+        allow create: if
+          isSignedIn()
+          && (
+            isRoot()
+            || (
+              isAdmin()
+              && belongsToUserInmobiliaria(inmoId)
+              && request.resource.data.ownerId == request.auth.uid
+              && request.resource.data.ownerInmobiliariaId == inmoId
+              && request.resource.data.inmobiliariaId == inmoId
+              && request.resource.data.estado == "borrador"
+              && request.resource.data.deleted == false
+            )
+          );
+
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.ownerId == resource.data.ownerId
+          && (
+            (
+              isEditableTasacionStatus(resource.data.estado)
+              && request.resource.data.estado == resource.data.estado
+            )
+            || (
+              isValidTasacionTransition(
+                resource.data.estado,
+                request.resource.data.estado
+              )
+              && tasacionTransitionChangesOnlyWorkflowFields(
+                resource.data.estado,
+                request.resource.data.estado
+              )
+            )
+          );
+
+        allow delete: if false;
+      }
+
+      /* ============================
+         ADMINISTRACIÓN DE ALQUILERES
+         Datos privados y trazables de cada inmobiliaria.
+         ============================ */
+
+      match /rental_people/{partyId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.deleted == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && resource.data.inmobiliariaId == inmoId;
+        allow delete: if false;
+      }
+
+      match /rental_contracts/{contractId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.status in ["draft", "active"]
+          && request.resource.data.deleted == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.status in ["draft", "active", "ended", "cancelled"];
+        allow delete: if false;
+      }
+
+      match /rental_obligations/{obligationId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.id == obligationId
+          && !request.resource.data.keys().hasAny(["arcaProductionInvoice"]);
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.contractId == resource.data.contractId
+          && request.resource.data.periodKey == resource.data.periodKey
+          && (
+            !resource.data.keys().hasAny(["arcaProductionInvoice"])
+            || (
+              request.resource.data.keys().hasAny(["arcaProductionInvoice"])
+              && request.resource.data.arcaProductionInvoice == resource.data.arcaProductionInvoice
+            )
+          );
+        allow delete: if false;
+      }
+
+      match /rental_expenses/{expenseId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.deleted == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && resource.data.inmobiliariaId == inmoId;
+        allow delete: if false;
+      }
+
+      match /rental_settlements/{settlementId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.id == settlementId;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.contractId == resource.data.contractId
+          && request.resource.data.obligationId == resource.data.obligationId;
+        allow delete: if false;
+      }
+
+      match /arca_invoice_drafts/{draftId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow write: if false;
+      }
+
+      match /arca_production_invoice_previews/{previewId} {
+        allow read, write: if false;
+      }
+
+      /* ============================
+         ADMINISTRACIÓN DE CONSORCIOS
+         Unidades, liquidaciones, expensas, cobros y cuentas corrientes.
+         ============================ */
+
+      match /condominiums/{consortiumId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || dataAllowsConsortiumEmail(resource.data);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.status in ["active", "archived"]
+          && request.resource.data.deleted == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.status in ["active", "archived"];
+        allow delete: if false;
+      }
+
+      match /condominium_units/{unitId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || dataAllowsConsortiumEmail(resource.data);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.deleted == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId == resource.data.consortiumId;
+        allow delete: if false;
+      }
+
+      match /condominium_periods/{periodId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || hasConsortiumPortalAccess(inmoId, resource.data.consortiumId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.id == periodId
+          && request.resource.data.status == "draft"
+          && request.resource.data.deleted == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId == resource.data.consortiumId
+          && request.resource.data.periodKey == resource.data.periodKey
+          && request.resource.data.status in ["draft", "issued", "closed"];
+        allow delete: if false;
+      }
+
+      match /condominium_obligations/{obligationId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || hasConsortiumUnitPortalAccess(inmoId, resource.data.unitId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.id == obligationId;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId == resource.data.consortiumId
+          && request.resource.data.periodId == resource.data.periodId
+          && request.resource.data.unitId == resource.data.unitId;
+        allow delete: if false;
+      }
+
+      match /condominium_payments/{paymentId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || hasConsortiumUnitPortalAccess(inmoId, resource.data.unitId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.id == paymentId
+          && request.resource.data.voided == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId == resource.data.consortiumId
+          && request.resource.data.obligationId == resource.data.obligationId
+          && request.resource.data.unitId == resource.data.unitId;
+        allow delete: if false;
+      }
+
+      match /condominium_expense_documents/{documentId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || hasConsortiumPortalAccess(inmoId, resource.data.consortiumId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.id == documentId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.periodId is string
+          && request.resource.data.expenseId is string
+          && request.resource.data.voided == false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId == resource.data.consortiumId
+          && request.resource.data.periodId == resource.data.periodId
+          && request.resource.data.expenseId == resource.data.expenseId
+          && request.resource.data.storagePath == resource.data.storagePath;
+        allow delete: if false;
+      }
+
+      match /condominium_payment_reports/{reportId} {
+        allow read: if
+          isRoot()
+          || adminHasInmobiliaria(inmoId)
+          || hasConsortiumUnitPortalAccess(inmoId, resource.data.unitId);
+        allow create: if
+          hasConsortiumUnitPortalAccess(inmoId, request.resource.data.unitId)
+          && exists(consortiumObligationPath(inmoId, request.resource.data.obligationId))
+          && get(consortiumUnitPath(inmoId, request.resource.data.unitId)).data.consortiumId
+            == request.resource.data.consortiumId
+          && get(consortiumObligationPath(inmoId, request.resource.data.obligationId)).data.unitId
+            == request.resource.data.unitId
+          && get(consortiumObligationPath(inmoId, request.resource.data.obligationId)).data.consortiumId
+            == request.resource.data.consortiumId
+          && request.resource.data.periodId
+            == get(consortiumObligationPath(inmoId, request.resource.data.obligationId)).data.periodId
+          && request.resource.data.periodKey
+            == get(consortiumObligationPath(inmoId, request.resource.data.obligationId)).data.periodKey
+          && request.resource.data.amountMinor
+            <= get(consortiumObligationPath(inmoId, request.resource.data.obligationId)).data.balanceMinor
+          && request.resource.data.id == reportId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.submittedBy == request.auth.uid
+          && request.resource.data.submittedByEmail == request.auth.token.email
+          && request.resource.data.status == "pending"
+          && request.resource.data.amountMinor is int
+          && request.resource.data.amountMinor > 0;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId == resource.data.consortiumId
+          && request.resource.data.unitId == resource.data.unitId
+          && request.resource.data.obligationId == resource.data.obligationId
+          && request.resource.data.amountMinor == resource.data.amountMinor
+          && request.resource.data.proofStoragePath == resource.data.proofStoragePath
+          && request.resource.data.status in ["approved", "rejected"];
+        allow delete: if false;
+      }
+
+      /* ============================
+         CONTROL TRIBUTARIO INMOBILIARIO
+         Objetos, obligaciones y auditoría privada por inmobiliaria.
+         ============================ */
+
+      match /tax_objects/{taxObjectId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.status == "active";
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.inmuebleId == resource.data.inmuebleId
+          && request.resource.data.status in ["active", "archived"];
+        allow delete: if false;
+      }
+
+      match /tax_obligations/{obligationId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.status in [
+            "pending", "overdue", "payment_pending", "disputed", "paid", "cancelled"
+          ];
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.taxObjectId == resource.data.taxObjectId
+          && request.resource.data.inmuebleId == resource.data.inmuebleId
+          && request.resource.data.status in [
+            "pending", "overdue", "payment_pending", "disputed", "paid", "cancelled"
+          ];
+        allow delete: if false;
+      }
+
+      match /tax_events/{eventId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.actorId == request.auth.uid
+          && request.resource.data.entityType in [
+            "tax_object", "tax_obligation", "tax_settings"
+          ];
+        allow update, delete: if false;
+      }
+
+      match /tax_notification_settings/{settingsId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          settingsId == "default"
+          && isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.keys().hasOnly([
+            "schemaVersion",
+            "inmobiliariaId",
+            "ownerInmobiliariaId",
+            "enabled",
+            "inAppEnabled",
+            "emailEnabled",
+            "overdueAlert",
+            "recipientEmails",
+            "timezone",
+            "createdAt",
+            "createdBy",
+            "updatedAt",
+            "updatedBy"
+          ])
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.enabled is bool
+          && request.resource.data.inAppEnabled is bool
+          && request.resource.data.emailEnabled is bool
+          && request.resource.data.overdueAlert is bool
+          && request.resource.data.recipientEmails is list
+          && request.resource.data.recipientEmails.size() <= 10
+          && request.resource.data.timezone == "America/Argentina/Buenos_Aires"
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.updatedBy == request.auth.uid;
+        allow update: if
+          settingsId == "default"
+          && isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.keys().hasOnly([
+            "schemaVersion",
+            "inmobiliariaId",
+            "ownerInmobiliariaId",
+            "enabled",
+            "inAppEnabled",
+            "emailEnabled",
+            "overdueAlert",
+            "recipientEmails",
+            "timezone",
+            "createdAt",
+            "createdBy",
+            "updatedAt",
+            "updatedBy"
+          ])
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.enabled is bool
+          && request.resource.data.inAppEnabled is bool
+          && request.resource.data.emailEnabled is bool
+          && request.resource.data.overdueAlert is bool
+          && request.resource.data.recipientEmails is list
+          && request.resource.data.recipientEmails.size() <= 10
+          && request.resource.data.timezone == "America/Argentina/Buenos_Aires"
+          && request.resource.data.updatedBy == request.auth.uid;
+        allow delete: if false;
+      }
+
+      match /tax_notifications/{notificationId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create, delete: if false;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly(["status", "readAt", "readBy"])
+          && request.resource.data.status == "read"
+          && request.resource.data.readBy == request.auth.uid;
+      }
+    }
+
+    /* ============================
+       VERIFICACIÓN PÚBLICA DE TASACIONES
+       No contiene cliente, domicilio exacto ni valor.
+       ============================ */
+
+    match /tasacion_verifications/{verificationCode} {
+      allow get: if true;
+      allow list: if false;
+
+      allow create: if
+        isSignedIn()
+        && request.resource.data.code == verificationCode
+        && (
+          isRoot()
+          || adminHasInmobiliaria(request.resource.data.inmobiliariaId)
+        );
+
+      allow update: if
+        isSignedIn()
+        && request.resource.data.code == verificationCode
+        && request.resource.data.inmobiliariaId == resource.data.inmobiliariaId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "status", "updatedAt"
+        ])
+        && (
+          isRoot()
+          || adminHasInmobiliaria(resource.data.inmobiliariaId)
+        );
+
+      allow delete: if false;
     }
 
     /* ============================
@@ -1477,6 +2153,27 @@ match /particular_publication_requests/{requestId} {
     }
 
     /* ============================
+       INTEGRACIÓN ARCA
+       Perfiles, tickets y bloqueos solo mediante Cloud Functions.
+       ============================ */
+
+    match /arca_issuer_profiles/{profileId} {
+      allow read, write: if false;
+    }
+
+    match /arca_private_tickets/{ticketId} {
+      allow read, write: if false;
+    }
+
+    match /arca_issue_sequences/{sequenceId} {
+      allow read, write: if false;
+    }
+
+    match /arca_audit_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    /* ============================
        CUENTA CORRIENTE Y GESTIÓN COMERCIAL
        Acceso exclusivo mediante Cloud Functions verificadas.
        ============================ */
@@ -1489,11 +2186,27 @@ match /particular_publication_requests/{requestId} {
       allow read, write: if false;
     }
 
+    match /billing_contracts/{contractId}/{document=**} {
+      allow read, write: if false;
+    }
+
     match /billing_accounts/{inmobiliariaId}/{document=**} {
       allow read, write: if false;
     }
 
     match /billing_payment_reports/{reportId} {
+      allow read, write: if false;
+    }
+
+    match /billing_interest_rates/{rateId} {
+      allow read, write: if false;
+    }
+
+    match /billing_promotion_codes/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /billing_commercial_leads/{document=**} {
       allow read, write: if false;
     }
 

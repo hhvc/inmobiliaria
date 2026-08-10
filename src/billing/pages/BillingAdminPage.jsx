@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import BillingCatalogEditor from "../components/BillingCatalogEditor";
+import BillingCommercialLeadsPanel from "../components/BillingCommercialLeadsPanel";
+import BillingContractApprovalForm from "../components/BillingContractApprovalForm";
 import BillingPaymentProofLink from "../components/BillingPaymentProofLink";
+import BillingPromotionEditor from "../components/BillingPromotionEditor";
 import {
     activateBillingContract,
     approveBillingContract,
@@ -12,14 +15,20 @@ import {
     rejectBillingContract,
     resolveBillingCancellation,
     resolveBillingPaymentReport,
+    runBillingMaintenance,
+    updateCommercialLead,
+    upsertBillingInterestRate,
 } from "../services/billing.service";
 import {
+    formatBillingPercent,
     formatBillingDate,
     formatMoneyMinor,
     getContractBadgeClass,
     getContractStatusLabel,
     getRecurrenceLabel,
     majorAmountToMinor,
+    tnaMillionthsToPercent,
+    tnaPercentToMillionths,
 } from "../utils/billing.helpers";
 
 const PENDING_CONTRACT_STATUSES = new Set([
@@ -65,6 +74,13 @@ const BillingAdminPage = () => {
     const [operation, setOperation] = useState("");
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const [approvalContract, setApprovalContract] = useState(null);
+    const [rateForm, setRateForm] = useState({
+        effectiveDateKey: new Date().toISOString().slice(0, 10),
+        currency: "ARS",
+        tnaPercent: "",
+        note: "",
+    });
 
     const loadOverview = useCallback(async () => {
         try {
@@ -91,9 +107,11 @@ const BillingAdminPage = () => {
             await callback();
             setSuccess(message);
             await loadOverview();
+            return true;
         } catch (operationError) {
             console.error(`Error en operación ${name}:`, operationError);
             setError(operationError.message || "No se pudo completar la operación.");
+            return false;
         } finally {
             setOperation("");
         }
@@ -105,9 +123,18 @@ const BillingAdminPage = () => {
     const pendingPayments = useMemo(() => (overview?.paymentReports || []).filter(
         (report) => report.status === "pending",
     ), [overview]);
+    const openCommercialLeads = useMemo(() => (
+        overview?.commercialLeads || []
+    ).filter((lead) => !["won", "lost"].includes(lead.status)), [overview]);
     const accountsByAgency = useMemo(() => new Map(
         (overview?.accounts || []).map((account) => [account.id, account]),
     ), [overview]);
+    const currentArsRate = useMemo(() => {
+        const todayDateKey = new Date().toISOString().slice(0, 10);
+        return (overview?.interestRates || []).find((rate) => (
+            rate.currency === "ARS" && rate.effectiveDateKey <= todayDateKey
+        )) || null;
+    }, [overview]);
 
     const handleQuote = (contract) => {
         const quoteAmounts = buildQuoteAmounts(contract);
@@ -122,28 +149,47 @@ const BillingAdminPage = () => {
     };
 
     const handleApprove = (contract) => {
-        const defaultDate = new Date().toISOString().slice(0, 10);
-        const serviceDate = window.prompt(
-            "Fecha de inicio del servicio (AAAA-MM-DD):",
-            defaultDate,
-        );
-        if (serviceDate === null) return;
-        const parsed = new Date(`${serviceDate}T12:00:00-03:00`);
-        if (Number.isNaN(parsed.getTime())) {
-            window.alert("La fecha ingresada no es válida.");
+        setApprovalContract(contract);
+        setError("");
+        setSuccess("");
+        window.setTimeout(() => {
+            document.getElementById("contract-approval-form")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }, 0);
+    };
+
+    const handleApprovalSubmit = (payload) => {
+        runOperation(
+            `approve-${payload.contractId}`,
+            () => approveBillingContract(payload),
+            "Contratación aprobada y cargos generados.",
+        ).then((done) => {
+            if (done) setApprovalContract(null);
+        });
+    };
+
+    const handleRateSubmit = (event) => {
+        event.preventDefault();
+        const tnaMillionths = tnaPercentToMillionths(rateForm.tnaPercent);
+        if (tnaMillionths === null) {
+            setError("Ingresá una TNA válida.");
             return;
         }
-        const adminNote = window.prompt("Nota interna o de configuración (opcional):", "");
-        if (adminNote === null) return;
-        if (!window.confirm(
-            "Esto generará los cargos iniciales y recurrentes de la contratación. ¿Continuar?",
-        )) return;
-        runOperation(`approve-${contract.id}`, () => approveBillingContract({
-            contractId: contract.id,
-            serviceStartAt: parsed.getTime(),
-            adminNote,
-        }), "Contratación aprobada y cargos generados.");
+        runOperation("interest-rate", () => upsertBillingInterestRate({
+            effectiveDateKey: rateForm.effectiveDateKey,
+            currency: rateForm.currency,
+            tnaMillionths,
+            note: rateForm.note,
+        }), "TNA general actualizada.");
     };
+
+    const handleCommercialLeadUpdate = (payload) => runOperation(
+        `lead-${payload.leadId}`,
+        () => updateCommercialLead(payload),
+        "Seguimiento comercial actualizado.",
+    );
 
     const handleReject = (contract) => {
         const note = window.prompt("Motivo del rechazo:", "");
@@ -316,13 +362,25 @@ const BillingAdminPage = () => {
                 >
                     Actualizar
                 </button>
+                <button
+                    type="button"
+                    className="btn btn-outline-secondary"
+                    onClick={() => runOperation(
+                        "maintenance",
+                        runBillingMaintenance,
+                        "Mantenimiento de cargos e intereses ejecutado.",
+                    )}
+                    disabled={loading || Boolean(operation)}
+                >
+                    Ejecutar mantenimiento
+                </button>
             </div>
 
             {error && <div className="alert alert-danger">{error}</div>}
             {success && <div className="alert alert-success">{success}</div>}
 
             <section className="row g-3 mb-4">
-                <div className="col-md-4">
+                <div className="col-md-6 col-xl-3">
                     <div className="card border-0 shadow-sm h-100">
                         <div className="card-body">
                             <div className="text-muted small">Contrataciones pendientes</div>
@@ -330,7 +388,7 @@ const BillingAdminPage = () => {
                         </div>
                     </div>
                 </div>
-                <div className="col-md-4">
+                <div className="col-md-6 col-xl-3">
                     <div className="card border-0 shadow-sm h-100">
                         <div className="card-body">
                             <div className="text-muted small">Pagos por revisar</div>
@@ -338,11 +396,172 @@ const BillingAdminPage = () => {
                         </div>
                     </div>
                 </div>
-                <div className="col-md-4">
+                <div className="col-md-6 col-xl-3">
                     <div className="card border-0 shadow-sm h-100">
                         <div className="card-body">
                             <div className="text-muted small">Inmobiliarias</div>
                             <div className="display-6">{overview?.agencies?.length || 0}</div>
+                        </div>
+                    </div>
+                </div>
+                <div className="col-md-6 col-xl-3">
+                    <div className="card border-0 shadow-sm h-100">
+                        <div className="card-body">
+                            <div className="text-muted small">Oportunidades abiertas</div>
+                            <div className="display-6">{openCommercialLeads.length}</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <BillingCommercialLeadsPanel
+                leads={overview?.commercialLeads || []}
+                agencies={overview?.agencies || []}
+                operation={operation}
+                onUpdate={handleCommercialLeadUpdate}
+            />
+
+            {approvalContract && (
+                <BillingContractApprovalForm
+                    key={approvalContract.id}
+                    contract={approvalContract}
+                    operation={operation}
+                    onApprove={handleApprovalSubmit}
+                    onCancel={() => setApprovalContract(null)}
+                />
+            )}
+
+            <section className="card border-0 shadow-sm mb-4">
+                <div className="card-body p-4">
+                    <div className="row g-4 align-items-start">
+                        <div className="col-lg-5">
+                            <p className="text-uppercase text-muted small mb-1">
+                                Configuración general
+                            </p>
+                            <h2 className="h4 mb-2">TNA para intereses moratorios</h2>
+                            <p className="text-muted small">
+                                La tasa rige desde la fecha indicada. Si no se carga una nueva,
+                                el sistema continúa usando la última vigente. La tasa diaria se
+                                calcula sobre base 365.
+                            </p>
+                            <div className="border rounded p-3 mb-3">
+                                <div className="small text-muted">Última TNA ARS cargada</div>
+                                <div className="h3 mb-1">
+                                    {currentArsRate
+                                        ? `${formatBillingPercent(tnaMillionthsToPercent(currentArsRate.tnaMillionths))}%`
+                                        : "Sin configurar"}
+                                </div>
+                                <div className="small text-muted">
+                                    {currentArsRate
+                                        ? `Vigente desde ${currentArsRate.effectiveDateKey}`
+                                        : "Debe cargarse antes de aprobar contratos en ARS."}
+                                </div>
+                            </div>
+                            <a
+                                href="https://www.bcra.gob.ar/principales-variables-datos/?serie=8886"
+                                target="_blank"
+                                rel="noreferrer"
+                                className="small"
+                            >
+                                Consultar TIM publicada por el BCRA
+                            </a>
+                            <div className="small text-muted mt-1">
+                                La TIM es una serie acumulativa: no copies su valor directamente
+                                como TNA. La conversión automática se incorporará después.
+                            </div>
+                        </div>
+                        <div className="col-lg-7">
+                            <form className="row g-3" onSubmit={handleRateSubmit}>
+                                <div className="col-md-4">
+                                    <label className="form-label">Fecha de vigencia</label>
+                                    <input
+                                        type="date"
+                                        className="form-control"
+                                        value={rateForm.effectiveDateKey}
+                                        onChange={(event) => setRateForm((current) => ({
+                                            ...current,
+                                            effectiveDateKey: event.target.value,
+                                        }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="col-md-2">
+                                    <label className="form-label">Moneda</label>
+                                    <input
+                                        className="form-control text-uppercase"
+                                        maxLength="3"
+                                        value={rateForm.currency}
+                                        onChange={(event) => setRateForm((current) => ({
+                                            ...current,
+                                            currency: event.target.value.toUpperCase(),
+                                        }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="col-md-3">
+                                    <label className="form-label">TNA (%)</label>
+                                    <input
+                                        className="form-control"
+                                        inputMode="decimal"
+                                        placeholder="Ej.: 65,50"
+                                        value={rateForm.tnaPercent}
+                                        onChange={(event) => setRateForm((current) => ({
+                                            ...current,
+                                            tnaPercent: event.target.value,
+                                        }))}
+                                        required
+                                    />
+                                </div>
+                                <div className="col-md-3 d-flex align-items-end">
+                                    <button
+                                        type="submit"
+                                        className="btn btn-primary w-100"
+                                        disabled={Boolean(operation)}
+                                    >
+                                        Guardar TNA
+                                    </button>
+                                </div>
+                                <div className="col-12">
+                                    <label className="form-label">Nota o fuente</label>
+                                    <input
+                                        className="form-control"
+                                        value={rateForm.note}
+                                        onChange={(event) => setRateForm((current) => ({
+                                            ...current,
+                                            note: event.target.value,
+                                        }))}
+                                    />
+                                </div>
+                            </form>
+
+                            <div className="table-responsive mt-4">
+                                <table className="table table-sm align-middle mb-0">
+                                    <thead>
+                                        <tr><th>Vigencia</th><th>Moneda</th><th>TNA</th><th>Fuente</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        {(overview?.interestRates || []).slice(0, 12).map((rate) => (
+                                            <tr key={rate.id}>
+                                                <td>{rate.effectiveDateKey}</td>
+                                                <td>{rate.currency}</td>
+                                                <td>
+                                                    {formatBillingPercent(
+                                                        tnaMillionthsToPercent(rate.tnaMillionths),
+                                                    )}%
+                                                </td>
+                                                <td>{rate.note || rate.source || "Manual"}</td>
+                                            </tr>
+                                        ))}
+                                        {!overview?.interestRates?.length && (
+                                            <tr>
+                                                <td colSpan="4" className="text-muted text-center py-3">
+                                                    No hay tasas cargadas.
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -375,6 +594,20 @@ const BillingAdminPage = () => {
                                             {Number(contract.quantity || 1) > 1 && (
                                                 <div className="small text-muted">
                                                     {contract.quantity} {contract.unitLabel}
+                                                </div>
+                                            )}
+                                            {contract.serviceStartDateKey && (
+                                                <div className="small text-muted">
+                                                    {contract.serviceStartDateKey}
+                                                    {contract.serviceEndDateKey
+                                                        ? ` al ${contract.serviceEndDateKey}`
+                                                        : " · indefinido"}
+                                                    {` · vence a ${contract.paymentTermDays || 15} días`}
+                                                </div>
+                                            )}
+                                            {contract.promotion?.code && (
+                                                <div className="small text-success">
+                                                    Código: <strong>{contract.promotion.code}</strong>
                                                 </div>
                                             )}
                                         </td>
@@ -419,7 +652,7 @@ const BillingAdminPage = () => {
                                 {pendingPayments.map((report) => (
                                     <tr key={report.id}>
                                         <td>{report.inmobiliariaNombre}</td>
-                                        <td>{formatBillingDate(report.paidAt)}</td>
+                                        <td>{report.paidDateKey || formatBillingDate(report.paidAt)}</td>
                                         <td>{formatMoneyMinor(report.amountMinor, report.currency)}</td>
                                         <td>{report.reference || "-"}</td>
                                         <td>
@@ -503,6 +736,12 @@ const BillingAdminPage = () => {
                     </div>
                 </div>
             </section>
+
+            <BillingPromotionEditor
+                promotions={overview?.promotions || []}
+                catalog={overview?.catalog || []}
+                onChanged={loadOverview}
+            />
 
             <BillingCatalogEditor
                 catalog={overview?.catalog || []}

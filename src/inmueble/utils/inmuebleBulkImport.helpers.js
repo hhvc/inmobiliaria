@@ -27,6 +27,9 @@ export const INMUEBLE_BULK_IMPORT_COLUMNS = [
   "ciudad",
   "provincia",
   "pais",
+  "latitud",
+  "longitud",
+  "precision_mapa",
   "superficie_total",
   "superficie_cubierta",
   "superficie_semicubierta",
@@ -86,6 +89,9 @@ export const INMUEBLE_BULK_IMPORT_TEMPLATE_ROW = {
   ciudad: "Córdoba",
   provincia: "Córdoba",
   pais: "Argentina",
+  latitud: "",
+  longitud: "",
+  precision_mapa: "precisa",
   superficie_total: "180",
   superficie_cubierta: "120",
   superficie_semicubierta: "",
@@ -150,6 +156,12 @@ const HEADER_ALIASES = {
   provincia: "provincia",
   pais: "pais",
   país: "pais",
+  latitud: "latitud",
+  latitude: "latitud",
+  longitud: "longitud",
+  longitude: "longitud",
+  precision_mapa: "precision_mapa",
+  precisión_mapa: "precision_mapa",
   superficie_total: "superficie_total",
   sup_total: "superficie_total",
   superficie_cubierta: "superficie_cubierta",
@@ -515,6 +527,15 @@ export const validateInmuebleBulkImportRow = (row = {}) => {
     errors.push("Cargá al menos ciudad o barrio");
   }
 
+  if (
+    parseBoolean(row.publicar_en_portal, false) &&
+    (!parseNumber(row.latitud) || !parseNumber(row.longitud))
+  ) {
+    errors.push(
+      "Latitud y longitud son obligatorias para publicar en el portal",
+    );
+  }
+
   if (imageUrls.length === 0) {
     warnings.push("Sin imágenes externas cargadas");
   }
@@ -566,6 +587,12 @@ export const buildInmuebleBulkImportPayload = (
       ciudad: cleanText(row.ciudad),
       provincia: cleanText(row.provincia) || "Córdoba",
       pais: cleanText(row.pais) || "Argentina",
+      lat: parseNumber(row.latitud) || null,
+      lng: parseNumber(row.longitud) || null,
+      precisionMapa:
+        cleanText(row.precision_mapa).toLowerCase() === "aproximada"
+          ? "aproximada"
+          : "precisa",
     },
 
     superficie: {

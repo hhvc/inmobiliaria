@@ -207,6 +207,41 @@ const sanitizeUpdatePayload = (data = {}) => {
   return payload;
 };
 
+const hasValidPublicMapLocation = (data = {}) => {
+  const direccion = data.direccion || {};
+  const latitudeValue =
+    direccion.lat ?? direccion.latitude ?? data.lat ?? data.latitude;
+  const longitudeValue =
+    direccion.lng ?? direccion.longitude ?? data.lng ?? data.longitude;
+  const latitude =
+    latitudeValue === "" || latitudeValue === null || latitudeValue === undefined
+      ? Number.NaN
+      : Number(latitudeValue);
+  const longitude =
+    longitudeValue === "" ||
+    longitudeValue === null ||
+    longitudeValue === undefined
+      ? Number.NaN
+      : Number(longitudeValue);
+
+  return (
+    Number.isFinite(latitude) &&
+    latitude >= -90 &&
+    latitude <= 90 &&
+    Number.isFinite(longitude) &&
+    longitude >= -180 &&
+    longitude <= 180
+  );
+};
+
+const assertPublicMapLocation = (data = {}) => {
+  if (data.publicarEnPortal === true && !hasValidPublicMapLocation(data)) {
+    throw new Error(
+      "Para publicar en el portal, el inmueble debe tener una ubicación seleccionada en el mapa.",
+    );
+  }
+};
+
 const resolvePublicListArgs = (
   inmobiliariaIdOrOptions = {},
   maybeOptions = {},
@@ -398,6 +433,8 @@ export const createInmueble = async (
   if (!data || typeof data !== "object") {
     throw new Error("Datos del inmueble inválidos");
   }
+
+  assertPublicMapLocation(data);
 
   try {
     await assertInmobiliariaActiva(inmobiliariaId);
@@ -827,6 +864,8 @@ export const updateInmueble = async (
   if (!data || typeof data !== "object") {
     throw new Error("Datos del inmueble inválidos");
   }
+
+  assertPublicMapLocation(data);
 
   try {
     await assertInmobiliariaActiva(inmobiliariaId);

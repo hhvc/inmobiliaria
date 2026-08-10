@@ -441,10 +441,395 @@ img {
 }
 
 /* =========================
+   Acceso y autenticación
+   ========================= */
+
+.auth-page {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: calc(100vh - 76px);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 8% 15%, rgba(13, 110, 253, 0.16), transparent 34%),
+    radial-gradient(circle at 93% 84%, rgba(24, 180, 130, 0.13), transparent 30%),
+    linear-gradient(145deg, #f7faff 0%, #eef4fb 48%, #f7faf9 100%);
+}
+
+.auth-page::before {
+  position: absolute;
+  width: 360px;
+  height: 360px;
+  top: -230px;
+  right: 8%;
+  content: "";
+  border: 1px solid rgba(13, 110, 253, 0.13);
+  border-radius: 50%;
+}
+
+.auth-shell {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 0.93fr) minmax(440px, 1.07fr);
+  width: min(1120px, 100%);
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2rem 6rem rgba(15, 23, 42, 0.15);
+  backdrop-filter: blur(18px);
+}
+
+.auth-story-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 650px;
+  padding: clamp(2.5rem, 5vw, 4.5rem);
+  color: #fff;
+  background:
+    linear-gradient(150deg, rgba(7, 48, 111, 0.95), rgba(13, 110, 253, 0.86)),
+    url("/assets/img/bgTop2.jpg") center/cover;
+}
+
+.auth-story-panel::after {
+  position: absolute;
+  width: 230px;
+  height: 230px;
+  right: -90px;
+  bottom: -75px;
+  content: "";
+  border: 42px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+}
+
+.auth-story-panel>div,
+.auth-benefit-list,
+.auth-story-footnote {
+  position: relative;
+  z-index: 1;
+}
+
+.auth-story-badge {
+  display: inline-flex;
+  padding: 0.48rem 0.8rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auth-story-panel h1 {
+  max-width: 520px;
+  margin-bottom: 1.25rem;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  font-weight: 750;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
+}
+
+.auth-story-panel p {
+  max-width: 520px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 1.02rem;
+  line-height: 1.75;
+}
+
+.auth-benefit-list {
+  display: grid;
+  gap: 0.9rem;
+  padding: 0;
+  margin: 2.5rem 0;
+  list-style: none;
+}
+
+.auth-benefit-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 550;
+}
+
+.auth-benefit-list span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.auth-story-footnote {
+  padding-top: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 0.86rem !important;
+}
+
+.auth-form-panel {
+  display: flex;
+  align-items: center;
+  padding: clamp(2rem, 5vw, 4.25rem);
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.auth-card-content {
+  width: 100%;
+  max-width: 470px;
+  margin: 0 auto;
+}
+
+.auth-card-content--compact {
+  padding: 0.25rem;
+}
+
+.auth-card-heading {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.auth-card-logo {
+  width: 70px;
+  height: 70px;
+  object-fit: contain;
+  padding: 0.35rem;
+  border: 1px solid #e3ebf5;
+  border-radius: 1.15rem;
+  background: #fff;
+  box-shadow: 0 0.7rem 1.7rem rgba(15, 23, 42, 0.08);
+}
+
+.auth-eyebrow {
+  color: #0d6efd;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.auth-google-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 50px;
+  gap: 0.7rem;
+  border: 1px solid #dce3ec;
+  color: #243247;
+  background: #fff;
+  box-shadow: 0 0.4rem 1rem rgba(15, 23, 42, 0.045);
+}
+
+.auth-google-button:hover {
+  border-color: #afc5e2;
+  color: #0d6efd;
+  background: #f8fbff;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  margin: 1.4rem 0;
+  color: #8793a4;
+  font-size: 0.75rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  height: 1px;
+  flex: 1;
+  content: "";
+  background: #e5eaf0;
+}
+
+.auth-method-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  padding: 0.3rem;
+  margin-bottom: 1.4rem;
+  border-radius: 0.95rem;
+  background: #f1f5f9;
+}
+
+.auth-method-tabs button {
+  padding: 0.7rem 1rem;
+  border: 0;
+  border-radius: 0.72rem;
+  color: #687386;
+  background: transparent;
+  font-weight: 700;
+  transition: all 180ms ease;
+}
+
+.auth-method-tabs button.active {
+  color: #0d6efd;
+  background: #fff;
+  box-shadow: 0 0.3rem 0.8rem rgba(15, 23, 42, 0.08);
+}
+
+.auth-method-panel .form-label {
+  margin-bottom: 0.42rem;
+  color: #344054;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.auth-control {
+  min-height: 48px;
+  border-color: #dbe3ed;
+  background: #fbfcfe;
+}
+
+.auth-control:focus {
+  border-color: rgba(13, 110, 253, 0.6);
+  background: #fff;
+  box-shadow: 0 0 0 0.22rem rgba(13, 110, 253, 0.1);
+}
+
+.auth-password-toggle {
+  min-width: 75px;
+  border-color: #dbe3ed;
+  font-size: 0.78rem;
+}
+
+.auth-submit-button {
+  min-height: 50px;
+  box-shadow: 0 0.7rem 1.4rem rgba(13, 110, 253, 0.2);
+}
+
+.auth-inline-link,
+.auth-mode-footer button {
+  padding: 0;
+  border: 0;
+  color: #0d6efd;
+  background: none;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.auth-inline-link:hover,
+.auth-mode-footer button:hover {
+  text-decoration: underline;
+}
+
+.auth-mode-footer {
+  margin-top: 1.25rem;
+  color: #6b7280;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.auth-legal-copy,
+.auth-phone-disclosure {
+  margin-top: 1.35rem;
+  color: #8290a3;
+  text-align: center;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.auth-legal-copy a {
+  color: #53657d;
+  font-weight: 650;
+}
+
+.auth-phone-prefix {
+  border-color: #dbe3ed;
+  color: #31435c;
+  background: #eef4fb;
+  font-weight: 700;
+}
+
+.auth-code-input {
+  font-size: 1.5rem;
+  font-weight: 750;
+  letter-spacing: 0.45em;
+  text-align: center;
+}
+
+.auth-modal .modal-content,
+.modal-content:has(.auth-card-content--compact) {
+  border: 0;
+  border-radius: 1.35rem;
+  box-shadow: 0 1.8rem 5rem rgba(15, 23, 42, 0.26);
+}
+
+.auth-verification-page {
+  text-align: center;
+}
+
+.auth-verification-card {
+  width: min(520px, 100%);
+  padding: clamp(2rem, 6vw, 3.5rem);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 1.75rem;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 1.5rem 4rem rgba(15, 23, 42, 0.13);
+}
+
+.auth-mail-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 1.4rem;
+  border-radius: 1.35rem;
+  color: #0d6efd;
+  background: #eaf3ff;
+  font-size: 2rem;
+}
+
+.auth-verification-email {
+  padding: 0.8rem 1rem;
+  border-radius: 0.85rem;
+  color: #15345f;
+  background: #eef5ff;
+  font-weight: 750;
+  word-break: break-word;
+}
+
+/* =========================
    Responsive
    ========================= */
 
 @media (max-width: 991px) {
+  .auth-shell {
+    grid-template-columns: 1fr;
+    max-width: 650px;
+  }
+
+  .auth-story-panel {
+    min-height: auto;
+    padding: 2.5rem;
+  }
+
+  .auth-benefit-list,
+  .auth-story-footnote {
+    display: none;
+  }
+
+  .auth-story-panel h1 {
+    max-width: 560px;
+    font-size: 2.25rem;
+  }
+
+  .auth-form-panel {
+    padding: 2.5rem;
+  }
+
   .portal-hero {
     min-height: auto;
     padding: 4rem 0;
@@ -488,6 +873,45 @@ img {
 
 @media (max-width: 480px) {
 
+  .auth-page {
+    align-items: flex-start;
+  }
+
+  .auth-page>.container {
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
+  }
+
+  .auth-shell {
+    border-radius: 1.25rem;
+  }
+
+  .auth-story-panel {
+    padding: 1.75rem;
+  }
+
+  .auth-story-panel h1 {
+    font-size: 1.75rem;
+  }
+
+  .auth-story-panel p {
+    margin-bottom: 0;
+    font-size: 0.9rem;
+  }
+
+  .auth-form-panel {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .auth-card-heading {
+    align-items: flex-start;
+  }
+
+  .auth-card-logo {
+    width: 58px;
+    height: 58px;
+  }
+
   .portal-listing-image,
   .portal-listing-image-empty {
     height: 220px;
@@ -503,5 +927,193 @@ img {
     height: 45px;
     bottom: 15px;
     right: 15px;
+  }
+}
+
+/* ============================
+   Planes y embudo comercial
+   ============================ */
+
+.plans-page {
+  background: #f6f8fc;
+  color: #162033;
+}
+
+.plans-hero {
+  position: relative;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(circle at 92% 15%, rgb(59 130 246 / 45%), transparent 34%),
+    linear-gradient(135deg, #071a3a 0%, #0b4aa2 58%, #1875e6 100%);
+}
+
+.plans-hero::after {
+  position: absolute;
+  right: -9rem;
+  bottom: -15rem;
+  width: 34rem;
+  height: 34rem;
+  content: "";
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 50%;
+}
+
+.plans-eyebrow {
+  margin-bottom: 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.plans-hero-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 0.75rem;
+  padding: 2rem;
+  background: rgb(255 255 255 / 12%);
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 1.5rem;
+  box-shadow: 0 1.5rem 4rem rgb(0 18 55 / 28%);
+  backdrop-filter: blur(12px);
+}
+
+.plans-hero-card span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.82;
+}
+
+.plans-hero-card strong {
+  font-size: 1.45rem;
+  line-height: 1.2;
+}
+
+.plans-section-heading {
+  max-width: 760px;
+}
+
+.plan-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 1.65rem;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #dde4ef;
+  border-radius: 1.25rem;
+  box-shadow: 0 0.8rem 2.5rem rgb(30 56 96 / 8%);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.plan-card:hover {
+  border-color: #b9cdef;
+  box-shadow: 0 1.25rem 3rem rgb(30 74 145 / 14%);
+  transform: translateY(-4px);
+}
+
+.plan-card--featured {
+  border-color: #2c7be5;
+  box-shadow: 0 1.2rem 3rem rgb(23 105 224 / 18%);
+}
+
+.plan-card-ribbon {
+  align-self: flex-start;
+  padding: 0.35rem 0.75rem;
+  margin: -0.4rem 0 1rem;
+  color: #704a00;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: #ffe08a;
+  border-radius: 999px;
+}
+
+.plan-pricing {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.9rem 1rem;
+  color: #113c78;
+  font-size: 0.9rem;
+  font-weight: 700;
+  background: #eef5ff;
+  border-radius: 0.8rem;
+}
+
+.plan-inclusions {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0;
+  margin-bottom: 1.25rem;
+  font-size: 0.9rem;
+  list-style: none;
+}
+
+.plan-inclusions li {
+  position: relative;
+  padding-left: 1.5rem;
+}
+
+.plan-inclusions li::before {
+  position: absolute;
+  left: 0;
+  color: #16875d;
+  font-weight: 900;
+  content: "✓";
+}
+
+.plans-contact-section {
+  background: #fff;
+  border-top: 1px solid #e5eaf2;
+}
+
+.plans-interest-option {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  height: 100%;
+  padding: 0.75rem 0.85rem;
+  cursor: pointer;
+  background: #f8faff;
+  border: 1px solid #e0e7f2;
+  border-radius: 0.75rem;
+}
+
+.plans-interest-option:has(input:checked) {
+  color: #0b4f9c;
+  background: #eaf3ff;
+  border-color: #76aaf0;
+}
+
+.plans-interest-option input {
+  margin-top: 0.2rem;
+}
+
+.plans-success-mark {
+  display: grid;
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto 1rem;
+  color: #fff;
+  font-size: 2rem;
+  font-weight: 900;
+  place-items: center;
+  background: #16875d;
+  border-radius: 50%;
+}
+
+@media (max-width: 767.98px) {
+  .plans-hero .display-4 {
+    font-size: clamp(2.15rem, 11vw, 3.1rem);
+  }
+
+  .plans-hero-card,
+  .plan-card {
+    border-radius: 1rem;
   }
 }

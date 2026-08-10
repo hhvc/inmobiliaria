@@ -2,12 +2,16 @@ import { useAuth } from "../context/auth/useAuth";
 import { Navigate, useLocation } from "react-router-dom";
 
 const ProtectedRoute = ({ children, role = null }) => {
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, emailVerificationPending } = useAuth();
   const location = useLocation();
 
   // Si no hay usuario autenticado, redirigir al login
   if (!user) {
     return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  if (emailVerificationPending) {
+    return <Navigate to="/verificar-email" state={{ from: location }} replace />;
   }
 
   // Si se requiere un rol específico y el usuario no lo tiene

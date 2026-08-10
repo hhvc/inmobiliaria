@@ -98,6 +98,52 @@ service firebase.storage {
         );
     }
 
+    function isAgencyAdmin(inmobiliariaId) {
+      return isRoot()
+        || (userHasRole("admin") && belongsToUserInmobiliaria(inmobiliariaId));
+    }
+
+    function hasVerifiedAuthEmail() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email is string;
+    }
+
+    function hasConsortiumPortalAccess(inmobiliariaId, consortiumId) {
+      return hasVerifiedAuthEmail()
+        && firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominiums/$(consortiumId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominiums/$(consortiumId)
+        ).data.portalEmails is list
+        && request.auth.token.email in firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominiums/$(consortiumId)
+        ).data.portalEmails;
+    }
+
+    function hasConsortiumUnitPortalAccess(inmobiliariaId, unitId) {
+      return hasVerifiedAuthEmail()
+        && firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_units/$(unitId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_units/$(unitId)
+        ).data.portalEmails is list
+        && request.auth.token.email in firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_units/$(unitId)
+        ).data.portalEmails;
+    }
+
+    function isValidConsortiumDocument() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+          '^(application/pdf|image/jpeg|image/png|image/webp)$'
+        );
+    }
+
     /* ================= Inmobiliarias - documentación privada ================= */
 
     match /inmobiliarias/{inmobiliariaId}/verificacion/{userId}/{fileName} {
@@ -291,6 +337,48 @@ service firebase.storage {
           && !firestore.exists(
             /databases/(default)/documents/billing_payment_reports/$(reportId)
           )
+        );
+    }
+
+    /* ================= Consorcios - documentación privada ================= */
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/expenses/{periodId}/{expenseId}/{documentId}/{fileName} {
+      allow read: if
+        isAgencyAdmin(inmobiliariaId)
+        || hasConsortiumPortalAccess(inmobiliariaId, consortiumId);
+
+      allow create: if
+        isAgencyAdmin(inmobiliariaId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isAgencyAdmin(inmobiliariaId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_expense_documents/$(documentId)
+        );
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/payment-reports/{unitId}/{reportId}/{userId}/{fileName} {
+      allow read: if
+        isAgencyAdmin(inmobiliariaId)
+        || hasConsortiumUnitPortalAccess(inmobiliariaId, unitId);
+
+      allow create: if
+        isSignedIn()
+        && request.auth.uid == userId
+        && hasConsortiumUnitPortalAccess(inmobiliariaId, unitId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isSignedIn()
+        && request.auth.uid == userId
+        && hasConsortiumUnitPortalAccess(inmobiliariaId, unitId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_payment_reports/$(reportId)
         );
     }
 

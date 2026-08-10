@@ -5,65 +5,54 @@ import SEO from "../components/SEO";
 import { useAuth } from "../context/auth/useAuth";
 
 const LoginPage = () => {
-    const { user } = useAuth();
-    const location = useLocation();
+  const { user, emailVerificationPending } = useAuth();
+  const location = useLocation();
+  const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
+  const redirectTo = location.state?.from?.pathname || "/publicar";
 
-    const siteUrl =
-        import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
+  if (user && emailVerificationPending) {
+    return <Navigate to="/verificar-email" state={{ from: location.state?.from }} replace />;
+  }
+  if (user) return <Navigate to={redirectTo} replace />;
 
-    const redirectTo = location.state?.from?.pathname || "/publicar";
+  return (
+    <main className="auth-page">
+      <SEO
+        title="Iniciar sesión | ONO Prop"
+        description="Ingresá a ONO Prop para publicar propiedades, administrar consultas y acceder a servicios inmobiliarios."
+        url={`${siteUrl}/login`}
+        type="website"
+        siteName="ONO Prop"
+        noIndex
+      />
 
-    if (user) {
-        return <Navigate to={redirectTo} replace />;
-    }
-
-    return (
-        <main className="portal-home">
-            <SEO
-                title="Iniciar sesión | ONO Prop"
-                description="Iniciá sesión para publicar propiedades, administrar consultas o acceder a tu panel en ONO Prop."
-                url={`${siteUrl}/login`}
-                type="website"
-                siteName="ONO Prop"
-                noIndex
-            />
-
-            <section className="portal-section">
-                <div className="container">
-                    <div className="row justify-content-center">
-                        <div className="col-lg-7">
-                            <div className="card border-0 shadow-sm">
-                                <div className="card-body p-4 p-md-5">
-                                    <p className="text-uppercase text-muted small mb-1">
-                                        Acceso requerido
-                                    </p>
-
-                                    <h1 className="h3 mb-3">
-                                        Para publicar necesitás iniciar sesión
-                                    </h1>
-
-                                    <p className="text-muted">
-                                        Podés solicitar la publicación de una propiedad como
-                                        particular, pero primero necesitamos identificarte para
-                                        poder hacer seguimiento del pedido y contactarte.
-                                    </p>
-
-                                    <div className="alert alert-info">
-                                        La solicitud no publica automáticamente el inmueble. Primero
-                                        se revisa la información y luego se coordina cómo avanzar.
-                                    </div>
-
-                                    <div className="border rounded-3 p-3 p-md-4 bg-light">
-                                        <Login />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-        </main>
-    );
+      <div className="container py-4 py-lg-5">
+        <section className="auth-shell">
+          <aside className="auth-story-panel">
+            <div>
+              <span className="auth-story-badge">Plataforma inmobiliaria</span>
+              <h1>Todo tu negocio inmobiliario, en un mismo lugar.</h1>
+              <p>
+                Publicaciones, difusión, consultas, tasaciones y gestión profesional
+                conectadas en una experiencia simple.
+              </p>
+            </div>
+            <ul className="auth-benefit-list">
+              <li><span>✓</span> Acceso seguro para tu equipo</li>
+              <li><span>✓</span> Herramientas activadas según tu plan</li>
+              <li><span>✓</span> Información centralizada y auditable</li>
+            </ul>
+            <p className="auth-story-footnote mb-0">
+              ¿Solo querés publicar como particular? También podés crear una cuenta gratuita.
+            </p>
+          </aside>
+          <div className="auth-form-panel">
+            <Login />
+          </div>
+        </section>
+      </div>
+    </main>
+  );
 };
 
 export default LoginPage;

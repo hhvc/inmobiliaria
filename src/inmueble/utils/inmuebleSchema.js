@@ -86,6 +86,7 @@ export const inmuebleInitialValues = {
     pais: "Argentina",
     lat: null,
     lng: null,
+    precisionMapa: "precisa",
   },
 
   /* ===== Superficie (m²) ===== */

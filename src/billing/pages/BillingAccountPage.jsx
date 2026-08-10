@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
+import BillingContractAmendmentForm from "../components/BillingContractAmendmentForm";
 import BillingPaymentProofLink from "../components/BillingPaymentProofLink";
+import BillingContractRequestForm from "../components/BillingContractRequestForm";
 import {
     acceptBillingContractQuote,
+    amendBillingContractFinancialTerms,
     applyBillingHighlightCredits,
     createBillingManualEntry,
     createBillingPaymentReport,
@@ -18,11 +21,13 @@ import {
     BILLING_ENTRY_LABELS,
     catalogItemRequiresQuote,
     formatBillingDate,
+    formatBillingPercent,
     formatMoneyMinor,
     getCatalogPricingSummary,
     getContractBadgeClass,
     getContractStatusLabel,
     majorAmountToMinor,
+    tnaMillionthsToPercent,
 } from "../utils/billing.helpers";
 
 const PAYMENT_METHODS = [
@@ -42,11 +47,29 @@ const INITIAL_PAYMENT = {
     file: null,
 };
 
+const CATALOG_MODULE_LABELS = {
+    tasaciones: "Expedientes de tasación",
+    alquileres: "Administración de alquileres",
+    consorcios: "Administración de consorcios",
+    tributos: "Control tributario inmobiliario",
+    parcelas: "Parcelas y normativa urbana",
+    inmuebles: "Administración de inmuebles",
+    instagram: "Instagram",
+    mercadolibre: "Mercado Libre",
+};
+
 const getBalanceClass = (amountMinor) => {
     if (Number(amountMinor || 0) > 0) return "text-danger";
     if (Number(amountMinor || 0) < 0) return "text-success";
     return "text-body";
 };
+
+const getObligationStatus = (status) => ({
+    open: { label: "Pendiente", badge: "text-bg-warning" },
+    overdue: { label: "En mora", badge: "text-bg-danger" },
+    paid: { label: "Pagada", badge: "text-bg-success" },
+    void: { label: "Anulada", badge: "text-bg-secondary" },
+}[status] || { label: status || "Pendiente", badge: "text-bg-secondary" });
 
 const BillingAccountPage = () => {
     const [searchParams] = useSearchParams();
@@ -56,6 +79,7 @@ const BillingAccountPage = () => {
         loading: contextLoading,
     } = useActiveInmobiliariaModules();
     const requestedInmobiliariaId = searchParams.get("inmobiliariaId") || "";
+    const requestedCatalogItemId = searchParams.get("contratar") || "";
     const inmobiliariaId = isRoot && requestedInmobiliariaId
         ? requestedInmobiliariaId
         : activeInmobiliariaId;
@@ -64,6 +88,8 @@ const BillingAccountPage = () => {
     const [operation, setOperation] = useState("");
     const [error, setError] = useState("");
     const [success, setSuccess] = useState("");
+    const [requestItem, setRequestItem] = useState(null);
+    const [amendmentContract, setAmendmentContract] = useState(null);
     const [payment, setPayment] = useState(INITIAL_PAYMENT);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [highlight, setHighlight] = useState({ inmuebleId: "", days: 1 });
@@ -73,6 +99,7 @@ const BillingAccountPage = () => {
         currency: "ARS",
         description: "",
     });
+    const openedCatalogItemRef = useRef("");
 
     const loadOverview = useCallback(async () => {
         if (!inmobiliariaId) {
@@ -117,6 +144,12 @@ const BillingAccountPage = () => {
     const balances = useMemo(() => Object.entries(
         overview?.account?.balanceByCurrency || {},
     ).sort(([a], [b]) => a.localeCompare(b)), [overview]);
+    const currentArsRate = useMemo(() => {
+        const todayDateKey = new Date().toISOString().slice(0, 10);
+        return (overview?.interestRates || []).find((rate) => (
+            rate.currency === "ARS" && rate.effectiveDateKey <= todayDateKey
+        )) || null;
+    }, [overview]);
 
     const openContractsByCatalog = useMemo(() => {
         const finalStatuses = new Set(["cancelled", "rejected"]);
@@ -126,24 +159,68 @@ const BillingAccountPage = () => {
     }, [overview]);
 
     const handleRequest = (item) => {
-        const quantity = item.allowQuantity
-            ? Number(window.prompt(
-                `¿Cuántas unidades de “${item.unitLabel || "unidad"}” querés contratar?`,
-                "1",
-            ))
-            : 1;
-        if (!Number.isFinite(quantity) || quantity < 1) return;
-        if (!window.confirm(
-            `¿Solicitar ${quantity} ${item.unitLabel || "unidad"} de “${item.name}”? Al continuar aceptás las condiciones vigentes de contratación.`,
-        )) return;
+        setRequestItem(item);
+        setError("");
+        setSuccess("");
+        window.setTimeout(() => {
+            document.getElementById("contract-request-form")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }, 0);
+    };
 
-        runOperation(`request-${item.id}`, () => requestBillingContract({
+    useEffect(() => {
+        if (
+            !requestedCatalogItemId ||
+            openedCatalogItemRef.current === requestedCatalogItemId ||
+            !overview?.catalog?.length
+        ) return;
+        const item = overview.catalog.find(
+            (catalogItem) => catalogItem.id === requestedCatalogItemId,
+        );
+        if (!item) return;
+        openedCatalogItemRef.current = requestedCatalogItemId;
+        setRequestItem(item);
+        window.setTimeout(() => {
+            document.getElementById("contract-request-form")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }, 0);
+    }, [overview, requestedCatalogItemId]);
+
+    const handleRequestSubmit = (payload) => {
+        runOperation(`request-${payload.catalogItemId}`, () => requestBillingContract({
+            ...payload,
             inmobiliariaId,
-            catalogItemId: item.id,
-            countryCode: "AR",
-            quantity,
-            termsAccepted: true,
-        }), "Solicitud enviada a ONO Prop.");
+        }), payload.promotionCode
+            ? `Solicitud enviada. Código ${payload.promotionCode} reservado.`
+            : "Solicitud enviada a ONO Prop.").then((done) => {
+            if (done) setRequestItem(null);
+        });
+    };
+
+    const handleAmendment = (contract) => {
+        setAmendmentContract(contract);
+        setError("");
+        setSuccess("");
+        window.setTimeout(() => {
+            document.getElementById("contract-amendment-form")?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+            });
+        }, 0);
+    };
+
+    const handleAmendmentSubmit = (payload) => {
+        runOperation(
+            `amend-${payload.contractId}`,
+            () => amendBillingContractFinancialTerms(payload),
+            "Condiciones futuras actualizadas sin modificar obligaciones existentes.",
+        ).then((done) => {
+            if (done) setAmendmentContract(null);
+        });
     };
 
     const handleAcceptQuote = (contract) => {
@@ -330,6 +407,44 @@ const BillingAccountPage = () => {
                 </div>
             </section>
 
+            <div className="alert alert-light border mb-4">
+                <strong>Interés moratorio:</strong>{" "}
+                {currentArsRate ? (
+                    <>
+                        TNA ARS vigente {
+                            formatBillingPercent(
+                                tnaMillionthsToPercent(currentArsRate.tnaMillionths),
+                            )
+                        }% desde {currentArsRate.effectiveDateKey}.
+                    </>
+                ) : "TNA ARS todavía no configurada."}{" "}
+                Conversión diaria sobre base 365; primera liquidación al día siguiente
+                del vencimiento y luego capitalización diaria.
+            </div>
+
+            {requestItem && (
+                <BillingContractRequestForm
+                    key={requestItem.id}
+                    item={requestItem}
+                    operation={operation}
+                    onSubmit={handleRequestSubmit}
+                    onCancel={() => setRequestItem(null)}
+                />
+            )}
+
+            {amendmentContract && (
+                <BillingContractAmendmentForm
+                    key={amendmentContract.id}
+                    contract={amendmentContract}
+                    catalogItem={(overview?.catalog || []).find(
+                        (item) => item.id === amendmentContract.catalogItemId,
+                    )}
+                    operation={operation}
+                    onSubmit={handleAmendmentSubmit}
+                    onCancel={() => setAmendmentContract(null)}
+                />
+            )}
+
             <section className="card border-0 shadow-sm mb-4">
                 <div className="card-body p-4">
                     <div className="d-flex flex-wrap justify-content-between gap-3 mb-3">
@@ -359,6 +474,18 @@ const BillingAccountPage = () => {
                                                     </span>
                                                 </div>
                                                 <p className="text-muted small">{item.description}</p>
+                                                {item.moduleGrants?.length > 0 && (
+                                                    <div className="d-flex flex-wrap gap-1 mb-2">
+                                                        {item.moduleGrants.map((moduleId) => (
+                                                            <span
+                                                                className="badge text-bg-primary-subtle border border-primary-subtle text-primary-emphasis"
+                                                                key={moduleId}
+                                                            >
+                                                                {CATALOG_MODULE_LABELS[moduleId] || moduleId}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                                 <ul className="small ps-3">
                                                     {getCatalogPricingSummary(item).map((line) => (
                                                         <li key={line}>{line}</li>
@@ -442,6 +569,61 @@ const BillingAccountPage = () => {
                                                     </li>
                                                 ))}
                                             </ul>
+                                            {contract.serviceStartDateKey && (
+                                                <div className="small text-muted mb-2">
+                                                    Servicio: {contract.serviceStartDateKey}
+                                                    {contract.serviceEndDateKey
+                                                        ? ` al ${contract.serviceEndDateKey}`
+                                                        : " · duración indefinida"}
+                                                    {` · vencimiento a ${contract.paymentTermDays || 15} días`}
+                                                </div>
+                                            )}
+                                            {(contract.discount?.percentageBasisPoints > 0 ||
+                                                contract.discount?.fixedAmountMinor > 0) && (
+                                                <div className="small text-success mb-2">
+                                                    Bonificación: {
+                                                        Number(contract.discount.percentageBasisPoints || 0) / 100
+                                                    }%
+                                                    {contract.discount.fixedAmountMinor > 0
+                                                        ? ` + ${formatMoneyMinor(
+                                                            contract.discount.fixedAmountMinor,
+                                                            contract.discount.fixedCurrency,
+                                                        )}`
+                                                        : ""}
+                                                    {contract.discount.endsOn
+                                                        ? ` hasta ${contract.discount.endsOn}`
+                                                        : " sin fecha de finalización"}
+                                                </div>
+                                            )}
+                                            {contract.promotion?.code && (
+                                                <div className="small text-primary mb-2">
+                                                    Código aplicado: <strong>{contract.promotion.code}</strong>
+                                                    {contract.promotion.discount?.percentageBasisPoints > 0
+                                                        ? ` · ${formatBillingPercent(
+                                                            contract.promotion.discount.percentageBasisPoints / 100,
+                                                        )}%`
+                                                        : ""}
+                                                    {contract.promotion.discount?.fixedAmountMinor > 0
+                                                        ? ` + ${formatMoneyMinor(
+                                                            contract.promotion.discount.fixedAmountMinor,
+                                                            contract.promotion.discount.fixedCurrency,
+                                                        )} por obligación`
+                                                        : ""}
+                                                    {contract.promotionReservationStatus === "reserved"
+                                                        ? " · reservado"
+                                                        : contract.promotionReservationStatus === "redeemed"
+                                                            ? " · confirmado"
+                                                            : ""}
+                                                </div>
+                                            )}
+                                            {contract.financialAmendments?.length > 0 && (
+                                                <div className="small text-warning-emphasis mb-2">
+                                                    Enmienda financiera registrada desde {
+                                                        contract.latestFinancialAmendmentEffectiveDateKey ||
+                                                        contract.financialAmendments.at(-1)?.effectiveDateKey
+                                                    }.
+                                                </div>
+                                            )}
                                             {contract.quoteNote && (
                                                 <p className="small bg-light border rounded p-2">
                                                     {contract.quoteNote}
@@ -456,6 +638,21 @@ const BillingAccountPage = () => {
                                                         disabled={Boolean(operation)}
                                                     >
                                                         Aceptar cotización
+                                                    </button>
+                                                )}
+                                                {isRoot && [
+                                                    "active",
+                                                    "pending_payment",
+                                                    "pending_setup",
+                                                    "suspended",
+                                                ].includes(contract.status) && (
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-outline-warning btn-sm"
+                                                        onClick={() => handleAmendment(contract)}
+                                                        disabled={Boolean(operation)}
+                                                    >
+                                                        Modificar condiciones futuras
                                                     </button>
                                                 )}
                                                 {["active", "pending_payment", "pending_setup", "suspended"].includes(contract.status) && (
@@ -484,7 +681,8 @@ const BillingAccountPage = () => {
                         <div className="card-body p-4">
                             <h2 className="h4 mb-1">Informar un pago</h2>
                             <p className="text-muted small">
-                                Se acreditará cuando ONO Prop confirme el comprobante.
+                                Se acreditará cuando ONO Prop confirme el comprobante. El pago se
+                                aplica primero a la obligación más antigua, intereses y luego capital.
                             </p>
                             <form onSubmit={handlePaymentSubmit} className="row g-3">
                                 <div className="col-8">
@@ -582,6 +780,101 @@ const BillingAccountPage = () => {
                                 </div>
                             </form>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            <section className="card border-0 shadow-sm mb-4">
+                <div className="card-body p-4">
+                    <h2 className="h4 mb-1">Obligaciones y vencimientos</h2>
+                    <p className="text-muted small">
+                        Cada cargo conserva su período, descuentos, capital e intereses moratorios.
+                    </p>
+                    <div className="table-responsive">
+                        <table className="table align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Concepto</th>
+                                    <th>Período</th>
+                                    <th>Vencimiento</th>
+                                    <th>Importe</th>
+                                    <th>Capital pendiente</th>
+                                    <th>Interés pendiente</th>
+                                    <th>Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(overview?.obligations || []).map((obligation) => {
+                                    const status = getObligationStatus(obligation.status);
+                                    return (
+                                        <tr key={obligation.id}>
+                                            <td>
+                                                <strong>{obligation.componentLabel}</strong>
+                                                <div className="small text-muted">
+                                                    {obligation.catalogName}
+                                                </div>
+                                                {(obligation.percentageDiscountMinor > 0 ||
+                                                    obligation.fixedDiscountMinor > 0) && (
+                                                    <div className="small text-success">
+                                                        Bonificación aplicada: {formatMoneyMinor(
+                                                            Number(obligation.percentageDiscountMinor || 0) +
+                                                            Number(obligation.fixedDiscountMinor || 0),
+                                                            obligation.currency,
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </td>
+                                            <td className="small">
+                                                {obligation.periodStartDateKey}
+                                                {obligation.periodEndDateKey &&
+                                                    obligation.periodEndDateKey !==
+                                                        obligation.periodStartDateKey
+                                                    ? ` al ${obligation.periodEndDateKey}`
+                                                    : ""}
+                                            </td>
+                                            <td>{obligation.dueDateKey || "-"}</td>
+                                            <td>
+                                                {formatMoneyMinor(
+                                                    obligation.principalOriginalMinor,
+                                                    obligation.currency,
+                                                )}
+                                            </td>
+                                            <td>
+                                                {formatMoneyMinor(
+                                                    obligation.principalOutstandingMinor,
+                                                    obligation.currency,
+                                                )}
+                                            </td>
+                                            <td>
+                                                {formatMoneyMinor(
+                                                    obligation.interestOutstandingMinor,
+                                                    obligation.currency,
+                                                )}
+                                            </td>
+                                            <td>
+                                                <span className={`badge ${status.badge}`}>
+                                                    {status.label}
+                                                </span>
+                                                {obligation.interestPendingRateDateKey && (
+                                                    <div className="small text-danger mt-1">
+                                                        Falta TNA desde {
+                                                            obligation.interestPendingRateDateKey
+                                                        }
+                                                    </div>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                                {!overview?.obligations?.length && (
+                                    <tr>
+                                        <td colSpan="7" className="text-center text-muted py-4">
+                                            Todavía no hay obligaciones generadas.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>
@@ -740,7 +1033,10 @@ const BillingAccountPage = () => {
                                         </td>
                                         {isRoot && (
                                             <td>
-                                                {!entry.reversedByEntryId && entry.type !== "reversal" && (
+                                                {!entry.reversedByEntryId &&
+                                                    entry.type !== "reversal" &&
+                                                    !entry.obligationId &&
+                                                    !entry.paymentReportId && (
                                                     <button
                                                         type="button"
                                                         className="btn btn-outline-danger btn-sm"
@@ -749,6 +1045,11 @@ const BillingAccountPage = () => {
                                                     >
                                                         Revertir
                                                     </button>
+                                                )}
+                                                {(entry.obligationId || entry.paymentReportId) && (
+                                                    <span className="small text-muted">
+                                                        Movimiento imputado
+                                                    </span>
                                                 )}
                                             </td>
                                         )}
@@ -768,17 +1069,35 @@ const BillingAccountPage = () => {
                     <h2 className="h4 mb-3">Pagos informados</h2>
                     <div className="table-responsive">
                         <table className="table align-middle mb-0">
-                            <thead><tr><th>Fecha</th><th>Importe</th><th>Referencia</th><th>Estado</th><th>Comprobante</th></tr></thead>
+                            <thead><tr><th>Fecha</th><th>Importe</th><th>Referencia</th><th>Estado</th><th>Imputación</th><th>Comprobante</th></tr></thead>
                             <tbody>
                                 {(overview?.paymentReports || []).map((report) => (
                                     <tr key={report.id}>
-                                        <td>{formatBillingDate(report.paidAt)}</td>
+                                        <td>{report.paidDateKey || formatBillingDate(report.paidAt)}</td>
                                         <td>{formatMoneyMinor(report.amountMinor, report.currency)}</td>
                                         <td>{report.reference || "-"}</td>
                                         <td>
                                             <span className={`badge ${report.status === "confirmed" ? "text-bg-success" : report.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}`}>
                                                 {report.status === "confirmed" ? "Confirmado" : report.status === "rejected" ? "Rechazado" : "Pendiente"}
                                             </span>
+                                        </td>
+                                        <td className="small">
+                                            {report.status === "confirmed" ? (
+                                                <>
+                                                    Aplicado: {formatMoneyMinor(
+                                                        report.allocatedMinor,
+                                                        report.currency,
+                                                    )}
+                                                    {report.unallocatedMinor > 0 && (
+                                                        <div className="text-success">
+                                                            A favor: {formatMoneyMinor(
+                                                                report.unallocatedMinor,
+                                                                report.currency,
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            ) : "-"}
                                         </td>
                                         <td>
                                             <BillingPaymentProofLink
@@ -789,7 +1108,7 @@ const BillingAccountPage = () => {
                                     </tr>
                                 ))}
                                 {!overview?.paymentReports?.length && (
-                                    <tr><td colSpan="5" className="text-muted text-center py-4">Sin pagos informados.</td></tr>
+                                    <tr><td colSpan="6" className="text-muted text-center py-4">Sin pagos informados.</td></tr>
                                 )}
                             </tbody>
                         </table>

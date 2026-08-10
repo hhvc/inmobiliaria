@@ -120,8 +120,34 @@ export {
 export { whatsappRedirect } from "./whatsapp.js";
 
 export {
+  omiTestConnection,
+  omiSearchComparables,
+} from "./omi.js";
+
+export { parcelasGetAtPoint } from "./parcelas.js";
+
+export {
+  arcaGetOverview,
+  arcaGetAdminOverview,
+  arcaGetRegistrationCertificate,
+  arcaGetProductionRegistrationCertificate,
+  arcaUpsertIssuerProfile,
+  arcaTestHomologation,
+  arcaTestProductionConnection,
+  arcaCreateRentalInvoiceDraft,
+  arcaPrepareProductionRentalInvoicePreview,
+  arcaAuthorizeRentalInvoice,
+  arcaAuthorizeProductionRentalInvoice,
+} from "./arca.js";
+
+export {
+  billingGetPublicCatalog,
+  billingCreateCommercialLead,
+  billingUpdateCommercialLead,
   billingGetAgencyOverview,
   billingGetAdminOverview,
+  billingUpsertInterestRate,
+  billingUpsertPromotion,
   billingUpsertCatalogItem,
   billingSeedInitialCatalog,
   billingRequestContract,
@@ -130,6 +156,7 @@ export {
   billingRejectContract,
   billingApproveContract,
   billingActivateContract,
+  billingAmendContractFinancialTerms,
   billingRequestCancellation,
   billingResolveCancellation,
   billingCreatePaymentReport,
@@ -137,5 +164,13 @@ export {
   billingCreateManualEntry,
   billingReverseLedgerEntry,
   billingApplyHighlightCredits,
+  billingRunMaintenance,
   billingGenerateRecurringCharges,
 } from "./billing.js";
+
+export {
+  taxProcessDueReminders,
+  taxRunDueAutomation,
+} from "./tax.js";
+
+export { rentalGenerateMonthlyObligations } from "./rentals.js";

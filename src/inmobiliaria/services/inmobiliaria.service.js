@@ -618,34 +618,34 @@ export async function getInmobiliariasByRole(user) {
   /* =========================
      ROOT → todas
      ========================= */
-  if (user.role === "root") {
+  if (
+    user.role === "root" ||
+    user.primaryRole === "root" ||
+    (Array.isArray(user.roles) && user.roles.includes("root"))
+  ) {
     const snapshot = await getDocs(inmobiliariasRef);
 
     return snapshot.docs.map((docSnap) => mapInmobiliariaData(docSnap));
   }
 
   /* =========================
-     ADMIN → solo asignadas
+     USUARIO VINCULADO → solo asignadas
      ========================= */
-  if (user.role === "admin") {
-    const inmoIds = user.inmobiliarias || [];
-    if (inmoIds.length === 0) return [];
+  const inmoIds = Array.isArray(user.inmobiliarias) ? user.inmobiliarias : [];
+  if (inmoIds.length === 0) return [];
 
-    const inmobiliarias = await Promise.all(
-      inmoIds.map(async (inmoId) => {
-        const ref = doc(db, COLLECTION_NAME, inmoId);
-        const snap = await getDoc(ref);
+  const inmobiliarias = await Promise.all(
+    inmoIds.map(async (inmoId) => {
+      const ref = doc(db, COLLECTION_NAME, inmoId);
+      const snap = await getDoc(ref);
 
-        if (!snap.exists()) return null;
+      if (!snap.exists()) return null;
 
-        return mapInmobiliariaData(snap);
-      }),
-    );
+      return mapInmobiliariaData(snap);
+    }),
+  );
 
-    return inmobiliarias.filter(Boolean);
-  }
-
-  return [];
+  return inmobiliarias.filter(Boolean);
 }
 
 /**

@@ -30,6 +30,21 @@ const SUBSCRIPTION_MODULES = [
     description: "Recepción y gestión de leads/consultas de inmuebles.",
   },
   {
+    id: "alquileres",
+    label: "Administración de alquileres",
+    description: "Contratos, obligaciones, cobros, gastos y liquidaciones a propietarios.",
+  },
+  {
+    id: "tributos",
+    label: "Control tributario inmobiliario",
+    description: "Objetos fiscales, vencimientos, deuda y pagos vinculados a inmuebles.",
+  },
+  {
+    id: "tasaciones",
+    label: "Tasaciones",
+    description: "Expedientes de valuación, informes y seguimiento profesional.",
+  },
+  {
     id: "dominios",
     label: "Dominios propios",
     description: "Administración de dominios públicos por inmobiliaria.",
@@ -54,6 +69,12 @@ const SUBSCRIPTION_MODULES = [
     label: "Instagram propio",
     description:
       "Conexión y publicación en la cuenta profesional de la inmobiliaria.",
+  },
+  {
+    id: "parcelas",
+    label: "Parcelas y normativa urbana",
+    description:
+      "Consulta profesional de datos catastrales, valuación y normativa urbana.",
   },
 ];
 

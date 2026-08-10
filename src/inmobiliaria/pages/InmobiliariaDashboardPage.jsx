@@ -41,6 +41,48 @@ const MODULE_CARDS = [
         requiredModules: ["inmuebles"],
     },
     {
+        id: "alquileres",
+        title: "Administración de alquileres",
+        description: "Gestionar contratos, vencimientos, cobros, gastos y liquidaciones.",
+        route: "/admin/alquileres",
+        cta: "Administrar alquileres",
+        icon: "🔑",
+    },
+    {
+        id: "consorcios",
+        title: "Administración de consorcios",
+        description: "Gestionar unidades funcionales, liquidaciones, expensas, cobros y cuentas corrientes.",
+        route: "/admin/consorcios",
+        cta: "Administrar consorcios",
+        icon: "🏢",
+    },
+    {
+        id: "tributos",
+        title: "Control tributario",
+        description:
+            "Vincular inmuebles, controlar vencimientos y documentar pagos provinciales y municipales.",
+        route: "/admin/tributos",
+        cta: "Administrar tributos",
+        icon: "🧾",
+    },
+    {
+        id: "tasaciones",
+        title: "Tasaciones",
+        description: "Crear expedientes, aplicar métodos de valuación y preparar informes.",
+        route: "/admin/tasaciones",
+        cta: "Administrar tasaciones",
+        icon: "📏",
+    },
+    {
+        id: "parcelas",
+        title: "Parcelas y normativa urbana",
+        description:
+            "Consultar nomenclatura, superficies, valuación fiscal, FOS, FOT y usos del suelo.",
+        route: "/admin/inmobiliaria/parcelas",
+        cta: "Consultar parcelas",
+        icon: "🗺️",
+    },
+    {
         id: "consultas",
         title: "Consultas",
         description: "Gestionar leads recibidos desde fichas públicas.",
