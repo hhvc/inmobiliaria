@@ -1056,6 +1056,15 @@ const getRentalDocuments = async ({
     return {agencyRef, contract, obligation};
 };
 
+const assertRentalContractReadyForProduction = (contract = {}) => {
+    if (contract.deleted === true || contract.status === "draft") {
+        throw new HttpsError(
+            "failed-precondition",
+            "Antes de facturar en Producción, revisá el contrato y cambialo de Borrador a Activo.",
+        );
+    }
+};
+
 const getTenant = async ({agencyRef, contract, tenantId}) => {
     const allowedIds = Array.isArray(contract.partyIds?.tenants)
         ? contract.partyIds.tenants
@@ -1330,6 +1339,7 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
             contractId: sourceDraft.contractId,
             obligationId: sourceDraft.obligationId,
         });
+        assertRentalContractReadyForProduction(documents.contract);
         const ownerIds = Array.isArray(documents.contract.partyIds?.owners)
             ? documents.contract.partyIds.owners
             : [];
@@ -2053,6 +2063,9 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
         obligationId: preview.obligationId,
         allowAuthorizedProduction: Number(preview.voucherType) === 13,
     });
+    if (Number(preview.voucherType) === 11) {
+        assertRentalContractReadyForProduction(documents.contract);
+    }
     const ownerIds = Array.isArray(documents.contract.partyIds?.owners) ?
         documents.contract.partyIds.owners : [];
     if (profile.issuerPartyId && !ownerIds.includes(profile.issuerPartyId)) {
