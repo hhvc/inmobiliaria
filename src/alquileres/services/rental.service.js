@@ -269,6 +269,8 @@ export const updateRentalContract = async (inmobiliariaId, contractId, value) =>
     }
     const obligation = result.obligation;
     batch.update(rentalDoc(inmobiliariaId, "obligations", current.id), {
+      schemaVersion: obligation.schemaVersion,
+      obligationType: obligation.obligationType,
       serviceStartDate: obligation.serviceStartDate,
       serviceEndDate: obligation.serviceEndDate,
       dueDate: obligation.dueDate,
@@ -413,6 +415,8 @@ export const generateRentalObligations = async ({
     if (!result.updated) return;
     const obligation = result.obligation;
     batch.update(rentalDoc(inmobiliariaId, "obligations", current.id), {
+      schemaVersion: obligation.schemaVersion,
+      obligationType: obligation.obligationType,
       serviceStartDate: obligation.serviceStartDate,
       serviceEndDate: obligation.serviceEndDate,
       dueDate: obligation.dueDate,

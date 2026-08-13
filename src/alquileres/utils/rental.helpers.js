@@ -161,6 +161,10 @@ export const getContractPeriodKeys = (contractValue, { throughDate, limit = 120 
   const contract = normalizeRentalContract(contractValue);
   const startPeriod = getPeriodKey(contract.startDate);
   const requestedEnd = throughDate || new Date().toISOString().slice(0, 10);
+  if (contract.contractType === "temporary") {
+    if (!/^\d{4}-\d{2}$/.test(startPeriod) || contract.startDate > requestedEnd) return [];
+    return [startPeriod];
+  }
   const effectiveEnd = contract.endDate && contract.endDate < requestedEnd
     ? contract.endDate
     : requestedEnd;
@@ -179,11 +183,18 @@ export const isRentalObligationWithinContract = (obligationValue, contractValue)
   const startPeriod = getPeriodKey(contract.startDate);
   const endPeriod = getPeriodKey(contract.endDate);
   if (!/^\d{4}-\d{2}$/.test(periodKey) || !startPeriod) return false;
+  if (contract.contractType === "temporary") return periodKey === startPeriod;
   return periodKey >= startPeriod && (!endPeriod || periodKey <= endPeriod);
 };
 
 export const resolveRentForPeriod = (contractValue, periodKey) => {
   const contract = normalizeRentalContract(contractValue);
+  if (contract.contractType === "temporary") {
+    return round(
+      contract.financial.initialRentAmountMinor
+      || contract.financial.currentRentAmountMinor,
+    );
+  }
   const schedule = [...contract.rentSchedule]
     .filter((item) => getPeriodKey(item.effectiveFrom) <= periodKey)
     .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom));
@@ -215,14 +226,22 @@ export const buildRentalObligation = (contractValue, periodKey, nowDate = new Da
   const bounds = getPeriodBounds(periodKey);
   if (!bounds) throw new Error("Período inválido.");
   const rentAmountMinor = resolveRentForPeriod(contract, periodKey);
-  const dueDate = getDueDateForPeriod(periodKey, contract.dueDay);
+  const isTemporary = contract.contractType === "temporary";
+  const dueDate = isTemporary
+    ? contract.paymentDueDate
+    : getDueDateForPeriod(periodKey, contract.dueDay);
   const todayKey = toDateKey(nowDate);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     contractId: contract.id || "",
     periodKey,
-    serviceStartDate: bounds.startDate < contract.startDate ? contract.startDate : bounds.startDate,
-    serviceEndDate: contract.endDate && bounds.endDate > contract.endDate ? contract.endDate : bounds.endDate,
+    obligationType: isTemporary ? "single_stay" : "monthly_rent",
+    serviceStartDate: isTemporary
+      ? contract.startDate
+      : (bounds.startDate < contract.startDate ? contract.startDate : bounds.startDate),
+    serviceEndDate: isTemporary
+      ? contract.endDate
+      : (contract.endDate && bounds.endDate > contract.endDate ? contract.endDate : bounds.endDate),
     dueDate,
     currency: contract.currency,
     rentAmountMinor,
@@ -255,6 +274,8 @@ export const syncRentalObligationFromContract = (
   const totalAmountMinor = rebuilt.rentAmountMinor + otherChargesMinor;
   const obligation = {
     ...current,
+    schemaVersion: rebuilt.schemaVersion,
+    obligationType: rebuilt.obligationType,
     serviceStartDate: rebuilt.serviceStartDate,
     serviceEndDate: rebuilt.serviceEndDate,
     dueDate: rebuilt.dueDate,
@@ -436,6 +457,7 @@ export const buildRentalOwnerAccountStatement = ({
 
 export const getNextAdjustmentDate = (contractValue) => {
   const contract = normalizeRentalContract(contractValue);
+  if (contract.contractType === "temporary") return "";
   if (contract.financial.adjustment.nextAdjustmentDate) {
     return contract.financial.adjustment.nextAdjustmentDate;
   }
@@ -460,24 +482,38 @@ export const validateRentalContract = (value = {}) => {
     errors.push("La finalización no puede ser anterior al inicio.");
   }
   if (!(round(contract.financial.initialRentAmountMinor) > 0)) {
-    errors.push("Ingresá el alquiler inicial.");
-  }
-  if (!(Number(contract.dueDay) >= 1 && Number(contract.dueDay) <= 31)) {
-    errors.push("El día de vencimiento debe estar entre 1 y 31.");
+    errors.push(contract.contractType === "temporary"
+      ? "Ingresá el importe total de la estadía."
+      : "Ingresá el alquiler inicial.");
   }
   if (
+    contract.contractType === "recurring"
+    && !(Number(contract.dueDay) >= 1 && Number(contract.dueDay) <= 31)
+  ) {
+    errors.push("El día de vencimiento debe estar entre 1 y 31.");
+  }
+  if (contract.contractType === "temporary" && !parseDateKey(contract.paymentDueDate)) {
+    errors.push("Ingresá una fecha de vencimiento del pago válida.");
+  }
+  if (
+    contract.contractType === "recurring"
+    &&
     contract.financial.adjustment.mode === "fixed_percent"
     && !(Number(contract.financial.adjustment.fixedPercent) > 0)
   ) {
     errors.push("Ingresá el porcentaje fijo de actualización.");
   }
   if (
+    contract.contractType === "recurring"
+    &&
     contract.financial.adjustment.mode === "index"
     && !contract.financial.adjustment.indexName?.trim()
   ) {
     errors.push("Identificá el índice contractual.");
   }
   if (
+    contract.contractType === "recurring"
+    &&
     contract.financial.adjustment.mode === "formula"
     && !contract.financial.adjustment.formula?.trim()
   ) {

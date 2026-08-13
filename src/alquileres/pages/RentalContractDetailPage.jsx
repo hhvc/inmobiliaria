@@ -311,10 +311,10 @@ const RentalContractDetailPage = () => {
       {!canManage && <div className="alert alert-info">Tu rol permite consultar el contrato, pero no registrar movimientos.</div>}
 
       <section className="row g-3 mb-4">
-        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><small className="text-uppercase text-muted">Alquiler actual</small><strong className="fs-4 d-block">{formatRentalMoney(contract.financial?.currentRentAmountMinor, contract.currency)}</strong></div></div></div>
+        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><small className="text-uppercase text-muted">{contract.contractType === "temporary" ? "Importe de la estadía" : "Alquiler actual"}</small><strong className="fs-4 d-block">{formatRentalMoney(contract.financial?.currentRentAmountMinor, contract.currency)}</strong></div></div></div>
         <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><small className="text-uppercase text-muted">Saldo registrado</small><strong className={`fs-4 d-block ${totalBalance > 0 ? "text-danger" : "text-success"}`}>{formatRentalMoney(totalBalance, contract.currency)}</strong></div></div></div>
-        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><small className="text-uppercase text-muted">Próximo ajuste</small><strong className="fs-5 d-block">{nextAdjustment || "Manual"}</strong><small className="text-muted">{contract.financial?.adjustment?.indexName || contract.financial?.adjustment?.mode}</small></div></div></div>
-        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><small className="text-uppercase text-muted">Vigencia</small><strong className="fs-6 d-block">{contract.startDate} a {contract.endDate}</strong><small className="text-muted">Vence cada día {contract.dueDay}</small></div></div></div>
+        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><small className="text-uppercase text-muted">{contract.contractType === "temporary" ? "Modalidad" : "Próximo ajuste"}</small><strong className="fs-5 d-block">{contract.contractType === "temporary" ? "Alquiler temporal" : nextAdjustment || "Manual"}</strong><small className="text-muted">{contract.contractType === "temporary" ? "Obligación única" : contract.financial?.adjustment?.indexName || contract.financial?.adjustment?.mode}</small></div></div></div>
+        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><small className="text-uppercase text-muted">Vigencia</small><strong className="fs-6 d-block">{contract.startDate} a {contract.endDate}</strong><small className="text-muted">{contract.contractType === "temporary" ? `Vence el ${contract.paymentDueDate}` : `Vence cada día ${contract.dueDay}`}</small></div></div></div>
       </section>
 
       <section className="card border-0 shadow-sm mb-4">
@@ -342,21 +342,21 @@ const RentalContractDetailPage = () => {
       </section>
 
       {canManage && <section className="row g-4 mb-4">
-        <div className="col-lg-6">
-          <form className="card border-0 shadow-sm h-100" onSubmit={(event) => { event.preventDefault(); runAction(() => generateRentalObligations({ inmobiliariaId: activeInmobiliariaId, contractId, throughDate }), "Obligaciones actualizadas sin duplicar períodos."); }}>
-            <div className="card-body p-4"><h2 className="h5">Generar obligaciones</h2><p className="text-muted small">Completá meses futuros o regenerá con seguridad: los existentes no se duplican.</p><div className="input-group"><input className="form-control" type="date" value={throughDate} onChange={(event) => setThroughDate(event.target.value)} /><button className="btn btn-primary" disabled={working}>Generar hasta fecha</button></div></div>
+        <div className={contract.contractType === "temporary" ? "col-12" : "col-lg-6"}>
+          <form className="card border-0 shadow-sm h-100" onSubmit={(event) => { event.preventDefault(); runAction(() => generateRentalObligations({ inmobiliariaId: activeInmobiliariaId, contractId, throughDate: contract.contractType === "temporary" ? contract.endDate : throughDate }), contract.contractType === "temporary" ? "Obligación única actualizada." : "Obligaciones actualizadas sin duplicar períodos."); }}>
+            <div className="card-body p-4"><h2 className="h5">{contract.contractType === "temporary" ? "Obligación de la estadía" : "Generar obligaciones"}</h2><p className="text-muted small">{contract.contractType === "temporary" ? "Generá o sincronizá la única obligación sin duplicarla." : "Completá meses futuros o regenerá con seguridad: los existentes no se duplican."}</p>{contract.contractType === "temporary" ? <button className="btn btn-primary" disabled={working}>Generar o sincronizar</button> : <div className="input-group"><input className="form-control" type="date" value={throughDate} onChange={(event) => setThroughDate(event.target.value)} /><button className="btn btn-primary" disabled={working}>Generar hasta fecha</button></div>}</div>
           </form>
         </div>
-        <div className="col-lg-6">
+        {contract.contractType !== "temporary" && <div className="col-lg-6">
           <form className="card border-0 shadow-sm h-100" onSubmit={saveAdjustment}>
             <div className="card-body p-4"><h2 className="h5">Confirmar nuevo alquiler</h2><div className="row g-2"><div className="col-sm-4"><input aria-label="Vigencia del ajuste" className="form-control" type="date" required value={adjustment.effectiveFrom} onChange={(event) => setAdjustment({ ...adjustment, effectiveFrom: event.target.value })} /></div><div className="col-sm-4"><input aria-label="Nuevo importe" className="form-control" inputMode="decimal" placeholder="Nuevo importe" required value={adjustment.amount} onChange={(event) => setAdjustment({ ...adjustment, amount: event.target.value })} /></div><div className="col-sm-4"><button className="btn btn-primary w-100" disabled={working}>Registrar</button></div><div className="col-12"><input aria-label="Notas del ajuste" className="form-control" placeholder="Índice, fuente o nota de cálculo" value={adjustment.notes} onChange={(event) => setAdjustment({ ...adjustment, notes: event.target.value })} /></div></div></div>
           </form>
-        </div>
+        </div>}
       </section>}
 
       <section className="card border-0 shadow-sm mb-4">
         <div className="card-body p-4">
-          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h2 className="h5 mb-1">Obligaciones y cobros</h2><p className="text-muted small mb-0">Pagos parciales, cargos adicionales, recibos y liquidaciones.</p></div><span className="badge text-bg-light border text-dark">{obligations.length} períodos</span></div>
+          <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><div><h2 className="h5 mb-1">Obligaciones y cobros</h2><p className="text-muted small mb-0">Pagos parciales, cargos adicionales, recibos y liquidaciones.</p></div><span className="badge text-bg-light border text-dark">{obligations.length} {contract.contractType === "temporary" ? "obligación" : "períodos"}</span></div>
           {obligations.length === 0 && <div className="alert alert-light border mb-0">Todavía no se generaron obligaciones.</div>}
           <div className="vstack gap-3">
             {obligations.map((obligation) => {
@@ -368,7 +368,7 @@ const RentalContractDetailPage = () => {
               return (
                 <article className="border rounded-3 p-3" key={obligation.id}>
                   <div className="row g-3 align-items-start">
-                    <div className="col-lg-3"><div className="d-flex gap-2 mb-2"><strong>{obligation.periodKey}</strong><span className={`badge ${badge}`}>{label}</span></div><small className="d-block text-muted">Vence {obligation.dueDate}</small><small className="d-block text-muted">Servicio {obligation.serviceStartDate} a {obligation.serviceEndDate}</small></div>
+                    <div className="col-lg-3"><div className="d-flex gap-2 mb-2"><strong>{contract.contractType === "temporary" ? "Estadía única" : obligation.periodKey}</strong><span className={`badge ${badge}`}>{label}</span></div><small className="d-block text-muted">Vence {obligation.dueDate}</small><small className="d-block text-muted">Servicio {obligation.serviceStartDate} a {obligation.serviceEndDate}</small></div>
                     <div className="col-lg-3 small"><div>Total: <strong>{formatRentalMoney(obligation.totalAmountMinor, contract.currency)}</strong></div><div>Cobrado por la inmobiliaria: {formatRentalMoney(obligation.paidAmountMinor, contract.currency)}</div>{obligation.externalClosure?.closed && <div>Cerrado fuera de gestión: {formatRentalMoney(obligation.externalClosure.amountMinor, contract.currency)}</div>}<div>Saldo operativo: <strong className={obligation.balanceMinor > 0 ? "text-danger" : "text-success"}>{formatRentalMoney(obligation.balanceMinor, contract.currency)}</strong></div></div>
                     <div className="col-lg-3 small"><div>Neto locador: <strong>{formatRentalMoney(settlementPreview.netOwnerAmountMinor, contract.currency)}</strong></div><div>Honorarios: {formatRentalMoney(settlementPreview.administrationFeeMinor, contract.currency)}</div><div>Gastos locador: {formatRentalMoney(settlementPreview.ownerExpensesMinor, contract.currency)}</div>{settlement && <div className="mt-2"><span className={`badge ${SETTLEMENT_LABELS[settlement.status]?.[1] || SETTLEMENT_LABELS.draft[1]}`}>{SETTLEMENT_LABELS[settlement.status]?.[0] || SETTLEMENT_LABELS.draft[0]}</span></div>}</div>
                     <div className="col-lg-3 d-flex flex-wrap justify-content-lg-end gap-2">

@@ -49,6 +49,10 @@ const getPeriodBounds = (periodKey) => {
 
 const getPeriodKeys = (contract, throughDate, limit = 120) => {
     const startPeriod = getPeriodKey(contract.startDate);
+    if (contract.contractType === "temporary") {
+        if (!/^\d{4}-\d{2}$/u.test(startPeriod) || contract.startDate > throughDate) return [];
+        return [startPeriod];
+    }
     const effectiveEnd = contract.endDate && contract.endDate < throughDate ?
         contract.endDate : throughDate;
     const endPeriod = getPeriodKey(effectiveEnd);
@@ -60,6 +64,10 @@ const getPeriodKeys = (contract, throughDate, limit = 120) => {
 };
 
 const resolveRent = (contract, periodKey) => {
+    if (contract.contractType === "temporary") {
+        return round(contract.financial?.initialRentAmountMinor ||
+            contract.financial?.currentRentAmountMinor);
+    }
     const schedule = (Array.isArray(contract.rentSchedule) ? contract.rentSchedule : [])
         .filter((item) => item?.effectiveFrom && Number(item.amountMinor) > 0)
         .filter((item) => getPeriodKey(item.effectiveFrom) <= periodKey)
@@ -83,18 +91,21 @@ export const buildAutomatedRentalObligations = ({
     todayDate,
 } = {}) => getPeriodKeys(contract || {}, throughDate, 120).map((periodKey) => {
     const bounds = getPeriodBounds(periodKey);
+    const isTemporary = contract.contractType === "temporary";
     const dueDay = Math.min(Math.max(1, Number(contract.dueDay) || 10),
         Number(bounds.endDate.slice(-2)));
-    const dueDate = `${periodKey}-${pad(dueDay)}`;
+    const dueDate = isTemporary ? contract.paymentDueDate : `${periodKey}-${pad(dueDay)}`;
     const rentAmountMinor = resolveRent(contract, periodKey);
     return {
-        schemaVersion: 1,
+        schemaVersion: 2,
         contractId: contract.id || "",
         periodKey,
-        serviceStartDate: bounds.startDate < contract.startDate ?
-            contract.startDate : bounds.startDate,
-        serviceEndDate: contract.endDate && bounds.endDate > contract.endDate ?
-            contract.endDate : bounds.endDate,
+        obligationType: isTemporary ? "single_stay" : "monthly_rent",
+        serviceStartDate: isTemporary ? contract.startDate :
+            (bounds.startDate < contract.startDate ? contract.startDate : bounds.startDate),
+        serviceEndDate: isTemporary ? contract.endDate :
+            (contract.endDate && bounds.endDate > contract.endDate ?
+                contract.endDate : bounds.endDate),
         dueDate,
         currency: contract.currency || "ARS",
         rentAmountMinor,

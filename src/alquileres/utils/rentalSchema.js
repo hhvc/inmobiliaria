@@ -17,8 +17,9 @@ export const createEmptyRentalParty = () => ({
 });
 
 export const createEmptyRentalContract = () => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   status: "draft",
+  contractType: "recurring",
   inmuebleId: "",
   inmuebleSnapshot: {
     title: "",
@@ -41,6 +42,7 @@ export const createEmptyRentalContract = () => ({
   currency: "ARS",
   otherCurrency: "",
   dueDay: 10,
+  paymentDueDate: "",
   depositAmountMinor: 0,
   financial: {
     initialRentAmountMinor: 0,
@@ -100,6 +102,7 @@ export const normalizeRentalParty = (value = {}) => ({
 
 export const normalizeRentalContract = (value = {}) => {
   const normalized = merge(createEmptyRentalContract(), value);
+  normalized.contractType = value.contractType === "temporary" ? "temporary" : "recurring";
   normalized.partyIds = {
     owners: array(value.partyIds?.owners),
     tenants: array(value.partyIds?.tenants),

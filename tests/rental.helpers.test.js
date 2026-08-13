@@ -68,6 +68,55 @@ test("genera períodos mensuales dentro de la vigencia", () => {
   );
 });
 
+test("un alquiler temporal de un día genera una única obligación con fechas exactas", () => {
+  const temporary = normalizeRentalContract({
+    ...contract,
+    id: "temporary-1",
+    contractType: "temporary",
+    startDate: "2026-08-13",
+    endDate: "2026-08-13",
+    paymentDueDate: "2026-08-13",
+    dueDay: 0,
+    financial: {
+      ...contract.financial,
+      initialRentAmountMinor: 500,
+      currentRentAmountMinor: 500,
+      adjustment: { mode: "index", indexName: "" },
+    },
+  });
+  assert.deepEqual(
+    getContractPeriodKeys(temporary, { throughDate: "2026-08-13" }),
+    ["2026-08"],
+  );
+  const obligation = buildRentalObligation(
+    temporary,
+    "2026-08",
+    new Date("2026-08-13T12:00:00Z"),
+  );
+  assert.equal(obligation.obligationType, "single_stay");
+  assert.equal(obligation.serviceStartDate, "2026-08-13");
+  assert.equal(obligation.serviceEndDate, "2026-08-13");
+  assert.equal(obligation.dueDate, "2026-08-13");
+  assert.equal(obligation.totalAmountMinor, 500);
+  assert.deepEqual(validateRentalContract(temporary), []);
+});
+
+test("una estadía temporal que cruza de mes conserva una sola obligación", () => {
+  const temporary = normalizeRentalContract({
+    ...contract,
+    contractType: "temporary",
+    startDate: "2026-08-30",
+    endDate: "2026-09-02",
+    paymentDueDate: "2026-08-25",
+  });
+  assert.deepEqual(
+    getContractPeriodKeys(temporary, { throughDate: "2026-09-02" }),
+    ["2026-08"],
+  );
+  assert.equal(isRentalObligationWithinContract({ periodKey: "2026-08" }, temporary), true);
+  assert.equal(isRentalObligationWithinContract({ periodKey: "2026-09" }, temporary), false);
+});
+
 test("detecta obligaciones que quedaron fuera de una vigencia editada", () => {
   assert.equal(isRentalObligationWithinContract({ periodKey: "2026-04" }, contract), true);
   assert.equal(isRentalObligationWithinContract({ periodKey: "2025-12" }, contract), false);
@@ -246,4 +295,14 @@ test("valida las partes, la vigencia y la modalidad de actualización", () => {
   assert.ok(errors.some((message) => message.includes("inmueble")));
   assert.ok(errors.some((message) => message.includes("índice")));
   assert.ok(errors.some((message) => message.includes("finalización")));
+});
+
+test("un alquiler temporal exige una fecha exacta de vencimiento", () => {
+  const invalid = normalizeRentalContract({
+    ...contract,
+    contractType: "temporary",
+    paymentDueDate: "",
+  });
+  const errors = validateRentalContract(invalid);
+  assert.ok(errors.some((message) => message.includes("vencimiento del pago")));
 });

@@ -36,3 +36,28 @@ test("la automatización crea períodos determinísticos hasta la fecha indicada
 test("la fecha de horizonte puede extenderse sin desbordar meses", () => {
     assert.equal(addDaysToDateKey("2026-12-20", 45), "2027-02-03");
 });
+
+test("la automatización genera una sola obligación para una estadía temporal", () => {
+    const obligations = buildAutomatedRentalObligations({
+        contract: {
+            ...contract,
+            id: "temporary-1",
+            contractType: "temporary",
+            startDate: "2026-08-13",
+            endDate: "2026-08-13",
+            paymentDueDate: "2026-08-13",
+            financial: {
+                ...contract.financial,
+                initialRentAmountMinor: 500,
+            },
+        },
+        throughDate: "2026-08-13",
+        todayDate: "2026-08-13",
+    });
+    assert.equal(obligations.length, 1);
+    assert.equal(obligations[0].obligationType, "single_stay");
+    assert.equal(obligations[0].serviceStartDate, "2026-08-13");
+    assert.equal(obligations[0].serviceEndDate, "2026-08-13");
+    assert.equal(obligations[0].dueDate, "2026-08-13");
+    assert.equal(obligations[0].totalAmountMinor, 500);
+});

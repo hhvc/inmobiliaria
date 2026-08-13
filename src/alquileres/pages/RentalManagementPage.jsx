@@ -183,6 +183,7 @@ const RentalManagementPage = () => {
                     <div className="row small g-2">
                       <div className="col-md-6"><strong>Locatario:</strong> {contract.partySnapshots?.tenants?.map((item) => item.name).join(", ") || "Pendiente"}</div>
                       <div className="col-md-6"><strong>Locador:</strong> {contract.partySnapshots?.owners?.map((item) => item.name).join(", ") || "Pendiente"}</div>
+                      <div className="col-md-6"><strong>Modalidad:</strong> {contract.contractType === "temporary" ? "Alquiler temporal" : "Alquiler recurrente"}</div>
                       <div className="col-md-6"><strong>Vigencia:</strong> {contract.startDate} a {contract.endDate}</div>
                       <div className="col-md-6"><strong>Saldo registrado:</strong> {formatRentalMoney(balance, contract.currency)}</div>
                       <div className="col-md-6"><strong>Última edición:</strong> {timestampToDate(contract.updatedAt)}</div>

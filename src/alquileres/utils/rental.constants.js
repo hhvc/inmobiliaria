@@ -5,6 +5,19 @@ export const RENTAL_CONTRACT_STATUSES = [
   { id: "cancelled", label: "Rescindido", badge: "text-bg-dark" },
 ];
 
+export const RENTAL_CONTRACT_TYPES = [
+  {
+    id: "recurring",
+    label: "Alquiler recurrente",
+    description: "Genera una obligación por mes durante toda la vigencia.",
+  },
+  {
+    id: "temporary",
+    label: "Alquiler temporal",
+    description: "Genera una única obligación por el importe total de la estadía.",
+  },
+];
+
 export const RENTAL_PARTY_ROLES = [
   { id: "owner", label: "Locador" },
   { id: "tenant", label: "Locatario" },

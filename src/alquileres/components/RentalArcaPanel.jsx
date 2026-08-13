@@ -234,7 +234,9 @@ const RentalArcaPanel = ({
       serviceTo: draft?.serviceTo || obligation.serviceEndDate || "",
       paymentDueDate,
       adjustmentReason: draft?.adjustmentReason || "",
-      description: draft?.description || "",
+      description: draft?.description || (contract.contractType === "temporary"
+        ? `Alquiler temporal del ${obligation.serviceStartDate} al ${obligation.serviceEndDate} · ${contract.inmuebleSnapshot?.address || "Inmueble"}`
+        : `Alquiler ${obligation.periodKey} · ${contract.inmuebleSnapshot?.address || "Inmueble"}`),
     }));
   };
 
@@ -448,7 +450,9 @@ const RentalArcaPanel = ({
         ? selectedObligation.dueDate
         : invoiceDate,
       adjustmentReason: "",
-      description: `Alquiler ${selectedObligation.periodKey} · ${contract.inmuebleSnapshot?.address || "Inmueble"}`,
+      description: contract.contractType === "temporary"
+        ? `Alquiler temporal del ${selectedObligation.serviceStartDate} al ${selectedObligation.serviceEndDate} · ${contract.inmuebleSnapshot?.address || "Inmueble"}`
+        : `Alquiler ${selectedObligation.periodKey} · ${contract.inmuebleSnapshot?.address || "Inmueble"}`,
     }));
   };
 
@@ -502,7 +506,7 @@ const RentalArcaPanel = ({
           <>
             <div className="table-responsive">
               <table className="table table-sm align-middle">
-                <thead><tr><th>Período</th><th>Importe</th><th>Estado de cobro</th><th>Estado fiscal</th><th className="text-end">Acción</th></tr></thead>
+                <thead><tr><th>{contract.contractType === "temporary" ? "Concepto" : "Período"}</th><th>Importe</th><th>Estado de cobro</th><th>Estado fiscal</th><th className="text-end">Acción</th></tr></thead>
                 <tbody>
                   {obligations.map((obligation) => {
                     const draft = draftFor(obligation.id);
@@ -524,7 +528,7 @@ const RentalArcaPanel = ({
                     )?.label || "Comprobante";
                     return (
                       <tr key={obligation.id}>
-                        <td>{obligation.periodKey}</td>
+                        <td>{contract.contractType === "temporary" ? <><strong>Estadía única</strong><small className="d-block text-muted">{obligation.serviceStartDate} a {obligation.serviceEndDate}</small></> : obligation.periodKey}</td>
                         <td>{formatRentalMoney(draft?.amountMinor ?? obligation.totalAmountMinor, contract.currency)}{draft?.hasFiscalAdjustments && <small className="d-block text-muted">Obligación actual: {formatRentalMoney(obligation.totalAmountMinor, contract.currency)}</small>}</td>
                         <td><span className={`badge ${paymentBadge}`}>{paymentLabel}</span></td>
                         <td>{externallyInvoiced ? <><span className="badge text-bg-dark">{obligation.externalInvoice.voucherType === "unknown" ? "Gestión fiscal externa · sin datos" : "Facturado externamente"}</span>{obligation.externalInvoice.voucherType !== "unknown" && <small className="d-block text-muted mt-1">{externalVoucherLabel} {obligation.externalInvoice.pointOfSale}-{obligation.externalInvoice.voucherNumber} · {obligation.externalInvoice.invoiceDate}</small>}</> : closedOutsideManagement ? <><span className="badge text-bg-dark">Fuera de gestión</span><small className="d-block text-muted mt-1">Facturación no administrada por ONO Prop</small></> : productionAuthorized ? <><span className="badge text-bg-success">Autorizado PROD</span><small className="d-block text-success mt-1">CAE {productionPreview.cae} · N.º {productionPreview.pointOfSale}-{productionPreview.voucherNumber}</small></> : <><span className={`badge ${badge}`}>{label}</span>{draft?.cae && <small className="d-block text-muted mt-1">CAE HOMO {draft.cae} · N.º {draft.pointOfSale}-{draft.voucherNumber}</small>}{productionPreview && <small className="d-block text-success mt-1">PROD preparada · N.º estimado {productionPreview.pointOfSale}-{productionPreview.proposedVoucherNumber}</small>}</>}</td>

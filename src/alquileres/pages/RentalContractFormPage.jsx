@@ -17,6 +17,7 @@ import {
 } from "../services/rental.service";
 import {
   RENTAL_ADJUSTMENT_MODES,
+  RENTAL_CONTRACT_TYPES,
   RENTAL_CURRENCIES,
   RENTAL_PARTY_ROLES,
 } from "../utils/rental.constants";
@@ -81,6 +82,30 @@ const RentalContractFormPage = () => {
     },
   }));
 
+  const setContractType = (contractType) => setForm((current) => ({
+    ...current,
+    contractType,
+    endDate: contractType === "temporary" && !current.endDate
+      ? current.startDate
+      : current.endDate,
+    paymentDueDate: contractType === "temporary" && !current.paymentDueDate
+      ? current.startDate
+      : current.paymentDueDate,
+  }));
+
+  const setStartDate = (startDate) => setForm((current) => {
+    const syncEndDate = current.contractType === "temporary"
+      && (!current.endDate || current.endDate === current.startDate);
+    const syncDueDate = current.contractType === "temporary"
+      && (!current.paymentDueDate || current.paymentDueDate === current.startDate);
+    return {
+      ...current,
+      startDate,
+      endDate: syncEndDate ? startDate : current.endDate,
+      paymentDueDate: syncDueDate ? startDate : current.paymentDueDate,
+    };
+  });
+
   const toggleParty = (group, partyId) => setForm((current) => {
     const selected = current.partyIds[group] || [];
     return {
@@ -119,10 +144,15 @@ const RentalContractFormPage = () => {
       } else {
         id = await createRentalContract(activeInmobiliariaId, form);
       }
-      if (form.status === "active" && form.startDate <= new Date().toISOString().slice(0, 10)) {
+      if (
+        form.status === "active"
+        && (form.contractType === "temporary"
+          || form.startDate <= new Date().toISOString().slice(0, 10))
+      ) {
         await generateRentalObligations({
           inmobiliariaId: activeInmobiliariaId,
           contractId: id,
+          throughDate: form.contractType === "temporary" ? form.endDate : undefined,
         });
       }
       navigate(`/admin/alquileres/${id}`);
@@ -152,8 +182,21 @@ const RentalContractFormPage = () => {
       <form onSubmit={submit} className="vstack gap-4">
         <section className="card border-0 shadow-sm">
           <div className="card-body p-4">
-            <div className="rental-section-heading"><span>1</span><div><h2 className="h5 mb-1">Inmueble y estado</h2><p className="text-muted small mb-0">El contrato queda vinculado al inmueble ya cargado.</p></div></div>
+            <div className="rental-section-heading"><span>1</span><div><h2 className="h5 mb-1">Inmueble, modalidad y estado</h2><p className="text-muted small mb-0">El contrato queda vinculado al inmueble ya cargado.</p></div></div>
             <div className="row g-3 mt-1">
+              <fieldset className="col-12">
+                <legend className="form-label fs-6">Modalidad del contrato *</legend>
+                <div className="row g-2">
+                  {RENTAL_CONTRACT_TYPES.map((item) => (
+                    <div className="col-md-6" key={item.id}>
+                      <label className={`border rounded-3 p-3 d-flex gap-3 h-100 ${form.contractType === item.id ? "border-primary bg-primary-subtle" : ""}`}>
+                        <input className="form-check-input mt-1" type="radio" name="contractType" value={item.id} checked={form.contractType === item.id} onChange={() => setContractType(item.id)} />
+                        <span><strong className="d-block">{item.label}</strong><small className="text-muted">{item.description}</small></span>
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
               <div className="col-lg-9">
                 <label className="form-label" htmlFor="rentalProperty">Inmueble administrado *</label>
                 <select id="rentalProperty" className="form-select" required value={form.inmuebleId} onChange={(event) => selectInmueble(event.target.value)}>
@@ -201,23 +244,24 @@ const RentalContractFormPage = () => {
 
         <section className="card border-0 shadow-sm">
           <div className="card-body p-4">
-            <div className="rental-section-heading"><span>3</span><div><h2 className="h5 mb-1">Vigencia y valores</h2><p className="text-muted small mb-0">Definí períodos, moneda, vencimiento y honorarios.</p></div></div>
+            <div className="rental-section-heading"><span>3</span><div><h2 className="h5 mb-1">Vigencia y valores</h2><p className="text-muted small mb-0">{form.contractType === "temporary" ? "Definí la estadía, su importe total y el vencimiento del pago." : "Definí períodos, moneda, vencimiento y honorarios."}</p></div></div>
             <div className="row g-3 mt-1">
-              <div className="col-md-3"><label className="form-label" htmlFor="rentalStart">Inicio *</label><input id="rentalStart" className="form-control" type="date" required value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} /></div>
-              <div className="col-md-3"><label className="form-label" htmlFor="rentalEnd">Finalización *</label><input id="rentalEnd" className="form-control" type="date" required value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></div>
+              <div className="col-md-3"><label className="form-label" htmlFor="rentalStart">{form.contractType === "temporary" ? "Inicio del servicio *" : "Inicio *"}</label><input id="rentalStart" className="form-control" type="date" required value={form.startDate} onChange={(event) => setStartDate(event.target.value)} /></div>
+              <div className="col-md-3"><label className="form-label" htmlFor="rentalEnd">{form.contractType === "temporary" ? "Fin del servicio *" : "Finalización *"}</label><input id="rentalEnd" className="form-control" type="date" min={form.startDate} required value={form.endDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></div>
               <div className="col-md-3"><label className="form-label" htmlFor="rentalSigned">Firma</label><input id="rentalSigned" className="form-control" type="date" value={form.signedAt} onChange={(event) => setForm({ ...form, signedAt: event.target.value })} /></div>
-              <div className="col-md-3"><label className="form-label" htmlFor="rentalDueDay">Día de vencimiento *</label><input id="rentalDueDay" className="form-control" type="number" min="1" max="31" required value={form.dueDay} onChange={(event) => setForm({ ...form, dueDay: Number(event.target.value) })} /></div>
+              {form.contractType === "recurring" ? <div className="col-md-3"><label className="form-label" htmlFor="rentalDueDay">Día de vencimiento *</label><input id="rentalDueDay" className="form-control" type="number" min="1" max="31" required value={form.dueDay} onChange={(event) => setForm({ ...form, dueDay: Number(event.target.value) })} /></div> : <div className="col-md-3"><label className="form-label" htmlFor="rentalPaymentDue">Vencimiento del pago *</label><input id="rentalPaymentDue" className="form-control" type="date" required value={form.paymentDueDate} onChange={(event) => setForm({ ...form, paymentDueDate: event.target.value })} /></div>}
               <div className="col-md-3"><label className="form-label" htmlFor="rentalCurrency">Moneda</label><select id="rentalCurrency" className="form-select" value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>{RENTAL_CURRENCIES.map((item) => <option value={item.id} key={item.id}>{item.label}</option>)}</select></div>
               {form.currency === "OTHER" && <div className="col-md-3"><label className="form-label" htmlFor="rentalOtherCurrency">Identificación</label><input id="rentalOtherCurrency" className="form-control" value={form.otherCurrency} onChange={(event) => setForm({ ...form, otherCurrency: event.target.value })} /></div>}
-              <div className="col-md-3"><label className="form-label" htmlFor="rentalInitial">Alquiler inicial *</label><input id="rentalInitial" className="form-control" inputMode="decimal" required value={minorToMajorInput(form.financial.initialRentAmountMinor)} onChange={(event) => { const amount = majorToMinor(event.target.value); setForm((current) => ({ ...current, financial: { ...current.financial, initialRentAmountMinor: amount, currentRentAmountMinor: current.financial.currentRentAmountMinor || amount } })); }} /></div>
+              <div className="col-md-3"><label className="form-label" htmlFor="rentalInitial">{form.contractType === "temporary" ? "Importe total de la estadía *" : "Alquiler inicial *"}</label><input id="rentalInitial" className="form-control" inputMode="decimal" required value={minorToMajorInput(form.financial.initialRentAmountMinor)} onChange={(event) => { const amount = majorToMinor(event.target.value); setForm((current) => { const shouldSyncCurrent = current.contractType === "temporary" || !current.financial.currentRentAmountMinor || current.financial.currentRentAmountMinor === current.financial.initialRentAmountMinor; return { ...current, financial: { ...current.financial, initialRentAmountMinor: amount, currentRentAmountMinor: shouldSyncCurrent ? amount : current.financial.currentRentAmountMinor } }; }); }} /></div>
               <div className="col-md-3"><label className="form-label" htmlFor="rentalDeposit">Depósito</label><input id="rentalDeposit" className="form-control" inputMode="decimal" value={minorToMajorInput(form.depositAmountMinor)} onChange={(event) => setForm({ ...form, depositAmountMinor: majorToMinor(event.target.value) })} /></div>
-              <div className="col-md-3"><label className="form-label" htmlFor="rentalFeePercent">Honorarios mensuales (%)</label><input id="rentalFeePercent" className="form-control" type="number" min="0" step="0.01" value={form.financial.administrationFee.percent} onChange={(event) => setFee("percent", Number(event.target.value))} /></div>
-              <div className="col-md-3"><label className="form-label" htmlFor="rentalFeeFixed">Honorario fijo mensual</label><input id="rentalFeeFixed" className="form-control" inputMode="decimal" value={minorToMajorInput(form.financial.administrationFee.fixedAmountMinor)} onChange={(event) => setFee("fixedAmountMinor", majorToMinor(event.target.value))} /></div>
+              <div className="col-md-3"><label className="form-label" htmlFor="rentalFeePercent">Honorarios {form.contractType === "temporary" ? "sobre la estadía" : "mensuales"} (%)</label><input id="rentalFeePercent" className="form-control" type="number" min="0" step="0.01" value={form.financial.administrationFee.percent} onChange={(event) => setFee("percent", Number(event.target.value))} /></div>
+              <div className="col-md-3"><label className="form-label" htmlFor="rentalFeeFixed">Honorario fijo {form.contractType === "temporary" ? "por la estadía" : "mensual"}</label><input id="rentalFeeFixed" className="form-control" inputMode="decimal" value={minorToMajorInput(form.financial.administrationFee.fixedAmountMinor)} onChange={(event) => setFee("fixedAmountMinor", majorToMinor(event.target.value))} /></div>
             </div>
+            {form.contractType === "temporary" && <div className="alert alert-info small mt-3 mb-0">Para una estadía de un solo día, ingresá la misma fecha en inicio y fin. Se creará una sola obligación con esas fechas de servicio para el circuito de facturación.</div>}
           </div>
         </section>
 
-        <section className="card border-0 shadow-sm">
+        {form.contractType === "recurring" && <section className="card border-0 shadow-sm">
           <div className="card-body p-4">
             <div className="rental-section-heading"><span>4</span><div><h2 className="h5 mb-1">Actualización del alquiler</h2><p className="text-muted small mb-0">Se documenta la regla contractual sin imponer un índice legal fijo.</p></div></div>
             <div className="row g-3 mt-1">
@@ -229,11 +273,11 @@ const RentalContractFormPage = () => {
             </div>
             {["index", "formula"].includes(form.financial.adjustment.mode) && <div className="alert alert-info small mt-3 mb-0">La regla queda registrada y generará una alerta. El nuevo importe se confirma manualmente para mantener trazabilidad sobre el valor aplicado.</div>}
           </div>
-        </section>
+        </section>}
 
         <section className="card border-0 shadow-sm">
           <div className="card-body p-4">
-            <div className="rental-section-heading"><span>5</span><div><h2 className="h5 mb-1">Documentación y notas</h2><p className="text-muted small mb-0">Información privada para administrar el contrato.</p></div></div>
+            <div className="rental-section-heading"><span>{form.contractType === "temporary" ? "4" : "5"}</span><div><h2 className="h5 mb-1">Documentación y notas</h2><p className="text-muted small mb-0">Información privada para administrar el contrato.</p></div></div>
             <div className="row g-3 mt-1">
               <div className="col-lg-6"><label className="form-label" htmlFor="rentalServices">Servicios o conceptos incluidos</label><textarea id="rentalServices" className="form-control" rows="3" value={form.servicesIncluded} onChange={(event) => setForm({ ...form, servicesIncluded: event.target.value })} /></div>
               <div className="col-lg-6"><label className="form-label" htmlFor="rentalLateFee">Mora pactada</label><textarea id="rentalLateFee" className="form-control" rows="3" value={form.lateFeeNotes} onChange={(event) => setForm({ ...form, lateFeeNotes: event.target.value })} /></div>
@@ -244,7 +288,7 @@ const RentalContractFormPage = () => {
         </section>
 
         <div className="rental-save-bar d-flex flex-wrap justify-content-between align-items-center gap-3">
-          <small className="text-muted">Al activar el contrato se generan las obligaciones mensuales hasta el período actual.</small>
+          <small className="text-muted">{form.contractType === "temporary" ? "Al activar el contrato se genera una única obligación por toda la estadía." : "Al activar el contrato se generan las obligaciones mensuales hasta el período actual."}</small>
           <button className="btn btn-primary btn-lg" disabled={saving}>{saving ? "Guardando..." : "Guardar contrato"}</button>
         </div>
       </form>
