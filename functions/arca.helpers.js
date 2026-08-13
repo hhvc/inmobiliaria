@@ -200,6 +200,7 @@ const normalizeRegistryActivity = (value = {}) => ({
 export const buildProductionConfirmationText = ({
     pointOfSale,
     proposedVoucherNumber,
+    voucherType = 11,
 } = {}) => {
     const normalizedPointOfSale = Math.max(0, Math.trunc(Number(pointOfSale) || 0));
     const normalizedVoucherNumber = Math.max(
@@ -207,7 +208,8 @@ export const buildProductionConfirmationText = ({
         Math.trunc(Number(proposedVoucherNumber) || 0),
     );
     if (!normalizedPointOfSale || !normalizedVoucherNumber) return "";
-    return `EMITIR ${normalizedPointOfSale}-${normalizedVoucherNumber}`;
+    const prefix = Number(voucherType) === 13 ? "EMITIR NC" : "EMITIR";
+    return `${prefix} ${normalizedPointOfSale}-${normalizedVoucherNumber}`;
 };
 
 export const buildProductionActivationConfirmationText = ({
@@ -378,7 +380,10 @@ export const validateArcaInvoiceDraft = (draft = {}, {
     if (!allowedEnvironments.includes(draft.environment)) {
         errors.push("El ambiente fiscal no está habilitado para esta operación.");
     }
-    if (Number(draft.voucherType) !== 11) errors.push("Esta etapa admite únicamente Factura C.");
+    const voucherType = Number(draft.voucherType);
+    if (![11, 13].includes(voucherType)) {
+        errors.push("Esta etapa admite únicamente Factura C o Nota de Crédito C.");
+    }
     if (!(Number(draft.pointOfSale) > 0)) errors.push("Configurá el punto de venta WSFE.");
     if (!isValidArcaCuit(draft.issuerCuit)) errors.push("El CUIT emisor no es válido.");
     if (![80, 96, 99].includes(Number(draft.recipient?.documentType))) {
@@ -401,6 +406,18 @@ export const validateArcaInvoiceDraft = (draft = {}, {
         errors.push("Seleccioná la condición frente al IVA del receptor.");
     }
     if (!(Number(draft.amountMinor) > 0)) errors.push("El importe debe ser mayor a cero.");
+    if (voucherType === 13) {
+        const associated = draft.associatedVoucher || {};
+        if (Number(associated.voucherType) !== 11 ||
+            !(Number(associated.pointOfSale) > 0) ||
+            !(Number(associated.voucherNumber) > 0)) {
+            errors.push("La Nota de Crédito C debe asociarse a una Factura C autorizada.");
+        }
+        if (Number(associated.amountMinor) > 0 &&
+            Number(draft.amountMinor) > Number(associated.amountMinor)) {
+            errors.push("La Nota de Crédito no puede superar el importe de la factura asociada.");
+        }
+    }
     if (draft.currency !== "ARS") errors.push("Esta etapa admite únicamente pesos argentinos.");
     const invoiceTime = dateKeyToUtcTime(draft.invoiceDate);
     const requestTime = dateKeyToUtcTime(requestDateKey);
@@ -442,18 +459,21 @@ export const buildWsfeCaeRequest = ({
     if (errors.length) throw new Error(errors.join(" "));
     const amount = minorToArcaAmount(draft.amountMinor);
     const documentNumber = cleanDigits(draft.recipient.documentNumber) || "0";
+    const voucherType = Number(draft.voucherType);
+    const associatedXml = voucherType === 13 ? `
+    <ar:CbtesAsoc><ar:CbteAsoc><ar:Tipo>${Number(draft.associatedVoucher.voucherType)}</ar:Tipo><ar:PtoVta>${Number(draft.associatedVoucher.pointOfSale)}</ar:PtoVta><ar:Nro>${Number(draft.associatedVoucher.voucherNumber)}</ar:Nro></ar:CbteAsoc></ar:CbtesAsoc>` : "";
     return wsfeEnvelope("FECAESolicitar", `${authXml({
         token,
         sign,
         issuerCuit: draft.issuerCuit,
     })}
 <ar:FeCAEReq>
-  <ar:FeCabReq><ar:CantReg>1</ar:CantReg><ar:PtoVta>${Number(draft.pointOfSale)}</ar:PtoVta><ar:CbteTipo>11</ar:CbteTipo></ar:FeCabReq>
+  <ar:FeCabReq><ar:CantReg>1</ar:CantReg><ar:PtoVta>${Number(draft.pointOfSale)}</ar:PtoVta><ar:CbteTipo>${voucherType}</ar:CbteTipo></ar:FeCabReq>
   <ar:FeDetReq><ar:FECAEDetRequest>
     <ar:Concepto>2</ar:Concepto><ar:DocTipo>${Number(draft.recipient.documentType)}</ar:DocTipo><ar:DocNro>${documentNumber}</ar:DocNro>
     <ar:CbteDesde>${Number(voucherNumber)}</ar:CbteDesde><ar:CbteHasta>${Number(voucherNumber)}</ar:CbteHasta><ar:CbteFch>${dateKeyToArca(draft.invoiceDate)}</ar:CbteFch>
     <ar:ImpTotal>${amount}</ar:ImpTotal><ar:ImpTotConc>0.00</ar:ImpTotConc><ar:ImpNeto>${amount}</ar:ImpNeto><ar:ImpOpEx>0.00</ar:ImpOpEx><ar:ImpIVA>0.00</ar:ImpIVA><ar:ImpTrib>0.00</ar:ImpTrib>
-    <ar:FchServDesde>${dateKeyToArca(draft.serviceFrom)}</ar:FchServDesde><ar:FchServHasta>${dateKeyToArca(draft.serviceTo)}</ar:FchServHasta><ar:FchVtoPago>${dateKeyToArca(draft.paymentDueDate)}</ar:FchVtoPago>
+    <ar:FchServDesde>${dateKeyToArca(draft.serviceFrom)}</ar:FchServDesde><ar:FchServHasta>${dateKeyToArca(draft.serviceTo)}</ar:FchServHasta><ar:FchVtoPago>${dateKeyToArca(draft.paymentDueDate)}</ar:FchVtoPago>${associatedXml}
     <ar:MonId>PES</ar:MonId><ar:MonCotiz>1.000000</ar:MonCotiz><ar:CondicionIVAReceptorId>${Number(draft.recipient.ivaConditionId)}</ar:CondicionIVAReceptorId>
   </ar:FECAEDetRequest></ar:FeDetReq>
 </ar:FeCAEReq>`);

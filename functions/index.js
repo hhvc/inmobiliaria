@@ -136,6 +136,7 @@ export {
   arcaTestProductionConnection,
   arcaCreateRentalInvoiceDraft,
   arcaPrepareProductionRentalInvoicePreview,
+  arcaPrepareProductionRentalCreditNotePreview,
   arcaAuthorizeRentalInvoice,
   arcaAuthorizeProductionRentalInvoice,
 } from "./arca.js";

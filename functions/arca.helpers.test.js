@@ -236,7 +236,43 @@ test("genera una confirmación productiva ligada al punto y número", () => {
         pointOfSale: 4,
         proposedVoucherNumber: 27,
     }), "EMITIR 4-27");
+    assert.equal(buildProductionConfirmationText({
+        pointOfSale: 4,
+        proposedVoucherNumber: 3,
+        voucherType: 13,
+    }), "EMITIR NC 4-3");
     assert.equal(buildProductionConfirmationText({pointOfSale: 0}), "");
+});
+
+test("construye una Nota de Crédito C asociada sin superar la factura", () => {
+    const creditNote = {
+        ...validDraft,
+        environment: "prod",
+        voucherType: 13,
+        amountMinor: 500,
+        associatedVoucher: {
+            voucherType: 11,
+            pointOfSale: 4,
+            voucherNumber: 1,
+            amountMinor: 1000,
+        },
+    };
+    assert.deepEqual(validateArcaInvoiceDraft(creditNote, {
+        allowedEnvironments: ["prod"],
+    }), []);
+    const xml = buildWsfeCaeRequest({
+        draft: creditNote,
+        token: "TOKEN",
+        sign: "SIGN",
+        voucherNumber: 2,
+        requestDateKey: "2026-08-06",
+    });
+    assert.match(xml, /<ar:CbteTipo>13<\/ar:CbteTipo>/);
+    assert.match(xml, /<ar:CbtesAsoc><ar:CbteAsoc><ar:Tipo>11<\/ar:Tipo><ar:PtoVta>4<\/ar:PtoVta><ar:Nro>1<\/ar:Nro>/);
+    assert.match(validateArcaInvoiceDraft({
+        ...creditNote,
+        amountMinor: 1001,
+    }, {allowedEnvironments: ["prod"]}).join(" "), /no puede superar/i);
 });
 
 test("genera una confirmación de activación ligada al CUIT y punto de venta", () => {

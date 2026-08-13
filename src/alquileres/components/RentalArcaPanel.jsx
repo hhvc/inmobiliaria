@@ -422,7 +422,7 @@ const RentalArcaPanel = ({
 
   const draftFor = (obligationId) => overview.drafts?.find((item) => item.obligationId === obligationId);
   const contractProductionPreviews = overview.productionPreviews?.filter(
-    (item) => item.contractId === contract.id,
+    (item) => item.contractId === contract.id && Number(item.voucherType) === 11,
   ) || [];
   const productionPreviewFor = (obligationId) => contractProductionPreviews.find(
     (item) => item.obligationId === obligationId,

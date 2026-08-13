@@ -1011,7 +1011,12 @@ export const arcaGetProductionRegistrationCertificate = onCall({
     }
 });
 
-const getRentalDocuments = async ({inmobiliariaId, contractId, obligationId}) => {
+const getRentalDocuments = async ({
+    inmobiliariaId,
+    contractId,
+    obligationId,
+    allowAuthorizedProduction = false,
+}) => {
     const agencyRef = db.collection("inmobiliarias").doc(inmobiliariaId);
     const [contractSnap, obligationSnap] = await Promise.all([
         agencyRef.collection("rental_contracts").doc(contractId).get(),
@@ -1042,7 +1047,7 @@ const getRentalDocuments = async ({inmobiliariaId, contractId, obligationId}) =>
             "El período figura como facturado externamente. Quitá esa marca antes de preparar otra factura.",
         );
     }
-    if (obligation.arcaProductionInvoice?.authorized === true) {
+    if (!allowAuthorizedProduction && obligation.arcaProductionInvoice?.authorized === true) {
         throw new HttpsError(
             "failed-precondition",
             "El período ya tiene un comprobante autorizado en ARCA Producción.",
@@ -1477,6 +1482,204 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
     }
 });
 
+const getCreditNotesForInvoice = async (inmobiliariaId, invoicePreviewId) => {
+    const snap = await db.collection("inmobiliarias").doc(inmobiliariaId)
+        .collection(PRODUCTION_PREVIEW_COLLECTION).limit(300).get();
+    return snap.docs.map((item) => ({id: item.id, ...(item.data() || {})}))
+        .filter((item) => Number(item.voucherType) === 13 &&
+            cleanText(item.associatedVoucher?.previewId, 128) === invoicePreviewId);
+};
+
+const assertCreditNoteSource = ({source, profile, inmobiliariaId}) => {
+    if (source.environment !== "prod" || source.status !== "authorized" ||
+        !source.cae || Number(source.voucherType) !== 11) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La Nota de Crédito debe vincularse con una Factura C autorizada en Producción.",
+        );
+    }
+    if (source.inmobiliariaId !== inmobiliariaId ||
+        source.issuerProfileId !== profile.id ||
+        normalizeArcaCuit(source.issuerCuit) !== profile.issuerCuit ||
+        Number(source.pointOfSale) !== Number(profile.pointOfSale)) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La factura asociada no coincide con el perfil fiscal activo.",
+        );
+    }
+};
+
+export const arcaPrepareProductionRentalCreditNotePreview = onCall({
+    region: REGION,
+    secrets: arcaProdSecrets,
+    timeoutSeconds: 60,
+}, async (request) => {
+    await assertRoot(request.auth?.uid);
+    const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
+    const invoicePreviewId = cleanText(request.data?.invoicePreviewId, 128);
+    const amountMinor = Math.round(Number(request.data?.amountMinor) || 0);
+    const reason = cleanText(request.data?.reason, 300);
+    const invoiceDate = cleanText(request.data?.invoiceDate, 10) || todayArgentina();
+    if (!inmobiliariaId || !invoicePreviewId) {
+        throw new HttpsError("invalid-argument", "Faltan la inmobiliaria o la factura asociada.");
+    }
+    if (!(amountMinor > 0)) {
+        throw new HttpsError("invalid-argument", "El importe a acreditar debe ser mayor a cero.");
+    }
+    if (reason.length < 10) {
+        throw new HttpsError(
+            "invalid-argument",
+            "Explicá el motivo de la Nota de Crédito con al menos 10 caracteres.",
+        );
+    }
+    const sourceRef = productionPreviewRef(inmobiliariaId, invoicePreviewId);
+    const sourceSnap = await sourceRef.get();
+    if (!sourceSnap.exists) throw new HttpsError("not-found", "La factura asociada no existe.");
+    const source = {id: sourceSnap.id, ...(sourceSnap.data() || {})};
+    const profile = await getProfile(source.issuerProfileId);
+    assertProductionProfileForAgency(profile, inmobiliariaId);
+    assertProductionPreparationReady(profile);
+    inspectProductionCertificateForProfile(profile);
+    assertCreditNoteSource({source, profile, inmobiliariaId});
+    await getRentalDocuments({
+        inmobiliariaId,
+        contractId: source.contractId,
+        obligationId: source.obligationId,
+        allowAuthorizedProduction: true,
+    });
+    const creditNotes = await getCreditNotesForInvoice(inmobiliariaId, source.id);
+    const openCreditNote = creditNotes.find((item) => [
+        "production_preview",
+        "authorizing",
+        "pending_reconciliation",
+    ].includes(item.status));
+    if (openCreditNote && ["authorizing", "pending_reconciliation"]
+        .includes(openCreditNote.status)) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Existe una Nota de Crédito cuya respuesta debe reconciliarse antes de preparar otra.",
+        );
+    }
+    const authorizedCreditMinor = creditNotes
+        .filter((item) => item.status === "authorized" && item.cae)
+        .reduce((total, item) => total + Math.max(0, Number(item.amountMinor) || 0), 0);
+    const remainingMinor = Math.max(0, Number(source.amountMinor) - authorizedCreditMinor);
+    if (amountMinor > remainingMinor) {
+        throw new HttpsError(
+            "failed-precondition",
+            `El saldo máximo acreditable es ${(remainingMinor / 100).toFixed(2)} ARS.`,
+        );
+    }
+    const auth = await getWsfeAuth(profile, "prod");
+    const lastAuthorizedXml = await callWsfe({
+        action: "FECompUltimoAutorizado",
+        xml: buildWsfeLastAuthorizedRequest({
+            ...auth,
+            pointOfSale: profile.pointOfSale,
+            voucherType: 13,
+        }),
+        environment: "prod",
+    });
+    const lastAuthorizedVoucher = parseWsfeLastAuthorizedResponse(lastAuthorizedXml);
+    const creditNoteSequence = creditNotes.filter((item) =>
+        item.status === "authorized" && item.cae).length + 1;
+    const previewId = createArcaRequestId({
+        issuerProfileId: profile.id,
+        pointOfSale: profile.pointOfSale,
+        voucherType: 13,
+        obligationId: `${source.obligationId}:NC:${source.id}:${creditNoteSequence}`,
+        environment: "prod",
+    });
+    const observedAt = new Date().toISOString();
+    const preview = {
+        id: previewId,
+        requestId: previewId,
+        documentKind: "credit_note",
+        inmobiliariaId,
+        issuerProfileId: profile.id,
+        environment: "prod",
+        issuerCuit: profile.issuerCuit,
+        issuerSnapshot: source.issuerSnapshot || {},
+        pointOfSale: Number(profile.pointOfSale),
+        voucherType: 13,
+        contractId: source.contractId,
+        obligationId: source.obligationId,
+        periodKey: source.periodKey,
+        recipient: source.recipient,
+        amountMinor,
+        currency: "ARS",
+        invoiceDate,
+        serviceFrom: source.serviceFrom,
+        serviceTo: source.serviceTo,
+        paymentDueDate: invoiceDate,
+        reason,
+        description: `Nota de crédito: ${reason}`,
+        associatedVoucher: {
+            previewId: source.id,
+            voucherType: 11,
+            pointOfSale: Number(source.pointOfSale),
+            voucherNumber: Number(source.voucherNumber),
+            voucherDate: source.voucherDate || source.invoiceDate,
+            amountMinor: Number(source.amountMinor),
+            cae: source.cae,
+        },
+        originalInvoiceAmountMinor: Number(source.amountMinor),
+        creditedBeforeMinor: authorizedCreditMinor,
+        remainingAfterMinor: remainingMinor - amountMinor,
+        creditNoteSequence,
+        status: "production_preview",
+        productionInvoiceIssuanceEnabled: true,
+        lastAuthorizedVoucher,
+        proposedVoucherNumber: lastAuthorizedVoucher + 1,
+        sequenceObservedAt: observedAt,
+        confirmationText: buildProductionConfirmationText({
+            pointOfSale: profile.pointOfSale,
+            proposedVoucherNumber: lastAuthorizedVoucher + 1,
+            voucherType: 13,
+        }),
+        updatedAt: FieldValue.serverTimestamp(),
+        updatedBy: request.auth.uid,
+    };
+    const errors = validateArcaInvoiceDraft(preview, {
+        requestDateKey: todayArgentina(),
+        allowedEnvironments: ["prod"],
+    });
+    if (errors.length) throw new HttpsError("failed-precondition", errors.join(" "));
+    const ref = productionPreviewRef(inmobiliariaId, previewId);
+    const existing = await ref.get();
+    if (existing.exists && ["authorizing", "pending_reconciliation", "authorized"]
+        .includes(existing.data()?.status)) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La Nota de Crédito existente no puede reemplazarse en su estado actual.",
+        );
+    }
+    const batch = db.batch();
+    batch.set(ref, {
+        ...preview,
+        ...(existing.exists ? {} : {
+            createdAt: FieldValue.serverTimestamp(),
+            createdBy: request.auth.uid,
+        }),
+    }, {merge: true});
+    batch.set(db.collection(AUDIT_COLLECTION).doc(), {
+        action: "arca_production_credit_note_preview_prepared",
+        environment: "prod",
+        readOnly: true,
+        inmobiliariaId,
+        profileId: profile.id,
+        previewId,
+        associatedInvoicePreviewId: source.id,
+        pointOfSale: Number(profile.pointOfSale),
+        proposedVoucherNumber: lastAuthorizedVoucher + 1,
+        amountMinor,
+        performedBy: request.auth.uid,
+        performedAt: FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+    return {preview: serializeValue({...preview, updatedAt: observedAt})};
+});
+
 const acquireIssueLock = async ({
     profile,
     draft,
@@ -1488,7 +1691,7 @@ const acquireIssueLock = async ({
         environment,
         profile.issuerCuit,
         profile.pointOfSale,
-        profile.voucherType,
+        Number(draft.voucherType || profile.voucherType),
     ].join("_");
     const ref = db.collection(LOCK_COLLECTION).doc(lockId);
     const lockToken = crypto.randomUUID();
@@ -1554,7 +1757,7 @@ const getExistingVoucher = async ({profile, draft, auth, environment = "homo"}) 
     const xml = buildWsfeVoucherQueryRequest({
         ...auth,
         pointOfSale: profile.pointOfSale,
-        voucherType: profile.voucherType,
+        voucherType: Number(draft.voucherType || profile.voucherType),
         voucherNumber: draft.proposedVoucherNumber,
     });
     const response = await callWsfe({action: "FECompConsultar", xml, environment});
@@ -1710,32 +1913,61 @@ const persistProductionAuthorization = async ({
         updatedAt: FieldValue.serverTimestamp(),
         updatedBy: uid,
     });
-    batch.update(obligationRef, {
-        arcaProductionInvoice: {
-            authorized: true,
-            environment: "prod",
-            previewId: preview.id,
-            issuerProfileId: preview.issuerProfileId,
-            pointOfSale: Number(preview.pointOfSale),
-            voucherType: Number(preview.voucherType),
-            voucherNumber,
-            voucherDate: result.voucherDate || preview.invoiceDate,
-            amountMinor: Number(preview.amountMinor),
-            cae: result.cae,
-            caeExpirationDate: result.caeExpirationDate || "",
-            authorizedAt: FieldValue.serverTimestamp(),
-            authorizedBy: uid,
-        },
-        updatedAt: FieldValue.serverTimestamp(),
-        updatedBy: uid,
-    });
+    const isCreditNote = Number(preview.voucherType) === 13;
+    if (isCreditNote) {
+        const sourceId = cleanText(preview.associatedVoucher?.previewId, 128);
+        batch.update(productionPreviewRef(preview.inmobiliariaId, sourceId), {
+            creditedAmountMinor: FieldValue.increment(Number(preview.amountMinor)),
+            lastCreditNoteId: preview.id,
+            lastCreditNoteAuthorizedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: uid,
+        });
+        batch.update(obligationRef, {
+            "arcaProductionInvoice.creditedAmountMinor": FieldValue.increment(
+                Number(preview.amountMinor),
+            ),
+            "arcaProductionInvoice.fiscalNetAmountMinor": Number(preview.remainingAfterMinor),
+            "arcaProductionInvoice.lastCreditNoteId": preview.id,
+            "arcaProductionInvoice.lastCreditNoteAuthorizedAt":
+                FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: uid,
+        });
+    } else {
+        batch.update(obligationRef, {
+            arcaProductionInvoice: {
+                authorized: true,
+                environment: "prod",
+                previewId: preview.id,
+                issuerProfileId: preview.issuerProfileId,
+                pointOfSale: Number(preview.pointOfSale),
+                voucherType: Number(preview.voucherType),
+                voucherNumber,
+                voucherDate: result.voucherDate || preview.invoiceDate,
+                amountMinor: Number(preview.amountMinor),
+                creditedAmountMinor: 0,
+                fiscalNetAmountMinor: Number(preview.amountMinor),
+                cae: result.cae,
+                caeExpirationDate: result.caeExpirationDate || "",
+                authorizedAt: FieldValue.serverTimestamp(),
+                authorizedBy: uid,
+            },
+            updatedAt: FieldValue.serverTimestamp(),
+            updatedBy: uid,
+        });
+    }
     batch.set(auditRef, {
-        action: "arca_production_invoice_authorized",
+        action: isCreditNote ?
+            "arca_production_credit_note_authorized" :
+            "arca_production_invoice_authorized",
         environment: "prod",
         inmobiliariaId: preview.inmobiliariaId,
         profileId: preview.issuerProfileId,
         previewId: preview.id,
         obligationId: preview.obligationId,
+        associatedInvoicePreviewId: isCreditNote ?
+            cleanText(preview.associatedVoucher?.previewId, 128) : "",
         pointOfSale: Number(preview.pointOfSale),
         voucherType: Number(preview.voucherType),
         voucherNumber,
@@ -1802,7 +2034,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
     inspectProductionCertificateForProfile(profile);
     if (normalizeArcaCuit(preview.issuerCuit) !== profile.issuerCuit ||
         Number(preview.pointOfSale) !== Number(profile.pointOfSale) ||
-        Number(preview.voucherType) !== Number(profile.voucherType)) {
+        ![11, 13].includes(Number(preview.voucherType))) {
         throw new HttpsError(
             "failed-precondition",
             "El perfil fiscal cambió desde la vista previa. Actualizala antes de emitir.",
@@ -1819,6 +2051,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
         inmobiliariaId,
         contractId: preview.contractId,
         obligationId: preview.obligationId,
+        allowAuthorizedProduction: Number(preview.voucherType) === 13,
     });
     const ownerIds = Array.isArray(documents.contract.partyIds?.owners) ?
         documents.contract.partyIds.owners : [];
@@ -1827,6 +2060,41 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
             "failed-precondition",
             "El emisor fiscal seleccionado no es locador de este contrato.",
         );
+    }
+    if (Number(preview.voucherType) === 13) {
+        const sourceId = cleanText(preview.associatedVoucher?.previewId, 128);
+        const sourceSnap = await productionPreviewRef(inmobiliariaId, sourceId).get();
+        if (!sourceSnap.exists) {
+            throw new HttpsError("failed-precondition", "La factura asociada ya no está disponible.");
+        }
+        const source = {id: sourceSnap.id, ...(sourceSnap.data() || {})};
+        assertCreditNoteSource({source, profile, inmobiliariaId});
+        if (Number(source.voucherNumber) !== Number(preview.associatedVoucher?.voucherNumber) ||
+            Number(source.recipient?.documentType) !== Number(preview.recipient?.documentType) ||
+            cleanText(source.recipient?.documentNumber, 20) !==
+                cleanText(preview.recipient?.documentNumber, 20)) {
+            throw new HttpsError(
+                "failed-precondition",
+                "La factura asociada cambió o no coincide con el receptor de la Nota de Crédito.",
+            );
+        }
+        const creditNotes = await getCreditNotesForInvoice(inmobiliariaId, source.id);
+        const otherAuthorizedMinor = creditNotes
+            .filter((item) => item.id !== preview.id &&
+                item.status === "authorized" && item.cae)
+            .reduce((total, item) => total + Math.max(0, Number(item.amountMinor) || 0), 0);
+        if (otherAuthorizedMinor + Number(preview.amountMinor) > Number(source.amountMinor)) {
+            throw new HttpsError(
+                "failed-precondition",
+                "La Nota de Crédito supera el saldo disponible de la factura asociada.",
+            );
+        }
+        preview = {
+            ...preview,
+            creditedBeforeMinor: otherAuthorizedMinor,
+            remainingAfterMinor: Number(source.amountMinor) -
+                otherAuthorizedMinor - Number(preview.amountMinor),
+        };
     }
     const errors = validateArcaInvoiceDraft(preview, {
         requestDateKey: todayArgentina(),
@@ -1872,7 +2140,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
         const lastXml = buildWsfeLastAuthorizedRequest({
             ...auth,
             pointOfSale: profile.pointOfSale,
-            voucherType: profile.voucherType,
+            voucherType: preview.voucherType,
         });
         const lastResponse = await callWsfe({
             action: "FECompUltimoAutorizado",
@@ -1886,6 +2154,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
             const confirmationText = buildProductionConfirmationText({
                 pointOfSale: profile.pointOfSale,
                 proposedVoucherNumber: voucherNumber,
+                voucherType: preview.voucherType,
             });
             await ref.update({
                 status: "production_preview",

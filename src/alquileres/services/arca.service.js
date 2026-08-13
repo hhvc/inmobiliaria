@@ -73,6 +73,11 @@ export const prepareProductionRentalArcaPreview = (payload) => callArcaFunction(
   payload,
 );
 
+export const prepareProductionRentalArcaCreditNotePreview = (payload) => callArcaFunction(
+  "arcaPrepareProductionRentalCreditNotePreview",
+  payload,
+);
+
 export const authorizeRentalArcaDraft = ({ inmobiliariaId, draftId }) => callArcaFunction(
   "arcaAuthorizeRentalInvoice",
   { inmobiliariaId, draftId, confirmHomologation: true },

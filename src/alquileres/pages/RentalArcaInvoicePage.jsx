@@ -6,13 +6,16 @@ import SEO from "../../components/SEO";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
 import {
   ARCA_RECEIVER_IVA_CONDITIONS,
+  authorizeProductionRentalArcaPreview,
   getArcaOverview,
+  prepareProductionRentalArcaCreditNotePreview,
 } from "../services/arca.service";
 import { getRentalContractById } from "../services/rental.service";
 import {
   buildArcaQrUrl,
   formatArcaVoucherNumber,
   getArcaDocumentLabel,
+  isArcaProductionPreviewFresh,
 } from "../utils/arcaInvoice.helpers";
 import { formatRentalMoney } from "../utils/rental.helpers";
 import "../rental.css";
@@ -26,16 +29,33 @@ const formatDate = (value = "") => {
   return year && month && day ? `${day}/${month}/${year}` : value || "—";
 };
 
+const todayKey = () => new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Argentina/Buenos_Aires",
+}).format(new Date());
+
+const majorToMinor = (value) => Math.round(Number(
+  String(value ?? "").trim().replace(/\./g, "").replace(",", "."),
+) * 100) || 0;
+
 const RentalArcaInvoicePage = () => {
   const { id: contractId, draftId } = useParams();
   const { activeInmobiliariaId } = useActiveInmobiliariaModules();
   const [contract, setContract] = useState(null);
   const [draft, setDraft] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [relatedCreditNotes, setRelatedCreditNotes] = useState([]);
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [qrUrl, setQrUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [working, setWorking] = useState(false);
+  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
+  const [creditNoteForm, setCreditNoteForm] = useState({
+    amount: "",
+    reason: "",
+    invoiceDate: todayKey(),
+  });
 
   const load = useCallback(async () => {
     if (!activeInmobiliariaId) return;
@@ -59,6 +79,9 @@ const RentalArcaInvoicePage = () => {
       setProfile(overview.profiles?.find(
         (item) => item.id === draftData.issuerProfileId,
       ) || null);
+      setRelatedCreditNotes((overview.productionPreviews || []).filter(
+        (item) => item.associatedVoucher?.previewId === draftData.id,
+      ));
     } catch (loadError) {
       setError(loadError.message || "No se pudo cargar el comprobante.");
     } finally {
@@ -89,6 +112,74 @@ const RentalArcaInvoicePage = () => {
     return () => { active = false; };
   }, [draft]);
 
+  const authorizedCreditMinor = useMemo(() => relatedCreditNotes
+    .filter((item) => item.status === "authorized" && item.cae)
+    .reduce((total, item) => total + Number(item.amountMinor || 0), 0), [relatedCreditNotes]);
+
+  const prepareCreditNote = async (event) => {
+    event.preventDefault();
+    const amountMinor = majorToMinor(creditNoteForm.amount);
+    const confirmed = window.confirm(
+      "Se consultará la numeración de Nota de Crédito C en Producción y se creará una vista previa. En este paso NO se solicitará CAE. ¿Continuar?",
+    );
+    if (!confirmed) return;
+    try {
+      setWorking(true);
+      setError("");
+      setNotice("");
+      await prepareProductionRentalArcaCreditNotePreview({
+        inmobiliariaId: activeInmobiliariaId,
+        invoicePreviewId: draft.id,
+        amountMinor,
+        reason: creditNoteForm.reason,
+        invoiceDate: creditNoteForm.invoiceDate,
+      });
+      await load();
+      setCreditNoteOpen(false);
+      setCreditNoteForm({amount: "", reason: "", invoiceDate: todayKey()});
+      setNotice("Vista previa de Nota de Crédito C preparada. No se solicitó CAE.");
+    } catch (actionError) {
+      setError(actionError.message || "No se pudo preparar la Nota de Crédito C.");
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const authorizeCreditNote = async (creditNote) => {
+    const confirmed = window.confirm(
+      `ATENCIÓN: se solicitará un CAE REAL para una Nota de Crédito C por ${formatRentalMoney(creditNote.amountMinor, "ARS")}. Este comprobante tendrá validez fiscal. ¿Continuar?`,
+    );
+    if (!confirmed) return;
+    const expected = creditNote.confirmationText
+      || `EMITIR NC ${creditNote.pointOfSale}-${creditNote.proposedVoucherNumber}`;
+    const confirmationText = window.prompt(
+      `Escribí exactamente ${expected} para solicitar el CAE real:`,
+      "",
+    );
+    if (confirmationText?.trim?.().toUpperCase() !== expected) {
+      setError(`La emisión fue cancelada porque no se escribió ${expected}.`);
+      return;
+    }
+    try {
+      setWorking(true);
+      setError("");
+      setNotice("");
+      await authorizeProductionRentalArcaPreview({
+        inmobiliariaId: activeInmobiliariaId,
+        previewId: creditNote.id,
+        sequenceObservedAt: creditNote.sequenceObservedAt,
+        confirmationText,
+      });
+      await load();
+      setNotice("Nota de Crédito C autorizada por ARCA Producción.");
+    } catch (actionError) {
+      setError(actionError.message || "No se pudo autorizar la Nota de Crédito C.");
+      await load();
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const issuer = useMemo(() => {
     if (!draft) return {};
     return draft.issuerSnapshot || {
@@ -115,10 +206,13 @@ const RentalArcaInvoicePage = () => {
   const issuerIva = IVA_LABELS[Number(issuer.ivaConditionId)] || "Responsable Monotributo";
   const recipientIva = IVA_LABELS[Number(draft.recipient?.ivaConditionId)] || "No informada";
   const isProduction = draft.environment === "prod";
+  const isCreditNote = Number(draft.voucherType) === 13;
+  const voucherLabel = isCreditNote ? "Nota de Crédito C" : "Factura C";
+  const remainingCreditMinor = Math.max(0, Number(draft.amountMinor) - authorizedCreditMinor);
 
   return (
     <main className="container py-4 rental-receipt-page arca-invoice-page">
-      <SEO title={`Factura C ${voucherNumber} | ONO Prop`} noIndex />
+      <SEO title={`${voucherLabel} ${voucherNumber} | ONO Prop`} noIndex />
       <div className="rental-no-print d-flex flex-wrap justify-content-between gap-3 mb-4">
         <Link className="btn btn-outline-secondary" to={`/admin/alquileres/${contractId}`}>Volver al contrato</Link>
         <button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir / guardar PDF</button>
@@ -128,6 +222,7 @@ const RentalArcaInvoicePage = () => {
           Antes de usar una representación fiscal real, completá en el perfil emisor: {missingIssuerFields.join(", ")}.
         </div>
       )}
+      {notice && <div className="rental-no-print alert alert-success">{notice}</div>}
       {error && <div className="rental-no-print alert alert-danger">{error}</div>}
 
       <article className="rental-receipt-sheet arca-invoice-sheet">
@@ -139,10 +234,10 @@ const RentalArcaInvoicePage = () => {
             <p className="small mb-1"><strong>Domicilio comercial:</strong> {issuer.commercialAddress || "Pendiente de configuración"}</p>
             <p className="small mb-0"><strong>Condición frente al IVA:</strong> {issuerIva}</p>
           </section>
-          <div className="arca-voucher-letter"><strong>C</strong><small>Cód. 011</small></div>
+          <div className="arca-voucher-letter"><strong>C</strong><small>Cód. {isCreditNote ? "013" : "011"}</small></div>
           <section className="text-end">
             <p className="text-uppercase small mb-1">Original</p>
-            <h2 className="h4 mb-2">Factura C</h2>
+            <h2 className="h4 mb-2">{voucherLabel}</h2>
             <p className="mb-1"><strong>N.º {voucherNumber}</strong></p>
             <p className="small mb-0"><strong>Fecha:</strong> {formatDate(draft.voucherDate || draft.invoiceDate)}</p>
           </section>
@@ -161,6 +256,17 @@ const RentalArcaInvoicePage = () => {
           <div className="col-md-4"><strong>Vencimiento de pago:</strong> {formatDate(draft.paymentDueDate)}</div>
         </section>
 
+        {isCreditNote && (
+          <section className="alert alert-light border small mb-3">
+            <strong>Comprobante asociado:</strong>{" "}
+            Factura C {formatArcaVoucherNumber(
+              draft.associatedVoucher?.pointOfSale,
+              draft.associatedVoucher?.voucherNumber,
+            )} · {formatDate(draft.associatedVoucher?.voucherDate)}
+            <span className="d-block mt-1"><strong>Motivo:</strong> {draft.reason}</span>
+          </section>
+        )}
+
         <section className="arca-recipient-box small mb-4">
           <div><strong>Cliente:</strong> {draft.recipient?.name}</div>
           <div><strong>{getArcaDocumentLabel(draft.recipient?.documentType)}:</strong> {draft.recipient?.documentNumber}</div>
@@ -172,7 +278,7 @@ const RentalArcaInvoicePage = () => {
           <table className="table arca-invoice-table">
             <thead><tr><th>Descripción</th><th className="text-end">Importe</th></tr></thead>
             <tbody><tr><td>{draft.description || `Alquiler período ${draft.periodKey}`}<small className="d-block text-muted">{contract.inmuebleSnapshot?.address}</small></td><td className="text-end">{formatRentalMoney(draft.amountMinor, "ARS")}</td></tr></tbody>
-            <tfoot><tr><th className="text-end">Total</th><th className="text-end fs-5">{formatRentalMoney(draft.amountMinor, "ARS")}</th></tr></tfoot>
+            <tfoot><tr><th className="text-end">{isCreditNote ? "Total acreditado" : "Total"}</th><th className="text-end fs-5">{formatRentalMoney(draft.amountMinor, "ARS")}</th></tr></tfoot>
           </table>
         </div>
 
@@ -189,6 +295,88 @@ const RentalArcaInvoicePage = () => {
         </footer>
         {!isProduction && <div className="arca-homologation-footer">HOMOLOGACIÓN · ESTE DOCUMENTO NO TIENE VALIDEZ FISCAL</div>}
       </article>
+
+      {isProduction && !isCreditNote && (
+        <section className="rental-no-print card border-0 shadow-sm mt-4">
+          <div className="card-body p-4">
+            <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
+              <div>
+                <h2 className="h5 mb-1">Ajustes mediante Nota de Crédito C</h2>
+                <p className="text-muted small mb-0">
+                  Facturado: {formatRentalMoney(draft.amountMinor, "ARS")} · acreditado: {formatRentalMoney(authorizedCreditMinor, "ARS")} · saldo acreditable: {formatRentalMoney(remainingCreditMinor, "ARS")}.
+                </p>
+              </div>
+              {remainingCreditMinor > 0 && (
+                <button type="button" className="btn btn-outline-danger" onClick={() => setCreditNoteOpen((value) => !value)}>
+                  {creditNoteOpen ? "Cancelar" : "Preparar Nota de Crédito"}
+                </button>
+              )}
+            </div>
+
+            {creditNoteOpen && (
+              <form className="border rounded-3 p-3 mt-3" onSubmit={prepareCreditNote}>
+                <div className="alert alert-warning small py-2">
+                  Preparar solo consulta la numeración y no solicita CAE. La emisión real requerirá una segunda acción y una frase exacta.
+                </div>
+                <div className="row g-3">
+                  <div className="col-md-3">
+                    <label className="form-label">Importe a acreditar</label>
+                    <input className="form-control" required inputMode="decimal" value={creditNoteForm.amount} onChange={(event) => setCreditNoteForm({...creditNoteForm, amount: event.target.value})} />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label">Fecha</label>
+                    <input className="form-control" type="date" required value={creditNoteForm.invoiceDate} onChange={(event) => setCreditNoteForm({...creditNoteForm, invoiceDate: event.target.value})} />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label">Motivo</label>
+                    <input className="form-control" required minLength="10" maxLength="300" value={creditNoteForm.reason} onChange={(event) => setCreditNoteForm({...creditNoteForm, reason: event.target.value})} placeholder="Ej.: Anulación total por error en el importe" />
+                  </div>
+                  <div className="col-12 text-end">
+                    <button className="btn btn-danger" disabled={working}>{working ? "Preparando..." : "Preparar vista previa"}</button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {relatedCreditNotes.length > 0 && (
+              <div className="table-responsive mt-4">
+                <table className="table table-sm align-middle">
+                  <thead><tr><th>Nota de crédito</th><th>Motivo</th><th>Importe</th><th>Estado</th><th className="text-end">Acción</th></tr></thead>
+                  <tbody>{relatedCreditNotes.map((creditNote) => {
+                    const requiresRefresh = creditNote.status === "rejected"
+                      || !isArcaProductionPreviewFresh(creditNote);
+                    return (
+                    <tr key={creditNote.id}>
+                      <td>{creditNote.status === "authorized" ? formatArcaVoucherNumber(creditNote.pointOfSale, creditNote.voucherNumber) : `Estimada ${creditNote.pointOfSale}-${creditNote.proposedVoucherNumber}`}</td>
+                      <td>{creditNote.reason}</td>
+                      <td>{formatRentalMoney(creditNote.amountMinor, "ARS")}</td>
+                      <td>{creditNote.status === "authorized" ? "Autorizada" : creditNote.status === "rejected" ? "Rechazada" : "Vista previa"}</td>
+                      <td className="text-end">
+                        {creditNote.status === "authorized" ? (
+                          <Link className="btn btn-sm btn-outline-success" to={`/admin/alquileres/${contractId}/comprobantes/${creditNote.id}`}>Ver comprobante</Link>
+                        ) : requiresRefresh ? (
+                          <button type="button" className="btn btn-sm btn-outline-danger" onClick={() => {
+                            setCreditNoteForm({
+                              amount: (Number(creditNote.amountMinor || 0) / 100).toFixed(2),
+                              reason: creditNote.reason || "",
+                              invoiceDate: todayKey(),
+                            });
+                            setCreditNoteOpen(true);
+                          }}>Revisar y actualizar</button>
+                        ) : (
+                          <button type="button" className="btn btn-sm btn-danger" disabled={working} onClick={() => authorizeCreditNote(creditNote)}>
+                            {creditNote.status === "pending_reconciliation" ? "Reconciliar" : "Emitir NC real"}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );})}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </main>
   );
 };
