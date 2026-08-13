@@ -2,49 +2,49 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://onoprop.com/</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmuebles</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/mapa</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/emprendimientos</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/planes</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/privacidad</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/terminos</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/eliminacion-de-datos</loc>
-    <lastmod>2026-08-10</lastmod>
+    <lastmod>2026-08-13</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
@@ -79,10 +79,34 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/inmueble/b-r-santaana-duplex-2-dorm-2-bns-coch-x1-qcho-y-pil-apto-credito-ud-120000-28aVWMlpPo0zDrY3Ikp0</loc>
+    <lastmod>2026-08-13</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/inmueble/hermosa-casa-con-pileta-quincho-2955-mts2-5tM00s2uRf2DMB7EAGaJ</loc>
-    <lastmod>2026-07-23</lastmod>
+    <lastmod>2026-08-11</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/villa-belgrano-400-m-cub-700-m-terraza-A1wQCi2GO7zaEek5Kgi2</loc>
+    <lastmod>2026-08-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-dpto-buenos-aires-495-usd-100000-AHLU754YKGkEWEDuArfi</loc>
+    <lastmod>2026-08-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-dpto-en-gral-bustos-IvYdVvx4B0vRBgNhePqg</loc>
+    <lastmod>2026-08-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-amplio-dpto-3-dorm-cochera-balcon-nueva-cba-KIhLZkltZoZOHnTT6Lta</loc>
@@ -95,6 +119,12 @@
     <lastmod>2026-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-dpto-nva-cba-2-dorm-balcon-u120000-parana-600-NwBP5usMCL2gthAJXmJ4</loc>
+    <lastmod>2026-08-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-universitario-de-horizonte-1-dorm-u59-mil-Tv5AyAweS3pfwu960mTV</loc>
@@ -119,6 +149,24 @@
     <lastmod>2026-07-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-dpto-av-patria-300-2-dorm-mwTWCuFbQ2D0Zu7aUPOg</loc>
+    <lastmod>2026-08-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-dos-unidades-en-ph-en-b-ducasse-3513910444-rKWgqqPnWXD6qQAdOrAj</loc>
+    <lastmod>2026-08-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/b-marques-a-casa-depto-usd-65-m-uyTRBFnLscJXLawMlthA</loc>
+    <lastmod>2026-08-11</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-casa-b-las-palmas-zona-tranquila-xPjIGBHcExcUxcUcLYDl</loc>

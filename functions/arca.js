@@ -12,6 +12,7 @@ import {
     buildWsaaLoginCmsEnvelope,
     buildWsaaTra,
     buildWsfeCaeRequest,
+    buildProductionActivationConfirmationText,
     buildProductionConfirmationText,
     buildWsfeDummyRequest,
     buildWsfeLastAuthorizedRequest,
@@ -45,6 +46,9 @@ const PRODUCTION_PREVIEW_COLLECTION = "arca_production_invoice_previews";
 const AUDIT_COLLECTION = "arca_audit_events";
 const REGISTRATION_SERVICE = "ws_sr_constancia_inscripcion";
 const LOCK_TTL_MS = 2 * 60 * 1000;
+const PRODUCTION_TEST_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const PRODUCTION_REGISTRATION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const PRODUCTION_PREVIEW_MAX_AGE_MS = 15 * 60 * 1000;
 
 const arcaHomoCertificate = defineSecret("ARCA_HOMO_CERTIFICATE");
 const arcaHomoPrivateKey = defineSecret("ARCA_HOMO_PRIVATE_KEY");
@@ -700,8 +704,32 @@ export const arcaUpsertIssuerProfile = onCall({region: REGION}, async (request) 
     const productionAccessChanged =
         (existingProfile.productionIssuanceEnabled === true) !==
         profile.productionIssuanceEnabled;
+    const productionIdentityChanged = existing.exists && [
+        normalizeArcaCuit(existingProfile.issuerCuit) !== profile.issuerCuit,
+        Number(existingProfile.pointOfSale) !== Number(profile.pointOfSale),
+        Number(existingProfile.voucherType || 11) !== Number(profile.voucherType),
+        cleanText(existingProfile.issuerPartyId, 128) !== profile.issuerPartyId,
+    ].some(Boolean);
+    if (profile.productionIssuanceEnabled && productionIdentityChanged) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Para cambiar CUIT, locador o punto de venta, deshabilitá primero Producción. Luego guardá, renová las validaciones y volvé a habilitarla.",
+        );
+    }
     if (profile.productionIssuanceEnabled) {
         assertProductionPreparationReady({...existingProfile, ...profile});
+    }
+    if (productionAccessChanged && profile.productionIssuanceEnabled) {
+        const expectedActivationText = buildProductionActivationConfirmationText(profile);
+        if (!expectedActivationText || cleanText(
+            request.data?.productionActivationConfirmation,
+            100,
+        ).toUpperCase() !== expectedActivationText) {
+            throw new HttpsError(
+                "failed-precondition",
+                `Para habilitar Producción escribí exactamente ${expectedActivationText}.`,
+            );
+        }
     }
     const batch = db.batch();
     batch.set(ref, {
@@ -884,6 +912,9 @@ export const arcaTestProductionConnection = onCall({
             environment: "prod",
             readOnly: true,
             invoiceIssuanceEnabled: true,
+            issuerCuit: profile.issuerCuit,
+            pointOfSale: Number(profile.pointOfSale),
+            voucherType: Number(profile.voucherType),
             dummy,
             certificate,
             pointsOfSale,
@@ -1211,20 +1242,38 @@ const assertProductionPreparationReady = (profile) => {
     }
     const lastTest = profile.lastProductionTest || {};
     const checkedAtMs = new Date(lastTest.checkedAt || 0).getTime();
-    const maximumAgeMs = 30 * 24 * 60 * 60 * 1000;
     if (lastTest.configuredPointAvailable !== true ||
-        !Number.isFinite(checkedAtMs) || checkedAtMs < Date.now() - maximumAgeMs) {
+        normalizeArcaCuit(lastTest.issuerCuit) !== profile.issuerCuit ||
+        Number(lastTest.pointOfSale) !== Number(profile.pointOfSale) ||
+        Number(lastTest.voucherType || 0) !== Number(profile.voucherType) ||
+        !Number.isFinite(checkedAtMs) ||
+        checkedAtMs < Date.now() - PRODUCTION_TEST_MAX_AGE_MS) {
         throw new HttpsError(
             "failed-precondition",
-            "Ejecutá nuevamente “Probar PROD”; la validación debe ser correcta y tener menos de 30 días.",
+            "Ejecutá nuevamente “Probar PROD”; la validación debe ser correcta y tener menos de 24 horas.",
         );
     }
-    if (normalizeArcaCuit(
-        profile.lastProductionRegistrationLookup?.personCuit,
-    ) !== profile.issuerCuit) {
+    const registrationLookup = profile.lastProductionRegistrationLookup || {};
+    const registrationQueriedAtMs = new Date(registrationLookup.queriedAt || 0).getTime();
+    if (normalizeArcaCuit(registrationLookup.personCuit) !== profile.issuerCuit ||
+        !Number.isFinite(registrationQueriedAtMs) ||
+        registrationQueriedAtMs < Date.now() - PRODUCTION_REGISTRATION_MAX_AGE_MS) {
         throw new HttpsError(
             "failed-precondition",
-            "Consultá la Constancia real del emisor antes de preparar Producción.",
+            "Consultá nuevamente la Constancia real del emisor; debe tener menos de 30 días.",
+        );
+    }
+};
+
+const assertProductionPreviewFresh = (preview = {}) => {
+    if (["pending_reconciliation", "authorizing"].includes(preview.status)) return;
+    const observedAtMs = new Date(preview.sequenceObservedAt || 0).getTime();
+    const ageMs = Date.now() - observedAtMs;
+    if (!Number.isFinite(observedAtMs) || ageMs < -5 * 60 * 1000 ||
+        ageMs > PRODUCTION_PREVIEW_MAX_AGE_MS) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La vista previa productiva venció. Actualizala y revisá nuevamente los datos antes de emitir.",
         );
     }
 };
@@ -1736,6 +1785,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
             "La vista previa cambió. Revisala nuevamente antes de emitir.",
         );
     }
+    assertProductionPreviewFresh(preview);
     const expectedConfirmationText = preview.confirmationText ||
         buildProductionConfirmationText(preview);
     if (!expectedConfirmationText ||
@@ -1750,6 +1800,21 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
     assertProductionProfileForAgency(profile, inmobiliariaId);
     assertProductionPreparationReady(profile);
     inspectProductionCertificateForProfile(profile);
+    if (normalizeArcaCuit(preview.issuerCuit) !== profile.issuerCuit ||
+        Number(preview.pointOfSale) !== Number(profile.pointOfSale) ||
+        Number(preview.voucherType) !== Number(profile.voucherType)) {
+        throw new HttpsError(
+            "failed-precondition",
+            "El perfil fiscal cambió desde la vista previa. Actualizala antes de emitir.",
+        );
+    }
+    if (!["production_preview", "pending_reconciliation", "authorizing"]
+        .includes(preview.status)) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La vista previa no está disponible para emitir. Actualizala antes de reintentar.",
+        );
+    }
     const documents = await getRentalDocuments({
         inmobiliariaId,
         contractId: preview.contractId,

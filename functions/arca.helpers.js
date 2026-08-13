@@ -210,6 +210,16 @@ export const buildProductionConfirmationText = ({
     return `EMITIR ${normalizedPointOfSale}-${normalizedVoucherNumber}`;
 };
 
+export const buildProductionActivationConfirmationText = ({
+    issuerCuit,
+    pointOfSale,
+} = {}) => {
+    const normalizedCuit = normalizeArcaCuit(issuerCuit);
+    const normalizedPointOfSale = Math.max(0, Math.trunc(Number(pointOfSale) || 0));
+    if (!isValidArcaCuit(normalizedCuit) || !normalizedPointOfSale) return "";
+    return `HABILITAR ${normalizedCuit} PV ${normalizedPointOfSale}`;
+};
+
 const normalizeRegistryTax = (value = {}) => ({
     id: cleanArcaText(value.idImpuesto),
     description: cleanArcaText(value.descripcionImpuesto),

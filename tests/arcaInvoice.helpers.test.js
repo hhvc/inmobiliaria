@@ -5,6 +5,8 @@ import {
   buildArcaQrData,
   buildArcaQrUrl,
   formatArcaVoucherNumber,
+  isArcaProductionPreviewFresh,
+  isArcaProductionTestFresh,
 } from "../src/alquileres/utils/arcaInvoice.helpers.js";
 
 const authorizedDraft = {
@@ -51,4 +53,56 @@ test("no genera QR para un borrador sin autorización", () => {
     () => buildArcaQrData({...authorizedDraft, status: "draft", cae: ""}),
     /todavía no tiene un CAE/i,
   );
+});
+
+test("limita la vigencia de las validaciones productivas", () => {
+  const now = Date.parse("2026-08-13T15:00:00.000Z");
+  assert.equal(isArcaProductionTestFresh({
+    issuerCuit: "20253006219",
+    pointOfSale: 4,
+    voucherType: 11,
+    lastProductionTest: {
+      configuredPointAvailable: true,
+      issuerCuit: "20253006219",
+      pointOfSale: 4,
+      voucherType: 11,
+      checkedAt: "2026-08-12T15:00:01.000Z",
+    },
+  }, now), true);
+  assert.equal(isArcaProductionTestFresh({
+    issuerCuit: "20253006219",
+    pointOfSale: 4,
+    voucherType: 11,
+    lastProductionTest: {
+      configuredPointAvailable: true,
+      issuerCuit: "20253006219",
+      pointOfSale: 4,
+      voucherType: 11,
+      checkedAt: "2026-08-12T14:59:59.000Z",
+    },
+  }, now), false);
+  assert.equal(isArcaProductionTestFresh({
+    issuerCuit: "20253006219",
+    pointOfSale: 5,
+    voucherType: 11,
+    lastProductionTest: {
+      configuredPointAvailable: true,
+      issuerCuit: "20253006219",
+      pointOfSale: 4,
+      voucherType: 11,
+      checkedAt: "2026-08-13T14:59:00.000Z",
+    },
+  }, now), false);
+  assert.equal(isArcaProductionPreviewFresh({
+    status: "production_preview",
+    sequenceObservedAt: "2026-08-13T14:45:01.000Z",
+  }, now), true);
+  assert.equal(isArcaProductionPreviewFresh({
+    status: "production_preview",
+    sequenceObservedAt: "2026-08-13T14:44:59.000Z",
+  }, now), false);
+  assert.equal(isArcaProductionPreviewFresh({
+    status: "pending_reconciliation",
+    sequenceObservedAt: "2026-08-01T00:00:00.000Z",
+  }, now), true);
 });

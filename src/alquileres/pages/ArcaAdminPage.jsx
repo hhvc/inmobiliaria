@@ -90,14 +90,30 @@ const ArcaAdminPage = () => {
     const storedProfile = profiles.find((item) => item.id === editingId);
     const enablesProduction = form.productionIssuanceEnabled === true
       && storedProfile?.productionIssuanceEnabled !== true;
-    if (enablesProduction && !window.confirm(
-      `Vas a habilitar la emisión de comprobantes REALES para CUIT ${normalizeCuit(form.issuerCuit)} · PV ${form.pointOfSale}. Esta habilitación no emite por sí sola, pero permitirá solicitar CAE desde los contratos. ¿Continuar?`,
-    )) return;
+    let productionActivationConfirmation = "";
+    if (enablesProduction) {
+      if (!window.confirm(
+        `Vas a habilitar la emisión de comprobantes REALES para CUIT ${normalizeCuit(form.issuerCuit)} · PV ${form.pointOfSale}. Esta habilitación no emite por sí sola, pero permitirá solicitar CAE desde los contratos. ¿Continuar?`,
+      )) return;
+      const expectedText = `HABILITAR ${normalizeCuit(form.issuerCuit)} PV ${Math.trunc(Number(form.pointOfSale) || 0)}`;
+      productionActivationConfirmation = window.prompt(
+        `Confirmación final de habilitación. Escribí exactamente: ${expectedText}`,
+        "",
+      ) || "";
+      if (productionActivationConfirmation.trim().toUpperCase() !== expectedText) {
+        setError(`La habilitación fue cancelada porque no se escribió ${expectedText}.`);
+        return;
+      }
+    }
     try {
       setWorking(true);
       setError("");
       setNotice("");
-      await upsertArcaIssuerProfile({ profileId: editingId, profile: form });
+      await upsertArcaIssuerProfile({
+        profileId: editingId,
+        profile: form,
+        productionActivationConfirmation,
+      });
       setEditingId("");
       setForm({ ...emptyProfile, inmobiliariaId: agencies[0]?.id || "" });
       setRegistrationPreview(null);
@@ -317,7 +333,7 @@ const ArcaAdminPage = () => {
                     <input id="arcaProductionEnabled" className="form-check-input" type="checkbox" disabled={!form.active} checked={form.productionIssuanceEnabled} onChange={(event) => setForm({ ...form, productionIssuanceEnabled: event.target.checked })} />
                     <label className="form-check-label fw-semibold" htmlFor="arcaProductionEnabled">Habilitar emisión real en ARCA Producción</label>
                   </div>
-                  <small className="d-block mt-1">Requiere perfil completo, constancia real y prueba PROD vigente. Cada factura seguirá exigiendo vista previa y doble confirmación.</small>
+                  <small className="d-block mt-1">Requiere perfil completo, constancia real de menos de 30 días y prueba PROD de menos de 24 horas. Cada factura seguirá exigiendo una vista previa vigente y doble confirmación.</small>
                 </div>
               </div>
             </div>

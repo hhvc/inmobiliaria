@@ -17,6 +17,10 @@ import {
 } from "../services/rental.service";
 import { RENTAL_EXTERNAL_VOUCHER_TYPES } from "../utils/rental.constants";
 import {
+  isArcaProductionPreviewFresh,
+  isArcaProductionTestFresh,
+} from "../utils/arcaInvoice.helpers";
+import {
   formatRentalMoney,
   getObligationStatus,
   isRentalObligationWithinContract,
@@ -59,13 +63,6 @@ const PAYMENT_STATUS = {
   overdue: ["Vencido", "text-bg-danger"],
   paid: ["Pagado", "text-bg-success"],
   closed_external: ["Cancelación externa", "text-bg-dark"],
-};
-
-const isProductionTestFresh = (profile = {}) => {
-  const checkedAt = new Date(profile.lastProductionTest?.checkedAt || 0).getTime();
-  return profile.lastProductionTest?.configuredPointAvailable === true
-    && Number.isFinite(checkedAt)
-    && checkedAt >= Date.now() - (30 * 24 * 60 * 60 * 1000);
 };
 
 const inferDocumentType = (taxId = "") => {
@@ -309,7 +306,7 @@ const RentalArcaPanel = ({
       const profileId = draft.issuerProfileId || form.profileId;
       const profile = overview.profiles?.find((item) => item.id === profileId);
       let validationRefreshed = false;
-      if (!isProductionTestFresh(profile)) {
+      if (!isArcaProductionTestFresh(profile)) {
         const testResult = await testArcaProductionConnection(profileId);
         if (testResult.configuredPointAvailable !== true) {
           throw new Error("ARCA Producción respondió, pero el punto de venta configurado no está disponible.");
@@ -455,6 +452,27 @@ const RentalArcaPanel = ({
     }));
   };
 
+  const renderProductionPreviewAction = (preview) => {
+    if (preview.status === "authorized") {
+      return <div className="alert alert-success small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Factura fiscal autorizada.</strong> CAE {preview.cae} · vencimiento {preview.caeExpirationDate}.</span><Link className="btn btn-sm btn-success" to={`/admin/alquileres/${contract.id}/comprobantes/${preview.id}`}>Ver comprobante</Link></div>;
+    }
+    const profileEnabled = overview.profiles?.find(
+      (item) => item.id === preview.issuerProfileId,
+    )?.productionIssuanceEnabled === true;
+    if (!profileEnabled) {
+      return <div className="alert alert-warning small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span>La emisión real está deshabilitada para este perfil.</span><Link className="btn btn-sm btn-outline-dark" to="/admin/arca">Revisar perfil ARCA</Link></div>;
+    }
+    if (preview.status === "rejected") {
+      const sourceDraft = draftFor(preview.obligationId);
+      return <div className="alert alert-danger small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>ARCA rechazó la solicitud.</strong> Revisá las observaciones y generá una vista previa nueva antes de reintentar.</span><button type="button" className="btn btn-sm btn-outline-danger" disabled={working || !sourceDraft} onClick={() => sourceDraft && prepareProductionPreview(sourceDraft)}>Actualizar PROD</button></div>;
+    }
+    if (!isArcaProductionPreviewFresh(preview)) {
+      const sourceDraft = draftFor(preview.obligationId);
+      return <div className="alert alert-warning small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Vista previa vencida.</strong> Actualizala para volver a consultar la numeración y revisar los datos.</span><button type="button" className="btn btn-sm btn-outline-success" disabled={working || !sourceDraft} onClick={() => sourceDraft && prepareProductionPreview(sourceDraft)}>Actualizar PROD</button></div>;
+    }
+    return <div className="alert alert-danger small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Emisión fiscal disponible.</strong> La numeración es estimada hasta que ARCA otorgue el CAE. Vista previa válida durante 15 minutos.</span><button type="button" className="btn btn-sm btn-danger" disabled={working || preview.status === "authorizing"} onClick={() => authorizeProduction(preview)}>{preview.status === "pending_reconciliation" ? "Reconciliar emisión" : "Emitir factura real"}</button></div>;
+  };
+
   return (
     <section className="card border-0 shadow-sm mb-4">
       <div className="card-body p-4">
@@ -578,7 +596,7 @@ const RentalArcaPanel = ({
                       <div className="col-12"><strong>Concepto interno:</strong> {preview.description}</div>
                       {preview.hasFiscalAdjustments && <div className="col-12 text-warning-emphasis"><strong>Excepción:</strong> {preview.adjustmentReason}</div>}
                     </div>
-                    {preview.status === "authorized" ? <div className="alert alert-success small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Factura fiscal autorizada.</strong> CAE {preview.cae} · vencimiento {preview.caeExpirationDate}.</span><Link className="btn btn-sm btn-success" to={`/admin/alquileres/${contract.id}/comprobantes/${preview.id}`}>Ver comprobante</Link></div> : overview.profiles?.find((item) => item.id === preview.issuerProfileId)?.productionIssuanceEnabled === true ? <div className="alert alert-danger small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Emisión fiscal disponible.</strong> La numeración es estimada hasta que ARCA otorgue el CAE. Consultada el {new Date(preview.sequenceObservedAt).toLocaleString("es-AR")}.</span><button type="button" className="btn btn-sm btn-danger" disabled={working || preview.status === "authorizing"} onClick={() => authorizeProduction(preview)}>{preview.status === "pending_reconciliation" ? "Reconciliar emisión" : "Emitir factura real"}</button></div> : <div className="alert alert-warning small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span>La emisión real está deshabilitada para este perfil.</span><Link className="btn btn-sm btn-outline-dark" to="/admin/arca">Revisar perfil ARCA</Link></div>}
+                    {renderProductionPreviewAction(preview)}
                   </article>
                 ))}
               </div>

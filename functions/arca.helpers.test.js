@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     buildArcaRegistrationRequest,
+    buildProductionActivationConfirmationText,
     buildProductionConfirmationText,
     buildWsaaTra,
     buildWsfeCaeRequest,
@@ -236,6 +237,17 @@ test("genera una confirmación productiva ligada al punto y número", () => {
         proposedVoucherNumber: 27,
     }), "EMITIR 4-27");
     assert.equal(buildProductionConfirmationText({pointOfSale: 0}), "");
+});
+
+test("genera una confirmación de activación ligada al CUIT y punto de venta", () => {
+    assert.equal(buildProductionActivationConfirmationText({
+        issuerCuit: "20-25300621-9",
+        pointOfSale: 4,
+    }), "HABILITAR 20253006219 PV 4");
+    assert.equal(buildProductionActivationConfirmationText({
+        issuerCuit: "2030",
+        pointOfSale: 4,
+    }), "");
 });
 
 test("un comprobante productivo exige habilitación explícita", () => {
