@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
     applyConsortiumTemplate,
+    buildConsortiumAutomationPreview,
     buildConsortiumCommunicationId,
     getAutomaticConsortiumCommunication,
     normalizeConsortiumNotificationSettings,
@@ -103,4 +104,52 @@ test("genera plantillas e identificadores idempotentes", () => {
         dateKey: "2026-08-10",
     };
     assert.equal(buildConsortiumCommunicationId(input), buildConsortiumCommunicationId(input));
+});
+
+test("previsualiza acciones y detecta unidades sin destinatarios", () => {
+    const preview = buildConsortiumAutomationPreview({
+        todayDateKey: "2026-08-13",
+        settings: {
+            enabled: true,
+            automationAuthorized: true,
+            preDueDays: [1],
+            overdueDays: [2],
+        },
+        units: [{
+            id: "u1",
+            code: "1 A",
+            ownerEmail: "titular@example.com",
+            notificationPreference: "owner",
+        }, {
+            id: "u2",
+            code: "2 B",
+            notificationPreference: "occupant",
+        }, {
+            id: "u3",
+            code: "3 C",
+            notificationAutomationMode: "disabled",
+        }],
+        obligations: [{
+            id: "o1",
+            unitId: "u1",
+            dueDate: "2026-08-14",
+            balanceMinor: 1000,
+        }, {
+            id: "o2",
+            unitId: "u2",
+            dueDate: "2026-08-11",
+            balanceMinor: 2000,
+        }, {
+            id: "o3",
+            unitId: "u3",
+            dueDate: "2026-08-14",
+            balanceMinor: 3000,
+        }],
+    });
+    assert.equal(preview.summary.ready, 1);
+    assert.equal(preview.summary.missingRecipients, 1);
+    assert.equal(preview.summary.incompleteUnits, 1);
+    assert.equal(preview.summary.excludedUnits, 1);
+    assert.equal(preview.entries[0].action.kind, "before_due");
+    assert.equal(preview.entries[1].action.kind, "overdue");
 });

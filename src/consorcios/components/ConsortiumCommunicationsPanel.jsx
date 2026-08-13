@@ -4,6 +4,8 @@ import {
   getConsortiumCommunicationConsents,
   getConsortiumCommunications,
   getConsortiumNotificationSettings,
+  previewConsortiumAutomation,
+  runConsortiumAutomation,
   saveConsortiumNotificationSettings,
   sendConsortiumCommunications,
 } from "../services/consorcioCommunication.service";
@@ -14,7 +16,9 @@ import {
 } from "../utils/consorcioNotification.helpers";
 
 const formatTimestamp = (value) => {
-  const millis = value?.toMillis?.() || Number(value?.seconds || 0) * 1000;
+  const millis = Number.isFinite(Number(value))
+    ? Number(value)
+    : value?.toMillis?.() || Number(value?.seconds || value?._seconds || 0) * 1000;
   if (!millis) return "Pendiente";
   return new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(millis);
 };
@@ -26,6 +30,39 @@ const communicationKindLabel = (item = {}) => ({
   overdue: `Aviso de mora · ${item.offsetDays || 0} día(s)`,
 }[item.kind] || "Comunicación");
 const reminderDaysInput = (value) => (Array.isArray(value) ? value.join(", ") : value || "");
+const todayDateKey = () => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Argentina/Buenos_Aires",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  }).formatToParts(new Date());
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day}`;
+};
+const formatAutomationAmount = (amountMinor = 0, currency = "ARS") => {
+  try {
+    return new Intl.NumberFormat("es-AR", {
+      style: "currency",
+      currency: currency || "ARS",
+    }).format(Number(amountMinor || 0) / 100);
+  } catch {
+    return `${currency || "ARS"} ${(Number(amountMinor || 0) / 100).toLocaleString("es-AR")}`;
+  }
+};
+const automationActionLabel = (action = {}) => (action.kind === "before_due"
+  ? `${action.offsetDays} día(s) antes`
+  : `Mora de ${action.offsetDays} día(s)`);
+const automationStatus = (status = "ready") => ({
+  ready: { label: "Listo para enviar", badge: "text-bg-success" },
+  already_queued: { label: "Ya generado", badge: "text-bg-secondary" },
+  missing_recipients: { label: "Sin destinatario", badge: "text-bg-warning" },
+}[status] || { label: status, badge: "text-bg-light" });
+const automationTriggerLabel = (trigger = "scheduled") => ({
+  scheduled: "Programada",
+  agency_manual: "Manual · inmobiliaria",
+  root_manual: "Manual · ONO Prop",
+}[trigger] || trigger);
 
 const ConsortiumCommunicationsPanel = ({
   inmobiliariaId,
@@ -44,6 +81,8 @@ const ConsortiumCommunicationsPanel = ({
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [authorizationAccepted, setAuthorizationAccepted] = useState(false);
+  const [previewDate, setPreviewDate] = useState(todayDateKey);
+  const [automationPreview, setAutomationPreview] = useState(null);
 
   const unitMap = useMemo(() => new Map(units.map((unit) => [unit.id, unit])), [units]);
   const rows = useMemo(() => obligations.map((obligation) => {
@@ -77,6 +116,28 @@ const ConsortiumCommunicationsPanel = ({
 
   useEffect(() => { load(); }, [load]);
 
+  const loadAutomationPreview = useCallback(async (dateKey) => {
+    if (!canManage || !inmobiliariaId || !consortium?.id) return;
+    try {
+      setOperation("preview");
+      setError("");
+      const result = await previewConsortiumAutomation(
+        inmobiliariaId,
+        consortium.id,
+        dateKey,
+      );
+      setAutomationPreview(result);
+    } catch (previewError) {
+      setError(previewError.message || "No se pudo previsualizar la automatización.");
+    } finally {
+      setOperation("");
+    }
+  }, [canManage, consortium?.id, inmobiliariaId]);
+
+  useEffect(() => {
+    if (canManage) loadAutomationPreview(todayDateKey());
+  }, [canManage, loadAutomationPreview]);
+
   useEffect(() => {
     setSelectedIds(new Set(rows
       .filter((row) => row.recipients.length > 0)
@@ -105,9 +166,35 @@ const ConsortiumCommunicationsPanel = ({
       );
       setSettings(saved);
       await load();
+      await loadAutomationPreview(previewDate);
       setSuccess("Configuración de comunicaciones guardada.");
     } catch (saveError) {
       setError(saveError.message || "No se pudo guardar la configuración.");
+    } finally {
+      setOperation("");
+    }
+  };
+
+  const runAutomation = async () => {
+    const ready = Number(automationPreview?.summary?.ready || 0);
+    if (!ready) return;
+    if (!window.confirm(
+      `Se generarán ${ready} recordatorio(s) previstos para hoy. ¿Continuar?`,
+    )) return;
+    try {
+      setOperation("run-automation");
+      setError("");
+      setSuccess("");
+      const result = await runConsortiumAutomation(inmobiliariaId, consortium.id);
+      setSuccess(
+        `Automatización ejecutada: ${result.queued || 0} envío(s) en cola, ` +
+        `${result.skipped || 0} omitido(s) y ${result.failed || 0} fallido(s).`,
+      );
+      const today = todayDateKey();
+      setPreviewDate(today);
+      await Promise.all([load(), loadAutomationPreview(today)]);
+    } catch (runError) {
+      setError(runError.message || "No se pudo ejecutar la automatización.");
     } finally {
       setOperation("");
     }
@@ -162,6 +249,28 @@ const ConsortiumCommunicationsPanel = ({
           </div>
           {consents.length > 0 && <details className="mt-3"><summary className="small fw-semibold">Historial de autorizaciones ({consents.length})</summary><div className="table-responsive mt-2"><table className="table table-sm mb-0"><thead><tr><th>Fecha</th><th>Acción</th><th>Administrador</th><th>Configuración registrada</th></tr></thead><tbody>{consents.map((consent) => <tr key={consent.id}><td>{formatTimestamp(consent.createdAt)}</td><td><span className={`badge ${consent.action === "authorized" ? "text-bg-success" : "text-bg-secondary"}`}>{consent.action === "authorized" ? "Autorizada" : "Revocada"}</span></td><td>{consent.actorEmail || consent.actorUid || "Administrador"}</td><td>{consent.settingsSnapshot?.sendOnIssue ? "Al emitir; " : ""}{(consent.settingsSnapshot?.preDueDays || []).length ? `${consent.settingsSnapshot.preDueDays.join(", ")} día(s) antes; ` : ""}{(consent.settingsSnapshot?.overdueDays || []).length ? `${consent.settingsSnapshot.overdueDays.join(", ")} día(s) después` : ""}</td></tr>)}</tbody></table></div></details>}
         </form>}
+
+        {canManage && <section className="rounded border p-3 mb-4" aria-labelledby="automation-center-title">
+          <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div><h3 className="h6 mb-1" id="automation-center-title">Centro de automatizaciones</h3><small className="text-muted">La vista previa no envía emails. La ejecución real siempre utiliza la fecha argentina de hoy.</small></div>
+            <div className="d-flex flex-wrap gap-2 align-items-end"><div><label className="form-label small mb-1" htmlFor={`automation-preview-date-${consortium.id}`}>Simular fecha</label><input className="form-control form-control-sm" id={`automation-preview-date-${consortium.id}`} type="date" value={previewDate} onChange={(event) => setPreviewDate(event.target.value)} /></div><button className="btn btn-sm btn-outline-primary" type="button" disabled={operation === "preview" || !previewDate} onClick={() => loadAutomationPreview(previewDate)}>{operation === "preview" ? "Calculando..." : "Previsualizar"}</button></div>
+          </div>
+          {automationPreview && <>
+            <div className={`alert py-2 small ${automationPreview.automationEnabled ? "alert-success" : "alert-warning"}`}>{automationPreview.automationEnabled ? "Automatización autorizada y activa para este consorcio." : "La automatización no está activa: ninguna ejecución generará envíos."}{automationPreview.dateKey !== todayDateKey() && " Esta es una simulación histórica o futura; no puede ejecutarse."}</div>
+            <div className="row g-2 mb-3">
+              <div className="col-6 col-lg-2"><div className="border rounded p-2 h-100"><small className="text-muted d-block">Unidades activas</small><strong>{automationPreview.summary?.activeUnits || 0}</strong></div></div>
+              <div className="col-6 col-lg-2"><div className="border rounded p-2 h-100"><small className="text-muted d-block">Acciones previstas</small><strong>{automationPreview.summary?.dueActions || 0}</strong></div></div>
+              <div className="col-6 col-lg-2"><div className="border rounded p-2 h-100"><small className="text-muted d-block">Listas</small><strong className="text-success">{automationPreview.summary?.ready || 0}</strong></div></div>
+              <div className="col-6 col-lg-2"><div className="border rounded p-2 h-100"><small className="text-muted d-block">Ya generadas</small><strong>{automationPreview.summary?.alreadyQueued || 0}</strong></div></div>
+              <div className="col-6 col-lg-2"><div className="border rounded p-2 h-100"><small className="text-muted d-block">Sin contacto</small><strong className="text-warning">{automationPreview.summary?.incompleteUnits || 0}</strong></div></div>
+              <div className="col-6 col-lg-2"><div className="border rounded p-2 h-100"><small className="text-muted d-block">Excluidas</small><strong>{automationPreview.summary?.excludedUnits || 0}</strong></div></div>
+            </div>
+            {(automationPreview.incompleteUnits || []).length > 0 && <div className="alert alert-warning py-2 small"><strong>Revisar destinatarios:</strong> {(automationPreview.incompleteUnits || []).slice(0, 20).map((unit) => unit.unitCode).join(", ")}{automationPreview.incompleteUnits.length > 20 ? ` y ${automationPreview.incompleteUnits.length - 20} más` : ""}.</div>}
+            <div className="table-responsive mb-3"><table className="table table-sm align-middle"><thead><tr><th>Unidad</th><th>Acción</th><th>Vencimiento</th><th>Saldo</th><th>Destinatarios</th><th>Resultado previsto</th></tr></thead><tbody>{(automationPreview.actions || []).map((action) => { const status = automationStatus(action.status); return <tr key={`${action.obligationId}_${action.kind}_${action.offsetDays}`}><td><strong>{action.unitCode}</strong><small className="d-block text-muted">{action.periodKey || "Sin período"}</small></td><td>{automationActionLabel(action)}</td><td>{action.dueDate}</td><td>{formatAutomationAmount(action.balanceMinor, action.currency)}</td><td>{(action.recipients || []).map((recipient) => recipient.email).join(", ") || "—"}</td><td><span className={`badge ${status.badge}`}>{status.label}</span></td></tr>; })}{!(automationPreview.actions || []).length && <tr><td className="text-center text-muted py-3" colSpan="6">No hay recordatorios previstos para la fecha simulada.</td></tr>}</tbody></table></div>
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><small className="text-muted">La idempotencia impide generar dos veces el mismo aviso.</small><button className="btn btn-success" type="button" disabled={operation === "run-automation" || automationPreview.dateKey !== todayDateKey() || !automationPreview.automationEnabled || !Number(automationPreview.summary?.ready || 0)} onClick={runAutomation}>{operation === "run-automation" ? "Ejecutando..." : `Ejecutar ${automationPreview.summary?.ready || 0} envío(s) de hoy`}</button></div>
+            <details><summary className="small fw-semibold">Últimas ejecuciones ({(automationPreview.runs || []).length})</summary><div className="table-responsive mt-2"><table className="table table-sm mb-0"><thead><tr><th>Fecha</th><th>Tipo</th><th>Resultado</th><th>Procesamiento</th></tr></thead><tbody>{(automationPreview.runs || []).map((run) => <tr key={run.id}><td>{formatTimestamp(run.createdAt)}<small className="d-block text-muted">Fecha operativa: {run.dateKey}</small></td><td>{automationTriggerLabel(run.trigger)}{run.actorEmail && <small className="d-block text-muted">{run.actorEmail}</small>}</td><td><span className={`badge ${run.status === "completed" ? "text-bg-success" : "text-bg-warning"}`}>{run.status === "completed" ? "Completada" : "Con observaciones"}</span></td><td>{run.summary?.queued || 0} enviados · {run.summary?.skipped || 0} omitidos · {run.summary?.failed || 0} fallidos</td></tr>)}{!(automationPreview.runs || []).length && <tr><td className="text-center text-muted py-2" colSpan="4">Todavía no hay ejecuciones registradas.</td></tr>}</tbody></table></div></details>
+          </>}
+        </section>}
 
         <h3 className="h6">Previsualización de destinatarios · {period.periodKey}</h3>
         <div className="table-responsive mb-3">

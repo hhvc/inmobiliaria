@@ -102,3 +102,23 @@ export const sendConsortiumCommunications = async (inmobiliariaId, obligationIds
   const result = await callable({ inmobiliariaId, obligationIds });
   return result.data;
 };
+
+export const previewConsortiumAutomation = async (
+  inmobiliariaId,
+  consortiumId,
+  dateKey,
+) => {
+  const callable = httpsCallable(functions, "consortiumPreviewAutomation", {
+    timeout: 120000,
+  });
+  const result = await callable({ inmobiliariaId, consortiumId, dateKey });
+  return result.data;
+};
+
+export const runConsortiumAutomation = async (inmobiliariaId, consortiumId) => {
+  const callable = httpsCallable(functions, "consortiumRunConsortiumAutomation", {
+    timeout: 540000,
+  });
+  const result = await callable({ inmobiliariaId, consortiumId, confirmed: true });
+  return result.data;
+};

@@ -180,6 +180,8 @@ export {
   consortiumSendCommunications,
   consortiumSendOnObligationCreated,
   consortiumRunReminderAutomation,
+  consortiumPreviewAutomation,
+  consortiumRunConsortiumAutomation,
   consortiumProcessReminders,
   consortiumSyncMailStatus,
 } from "./consortium.js";

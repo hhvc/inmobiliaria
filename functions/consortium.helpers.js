@@ -159,6 +159,78 @@ export const getAutomaticConsortiumCommunication = ({
     return null;
 };
 
+export const buildConsortiumAutomationPreview = ({
+    obligations = [],
+    units = [],
+    settings = {},
+    todayDateKey = "",
+} = {}) => {
+    const unitMap = new Map(units.map((unit) => [unit.id, unit]));
+    const activeUnits = units.filter((unit) => (
+        unit.deleted !== true && unit.status !== "archived" && unit.active !== false
+    ));
+    const incompleteUnits = activeUnits
+        .filter((unit) => unit.notificationAutomationMode !== "disabled")
+        .filter((unit) => resolveConsortiumRecipients(unit).length === 0)
+        .map((unit) => ({
+            unitId: unit.id,
+            unitCode: cleanConsortiumText(unit.code, 80) || unit.id,
+            reason: "missing_recipients",
+        }));
+    const entries = [];
+    let inactiveRecords = 0;
+    for (const obligation of obligations) {
+        if (obligation.source && obligation.source !== "period") continue;
+        if (Number(obligation.balanceMinor || 0) <= 0) continue;
+        const unit = unitMap.get(obligation.unitId);
+        if (!unit || unit.deleted === true || unit.status === "archived" ||
+            unit.active === false) {
+            inactiveRecords += 1;
+            continue;
+        }
+        const effectiveSettings = resolveEffectiveConsortiumNotificationSettings(
+            settings,
+            unit,
+        );
+        const action = getAutomaticConsortiumCommunication({
+            obligation,
+            settings: effectiveSettings,
+            todayDateKey,
+        });
+        if (!action) continue;
+        const recipients = resolveConsortiumRecipients(unit);
+        entries.push({
+            obligation,
+            unit,
+            settings: effectiveSettings,
+            action,
+            recipients,
+            status: recipients.length ? "ready" : "missing_recipients",
+        });
+    }
+    return {
+        entries,
+        incompleteUnits,
+        summary: {
+            activeUnits: activeUnits.length,
+            excludedUnits: activeUnits.filter((unit) => (
+                unit.notificationAutomationMode === "disabled"
+            )).length,
+            incompleteUnits: incompleteUnits.length,
+            openObligations: obligations.filter((obligation) => (
+                (!obligation.source || obligation.source === "period") &&
+                Number(obligation.balanceMinor || 0) > 0
+            )).length,
+            dueActions: entries.length,
+            ready: entries.filter((entry) => entry.status === "ready").length,
+            missingRecipients: entries.filter((entry) => (
+                entry.status === "missing_recipients"
+            )).length,
+            inactiveRecords,
+        },
+    };
+};
+
 export const applyConsortiumTemplate = (template = "", values = {}) => (
     String(template || "").replace(/{{\s*([a-z_]+)\s*}}/gi, (match, key) => (
         Object.hasOwn(values, key) ? String(values[key] ?? "") : match

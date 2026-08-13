@@ -7,11 +7,11 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 
 import {
     applyConsortiumTemplate,
+    buildConsortiumAutomationPreview,
     buildConsortiumCommunicationId,
     cleanConsortiumText,
     CONSORTIUM_TIME_ZONE,
     dateKeyInConsortiumTimeZone,
-    getAutomaticConsortiumCommunication,
     normalizeConsortiumNotificationSettings,
     resolveConsortiumRecipients,
     resolveEffectiveConsortiumNotificationSettings,
@@ -29,9 +29,11 @@ const COMMUNICATIONS_COLLECTION = "condominium_communications";
 const OBLIGATIONS_COLLECTION = "condominium_obligations";
 const UNITS_COLLECTION = "condominium_units";
 const CONSORTIUMS_COLLECTION = "condominiums";
+const AUTOMATION_RUNS_COLLECTION = "condominium_automation_runs";
 const MANUAL_LIMIT = 150;
 const AGENCY_PAGE_SIZE = 150;
 const AUTOMATION_CONSENT_VERSION = "2026-08-10.1";
+const AUTOMATION_ACTION_LIMIT = 500;
 
 const escapeHtml = (value = "") => String(value || "")
     .replace(/&/g, "&amp;")
@@ -576,7 +578,257 @@ export const consortiumSendOnObligationCreated = onDocumentCreated(
     },
 );
 
-const runConsortiumReminderAutomation = async () => {
+const normalizeAutomationDateKey = (value = "") => {
+    const dateKey = cleanConsortiumText(value, 10);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+    if (!match) return "";
+    const timestamp = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    return new Date(timestamp).toISOString().slice(0, 10) === dateKey ? dateKey : "";
+};
+
+const loadConsortiumAutomationContext = async ({
+    agency,
+    consortiumId,
+    todayDateKey,
+    includeRuns = false,
+}) => {
+    const agencyDocumentRef = agencyRef(agency.id);
+    const requests = [
+        nestedRef(agency.id, CONSORTIUMS_COLLECTION, consortiumId).get(),
+        nestedRef(agency.id, SETTINGS_COLLECTION, consortiumId).get(),
+        agencyDocumentRef.collection(OBLIGATIONS_COLLECTION)
+            .where("consortiumId", "==", consortiumId)
+            .limit(1000)
+            .get(),
+        agencyDocumentRef.collection(UNITS_COLLECTION)
+            .where("consortiumId", "==", consortiumId)
+            .limit(1000)
+            .get(),
+    ];
+    if (includeRuns) {
+        requests.push(agencyDocumentRef.collection(AUTOMATION_RUNS_COLLECTION)
+            .where("consortiumId", "==", consortiumId)
+            .limit(100)
+            .get());
+    }
+    const [consortiumSnap, settingsSnap, obligationsSnap, unitsSnap, runsSnap] =
+        await Promise.all(requests);
+    if (!consortiumSnap.exists || consortiumSnap.data()?.status === "archived") {
+        throw new HttpsError("failed-precondition", "El consorcio no está activo.");
+    }
+    const consortium = { id: consortiumSnap.id, ...(consortiumSnap.data() || {}) };
+    const settings = normalizeConsortiumNotificationSettings(
+        settingsSnap.exists ? settingsSnap.data() : {},
+    );
+    const obligations = obligationsSnap.docs.map((snap) => ({
+        id: snap.id,
+        ...(snap.data() || {}),
+    }));
+    const units = unitsSnap.docs.map((snap) => ({ id: snap.id, ...(snap.data() || {}) }));
+    const preview = buildConsortiumAutomationPreview({
+        obligations,
+        units,
+        settings,
+        todayDateKey,
+    });
+    const communicationRefs = preview.entries.map((entry) => {
+        entry.communicationId = buildConsortiumCommunicationId({
+            obligationId: entry.obligation.id,
+            kind: entry.action.kind,
+            offsetDays: entry.action.offsetDays,
+            dateKey: entry.obligation.dueDate || todayDateKey,
+        });
+        return nestedRef(agency.id, COMMUNICATIONS_COLLECTION, entry.communicationId);
+    });
+    if (communicationRefs.length) {
+        const communicationSnaps = await db.getAll(...communicationRefs);
+        communicationSnaps.forEach((snap, index) => {
+            if (snap.exists) preview.entries[index].status = "already_queued";
+        });
+    }
+    preview.summary.ready = preview.entries.filter((entry) => entry.status === "ready").length;
+    preview.summary.alreadyQueued = preview.entries.filter((entry) => (
+        entry.status === "already_queued"
+    )).length;
+    const runs = (runsSnap?.docs || [])
+        .map((snap) => ({ id: snap.id, ...(snap.data() || {}) }))
+        .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+        .slice(0, 10);
+    return { agency, consortium, settings, todayDateKey, preview, runs };
+};
+
+const publicAutomationPreview = ({ settings, todayDateKey, preview, runs = [] }) => ({
+    dateKey: todayDateKey,
+    automationEnabled: settings.enabled === true && settings.automationAuthorized === true,
+    summary: preview.summary,
+    incompleteUnits: preview.incompleteUnits,
+    actions: preview.entries.map((entry) => ({
+        obligationId: entry.obligation.id,
+        periodKey: cleanConsortiumText(entry.obligation.periodKey, 20),
+        unitId: entry.unit.id,
+        unitCode: cleanConsortiumText(entry.unit.code, 80) || entry.unit.id,
+        dueDate: cleanConsortiumText(entry.obligation.dueDate, 10),
+        balanceMinor: Math.max(0, Number(entry.obligation.balanceMinor) || 0),
+        currency: cleanConsortiumText(entry.obligation.currency, 10) || "ARS",
+        kind: entry.action.kind,
+        offsetDays: entry.action.offsetDays,
+        status: entry.status,
+        recipients: entry.recipients.map((recipient) => ({
+            email: recipient.email,
+            role: recipient.role,
+        })),
+    })),
+    runs: runs.map((run) => ({
+        id: run.id,
+        trigger: run.trigger || "scheduled",
+        dateKey: run.dateKey || "",
+        status: run.status || "completed",
+        summary: run.summary || {},
+        actorEmail: run.actorEmail || "",
+        createdAt: run.createdAt?.toMillis?.() || 0,
+    })),
+});
+
+const saveAutomationRun = async ({
+    agencyId,
+    consortiumId,
+    dateKey,
+    trigger,
+    actorUid,
+    actorEmail = "",
+    summary,
+    status = "completed",
+}) => {
+    await agencyRef(agencyId).collection(AUTOMATION_RUNS_COLLECTION).add({
+        schemaVersion: 1,
+        inmobiliariaId: agencyId,
+        ownerInmobiliariaId: agencyId,
+        consortiumId,
+        dateKey,
+        trigger,
+        actorUid,
+        actorEmail: cleanConsortiumText(actorEmail, 220),
+        status,
+        summary,
+        createdAt: FieldValue.serverTimestamp(),
+    });
+};
+
+const executeConsortiumAutomation = async ({
+    context,
+    trigger,
+    actorUid,
+    actorEmail = "",
+}) => {
+    if (!context.settings.enabled || !context.settings.automationAuthorized) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Este consorcio no tiene autorizados los envíos automáticos.",
+        );
+    }
+    const readyEntries = context.preview.entries.filter((entry) => entry.status === "ready");
+    if (readyEntries.length > AUTOMATION_ACTION_LIMIT) {
+        throw new HttpsError(
+            "resource-exhausted",
+            `La ejecución supera el límite de ${AUTOMATION_ACTION_LIMIT} envíos.`,
+        );
+    }
+    const result = {
+        reviewed: context.preview.entries.length,
+        ready: readyEntries.length,
+        queued: 0,
+        skipped: context.preview.entries.length - readyEntries.length,
+        failed: 0,
+    };
+    for (const entry of readyEntries) {
+        try {
+            const queued = await queueCommunication({
+                agency: context.agency,
+                consortium: context.consortium,
+                unit: entry.unit,
+                obligation: entry.obligation,
+                settings: entry.settings,
+                ...entry.action,
+                source: "automatic",
+                actorUid,
+                dateKey: context.todayDateKey,
+            });
+            if (queued.queued) result.queued += 1;
+            else result.skipped += 1;
+        } catch (error) {
+            result.failed += 1;
+            console.error("Consortium automation action failed", {
+                inmobiliariaId: context.agency.id,
+                consortiumId: context.consortium.id,
+                obligationId: entry.obligation.id,
+                message: error?.message || String(error),
+            });
+        }
+    }
+    const status = result.failed ? "completed_with_errors" : "completed";
+    await saveAutomationRun({
+        agencyId: context.agency.id,
+        consortiumId: context.consortium.id,
+        dateKey: context.todayDateKey,
+        trigger,
+        actorUid,
+        actorEmail,
+        summary: result,
+        status,
+    });
+    return { ...result, status, dateKey: context.todayDateKey };
+};
+
+export const consortiumPreviewAutomation = onCall(
+    { region: REGION, invoker: "public", timeoutSeconds: 120 },
+    async (request) => {
+        const inmobiliariaId = cleanConsortiumText(request.data?.inmobiliariaId, 128);
+        const consortiumId = cleanConsortiumText(request.data?.consortiumId, 128);
+        if (!consortiumId) throw new HttpsError("invalid-argument", "Falta el consorcio.");
+        const requestedDateKey = request.data?.dateKey
+            ? normalizeAutomationDateKey(request.data.dateKey) : dateKeyInConsortiumTimeZone();
+        if (!requestedDateKey) throw new HttpsError("invalid-argument", "La fecha no es válida.");
+        const { agency } = await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
+        const context = await loadConsortiumAutomationContext({
+            agency,
+            consortiumId,
+            todayDateKey: requestedDateKey,
+            includeRuns: true,
+        });
+        return publicAutomationPreview(context);
+    },
+);
+
+export const consortiumRunConsortiumAutomation = onCall(
+    { region: REGION, invoker: "public", timeoutSeconds: 540 },
+    async (request) => {
+        if (request.data?.confirmed !== true) {
+            throw new HttpsError("failed-precondition", "Confirmá la ejecución de los envíos.");
+        }
+        const inmobiliariaId = cleanConsortiumText(request.data?.inmobiliariaId, 128);
+        const consortiumId = cleanConsortiumText(request.data?.consortiumId, 128);
+        if (!consortiumId) throw new HttpsError("invalid-argument", "Falta el consorcio.");
+        const { agency, user } = await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
+        const todayDateKey = dateKeyInConsortiumTimeZone();
+        const context = await loadConsortiumAutomationContext({
+            agency,
+            consortiumId,
+            todayDateKey,
+        });
+        return executeConsortiumAutomation({
+            context,
+            trigger: "agency_manual",
+            actorUid: request.auth.uid,
+            actorEmail: request.auth?.token?.email || user.email || "",
+        });
+    },
+);
+
+const runConsortiumReminderAutomation = async ({
+    trigger = "scheduled",
+    actorUid = "system",
+    actorEmail = "",
+} = {}) => {
     const todayDateKey = dateKeyInConsortiumTimeZone();
     const agencies = await listAgencySnapshots();
     const summary = {
@@ -604,63 +856,22 @@ const runConsortiumReminderAutomation = async () => {
                 128,
             );
             try {
-                const [consortiumSnap, obligationsSnap] = await Promise.all([
-                    nestedRef(inmobiliariaId, CONSORTIUMS_COLLECTION, consortiumId).get(),
-                    agencyDocumentRef.collection(OBLIGATIONS_COLLECTION)
-                        .where("consortiumId", "==", consortiumId)
-                        .limit(1000)
-                        .get(),
-                ]);
-                if (!consortiumSnap.exists || consortiumSnap.data()?.status === "archived") {
-                    summary.skipped += 1;
-                    continue;
-                }
                 const agency = { id: agencySnap.id, ...(agencySnap.data() || {}) };
-                const consortium = { id: consortiumSnap.id, ...(consortiumSnap.data() || {}) };
-                const settings = normalizeConsortiumNotificationSettings(settingSnap.data());
-                const units = new Map();
-                for (const obligationSnap of obligationsSnap.docs) {
-                    const obligation = { id: obligationSnap.id, ...(obligationSnap.data() || {}) };
-                    if (!units.has(obligation.unitId)) {
-                        const unitSnap = await nestedRef(
-                            inmobiliariaId,
-                            UNITS_COLLECTION,
-                            obligation.unitId,
-                        ).get();
-                        units.set(obligation.unitId, unitSnap.exists
-                            ? { id: unitSnap.id, ...(unitSnap.data() || {}) } : null);
-                    }
-                    const unit = units.get(obligation.unitId);
-                    if (!unit || unit.deleted === true || unit.status === "archived" ||
-                        unit.active === false) {
-                        summary.skipped += 1;
-                        continue;
-                    }
-                    const effectiveSettings = resolveEffectiveConsortiumNotificationSettings(
-                        settings,
-                        unit,
-                    );
-                    const action = getAutomaticConsortiumCommunication({
-                        obligation,
-                        settings: effectiveSettings,
-                        todayDateKey,
-                    });
-                    if (!action) continue;
-                    summary.reviewed += 1;
-                    const result = await queueCommunication({
-                        agency,
-                        consortium,
-                        unit,
-                        obligation,
-                        settings: effectiveSettings,
-                        ...action,
-                        source: "automatic",
-                        actorUid: "system",
-                        dateKey: todayDateKey,
-                    });
-                    if (result.queued) summary.queued += 1;
-                    else summary.skipped += 1;
-                }
+                const context = await loadConsortiumAutomationContext({
+                    agency,
+                    consortiumId,
+                    todayDateKey,
+                });
+                const result = await executeConsortiumAutomation({
+                    context,
+                    trigger,
+                    actorUid,
+                    actorEmail,
+                });
+                summary.reviewed += result.reviewed;
+                summary.queued += result.queued;
+                summary.skipped += result.skipped;
+                summary.failed += result.failed;
             } catch (error) {
                 summary.failed += 1;
                 console.error("Consortium reminder automation failed", {
@@ -682,7 +893,11 @@ export const consortiumRunReminderAutomation = onCall(
         if (!userHasRole(user, "root")) {
             throw new HttpsError("permission-denied", "La ejecución global está reservada a ONO Prop.");
         }
-        return runConsortiumReminderAutomation();
+        return runConsortiumReminderAutomation({
+            trigger: "root_manual",
+            actorUid: request.auth.uid,
+            actorEmail: request.auth?.token?.email || user.email || "",
+        });
     },
 );
 
@@ -693,7 +908,7 @@ export const consortiumProcessReminders = onSchedule(
         timeZone: CONSORTIUM_TIME_ZONE,
         timeoutSeconds: 540,
     },
-    runConsortiumReminderAutomation,
+    () => runConsortiumReminderAutomation(),
 );
 
 export const consortiumSyncMailStatus = onDocumentUpdated(
