@@ -110,6 +110,8 @@ export const buildAutomatedRentalObligations = ({
         currency: contract.currency || "ARS",
         rentAmountMinor,
         otherChargesMinor: 0,
+        discountAmountMinor: 0,
+        discountReason: "",
         totalAmountMinor: rentAmountMinor,
         paidAmountMinor: 0,
         balanceMinor: rentAmountMinor,

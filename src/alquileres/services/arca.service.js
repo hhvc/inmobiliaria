@@ -4,6 +4,14 @@ import app from "../../firebase/config";
 
 const functions = getFunctions(app, "southamerica-east1");
 
+const FRIENDLY_ARCA_ERRORS = {
+  "functions/permission-denied": "No tenés permisos para realizar esta operación fiscal.",
+  "functions/unauthenticated": "Tu sesión venció. Volvé a ingresar para continuar.",
+  "functions/unavailable": "ARCA no está disponible en este momento. Intentá nuevamente en unos minutos.",
+  "functions/deadline-exceeded": "ARCA demoró demasiado en responder. Intentá nuevamente.",
+  "functions/internal": "No pudimos completar la operación fiscal. Intentá nuevamente; si el problema continúa, contactá al soporte de ONO Prop.",
+};
+
 export const ARCA_RECEIVER_IVA_CONDITIONS = [
   { id: 1, label: "IVA Responsable Inscripto" },
   { id: 4, label: "IVA Sujeto Exento" },
@@ -24,12 +32,29 @@ const callArcaFunction = async (name, payload = {}) => {
     const result = await callable(payload);
     return result.data;
   } catch (error) {
-    const message = error?.details?.message || error?.message || "No se pudo completar la operación con ARCA.";
-    const normalized = new Error(message.replace(/^Firebase:\s*/i, "").replace(/\s*\([^)]*\)\.?$/, ""));
+    const detailMessage = typeof error?.details === "string"
+      ? error.details
+      : error?.details?.message;
+    const rawMessage = detailMessage || error?.message || "";
+    const cleanedMessage = rawMessage
+      .replace(/^Firebase:\s*/i, "")
+      .replace(/\s*\(functions\/[^)]*\)\.?$/, "")
+      .trim();
+    const friendlyFallback = FRIENDLY_ARCA_ERRORS[error?.code]
+      || "No se pudo completar la operación con ARCA. Intentá nuevamente.";
+    const message = !cleanedMessage || /^(internal|unknown)$/i.test(cleanedMessage)
+      ? friendlyFallback
+      : cleanedMessage;
+    const normalized = new Error(message);
     normalized.code = error?.code || "";
     throw normalized;
   }
 };
+
+export const emailAuthorizedArcaVoucher = (payload) => callArcaFunction(
+  "arcaEmailAuthorizedVoucher",
+  payload,
+);
 
 export const getArcaOverview = (inmobiliariaId) => callArcaFunction(
   "arcaGetOverview",

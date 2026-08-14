@@ -277,6 +277,8 @@ export const updateRentalContract = async (inmobiliariaId, contractId, value) =>
       currency: obligation.currency,
       rentAmountMinor: obligation.rentAmountMinor,
       otherChargesMinor: obligation.otherChargesMinor,
+      discountAmountMinor: obligation.discountAmountMinor,
+      discountReason: obligation.discountReason,
       totalAmountMinor: obligation.totalAmountMinor,
       paidAmountMinor: obligation.paidAmountMinor,
       balanceMinor: obligation.balanceMinor,
@@ -423,6 +425,8 @@ export const generateRentalObligations = async ({
       currency: obligation.currency,
       rentAmountMinor: obligation.rentAmountMinor,
       otherChargesMinor: obligation.otherChargesMinor,
+      discountAmountMinor: obligation.discountAmountMinor,
+      discountReason: obligation.discountReason,
       totalAmountMinor: obligation.totalAmountMinor,
       paidAmountMinor: obligation.paidAmountMinor,
       balanceMinor: obligation.balanceMinor,
@@ -453,6 +457,8 @@ export const updateRentalObligationCharges = async ({
   inmobiliariaId,
   obligationId,
   otherChargesMinor = 0,
+  discountAmountMinor = 0,
+  discountReason = "",
 }) => {
   await assertAgency(inmobiliariaId);
   const currentUser = currentUserOrThrow();
@@ -465,17 +471,31 @@ export const updateRentalObligationCharges = async ({
       throw new Error("Reabrí el período antes de modificar sus cargos.");
     }
     const charges = Math.max(0, Math.round(Number(otherChargesMinor) || 0));
-    const total = Math.max(0, Number(current.rentAmountMinor) || 0) + charges;
+    const grossAmount = Math.max(0, Number(current.rentAmountMinor) || 0) + charges;
+    const discount = Math.max(0, Math.round(Number(discountAmountMinor) || 0));
+    const reason = cleanText(discountReason, 300);
+    if (discount > grossAmount) {
+      throw new Error("La bonificación no puede superar el importe de la estadía más sus cargos.");
+    }
+    if (discount > 0 && !reason) {
+      throw new Error("Indicá el motivo de la bonificación.");
+    }
+    const total = grossAmount - discount;
     if (total < Number(current.paidAmountMinor || 0)) {
-      throw new Error("El total no puede ser menor a los pagos ya registrados.");
+      throw new Error("La bonificación dejaría un total menor a los pagos ya registrados.");
     }
     const candidate = {
       ...current,
       otherChargesMinor: charges,
+      discountAmountMinor: discount,
       totalAmountMinor: total,
     };
     transaction.update(ref, {
       otherChargesMinor: charges,
+      discountAmountMinor: discount,
+      discountReason: discount > 0 ? reason : "",
+      discountUpdatedAt: Timestamp.now(),
+      discountUpdatedBy: currentUser.uid,
       totalAmountMinor: total,
       balanceMinor: total - Number(current.paidAmountMinor || 0),
       status: getObligationStatus(candidate),

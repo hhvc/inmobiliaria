@@ -168,6 +168,34 @@ test("sincroniza fechas e importe de obligaciones impagas al editar el contrato"
   assert.equal(result.obligation.status, "overdue");
 });
 
+test("una bonificación total cierra una estadía sin registrar un pago ficticio", () => {
+  const temporary = normalizeRentalContract({
+    ...contract,
+    id: "temporary-discount",
+    contractType: "temporary",
+    startDate: "2026-08-13",
+    endDate: "2026-08-13",
+    paymentDueDate: "2026-08-13",
+    financial: {
+      ...contract.financial,
+      initialRentAmountMinor: 500,
+      currentRentAmountMinor: 500,
+      adjustment: { mode: "none" },
+    },
+  });
+  const obligation = {
+    ...buildRentalObligation(temporary, "2026-08"),
+    discountAmountMinor: 500,
+    discountReason: "Bonificación comercial de lanzamiento",
+  };
+  const result = syncRentalObligationFromContract(obligation, temporary);
+  assert.equal(result.obligation.totalAmountMinor, 0);
+  assert.equal(result.obligation.paidAmountMinor, 0);
+  assert.equal(result.obligation.balanceMinor, 0);
+  assert.equal(result.obligation.discountReason, "Bonificación comercial de lanzamiento");
+  assert.equal(result.obligation.status, "paid");
+});
+
 test("no reescribe obligaciones que ya tienen pagos", () => {
   const current = {
     ...buildRentalObligation(contract, "2026-04"),

@@ -246,6 +246,8 @@ export const buildRentalObligation = (contractValue, periodKey, nowDate = new Da
     currency: contract.currency,
     rentAmountMinor,
     otherChargesMinor: 0,
+    discountAmountMinor: 0,
+    discountReason: "",
     totalAmountMinor: rentAmountMinor,
     paidAmountMinor: 0,
     balanceMinor: rentAmountMinor,
@@ -271,7 +273,12 @@ export const syncRentalObligationFromContract = (
   }
   const rebuilt = buildRentalObligation(contractValue, current.periodKey, nowDate);
   const otherChargesMinor = Math.max(0, round(current.otherChargesMinor));
-  const totalAmountMinor = rebuilt.rentAmountMinor + otherChargesMinor;
+  const grossAmountMinor = rebuilt.rentAmountMinor + otherChargesMinor;
+  const discountAmountMinor = Math.min(
+    grossAmountMinor,
+    Math.max(0, round(current.discountAmountMinor)),
+  );
+  const totalAmountMinor = grossAmountMinor - discountAmountMinor;
   const obligation = {
     ...current,
     schemaVersion: rebuilt.schemaVersion,
@@ -282,6 +289,8 @@ export const syncRentalObligationFromContract = (
     currency: rebuilt.currency,
     rentAmountMinor: rebuilt.rentAmountMinor,
     otherChargesMinor,
+    discountAmountMinor,
+    discountReason: discountAmountMinor > 0 ? current.discountReason || "" : "",
     totalAmountMinor,
     paidAmountMinor: 0,
     balanceMinor: totalAmountMinor,
@@ -290,6 +299,7 @@ export const syncRentalObligationFromContract = (
       ...current,
       ...rebuilt,
       otherChargesMinor,
+      discountAmountMinor,
       totalAmountMinor,
       paidAmountMinor: 0,
     }, toDateKey(nowDate)),

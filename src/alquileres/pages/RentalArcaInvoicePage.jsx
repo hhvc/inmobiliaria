@@ -7,6 +7,7 @@ import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActive
 import {
   ARCA_RECEIVER_IVA_CONDITIONS,
   authorizeProductionRentalArcaPreview,
+  emailAuthorizedArcaVoucher,
   getArcaOverview,
   prepareProductionRentalArcaCreditNotePreview,
 } from "../services/arca.service";
@@ -50,6 +51,8 @@ const RentalArcaInvoicePage = () => {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [working, setWorking] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [recipientEmail, setRecipientEmail] = useState("");
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
   const [creditNoteForm, setCreditNoteForm] = useState({
     amount: "",
@@ -76,6 +79,9 @@ const RentalArcaInvoicePage = () => {
       }
       setContract(contractData);
       setDraft(draftData);
+      setRecipientEmail((current) => current
+        || contractData.partySnapshots?.tenants?.find((party) => party.email)?.email
+        || "");
       setProfile(overview.profiles?.find(
         (item) => item.id === draftData.issuerProfileId,
       ) || null);
@@ -120,7 +126,7 @@ const RentalArcaInvoicePage = () => {
     event.preventDefault();
     const amountMinor = majorToMinor(creditNoteForm.amount);
     const confirmed = window.confirm(
-      "Se consultará la numeración de Nota de Crédito C en Producción y se creará una vista previa. En este paso NO se solicitará CAE. ¿Continuar?",
+      "Se consultará ARCA para preparar la Nota de Crédito C. Todavía no se emitirá el comprobante. ¿Continuar?",
     );
     if (!confirmed) return;
     try {
@@ -171,10 +177,30 @@ const RentalArcaInvoicePage = () => {
         confirmationText,
       });
       await load();
-      setNotice("Nota de Crédito C autorizada por ARCA Producción.");
+      setNotice("Nota de Crédito C autorizada por ARCA.");
     } catch (actionError) {
       setError(actionError.message || "No se pudo autorizar la Nota de Crédito C.");
       await load();
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const sendByEmail = async (event) => {
+    event.preventDefault();
+    try {
+      setWorking(true);
+      setError("");
+      setNotice("");
+      await emailAuthorizedArcaVoucher({
+        inmobiliariaId: activeInmobiliariaId,
+        previewId: draft.id,
+        recipientEmail,
+      });
+      setEmailOpen(false);
+      setNotice(`El comprobante quedó listo para enviarse a ${recipientEmail}.`);
+    } catch (actionError) {
+      setError(actionError.message || "No se pudo enviar el comprobante por email.");
     } finally {
       setWorking(false);
     }
@@ -215,8 +241,38 @@ const RentalArcaInvoicePage = () => {
       <SEO title={`${voucherLabel} ${voucherNumber} | ONO Prop`} noIndex />
       <div className="rental-no-print d-flex flex-wrap justify-content-between gap-3 mb-4">
         <Link className="btn btn-outline-secondary" to={`/admin/alquileres/${contractId}`}>Volver al contrato</Link>
-        <button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir / guardar PDF</button>
+        <div className="d-flex flex-wrap gap-2">
+          {isProduction && (
+            <button type="button" className="btn btn-outline-primary" onClick={() => setEmailOpen((value) => !value)}>
+              Enviar PDF por email
+            </button>
+          )}
+          <button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir / guardar PDF</button>
+        </div>
       </div>
+      {emailOpen && (
+        <form className="rental-no-print card border-0 shadow-sm mb-4" onSubmit={sendByEmail}>
+          <div className="card-body d-flex flex-wrap align-items-end gap-3">
+            <div className="flex-grow-1">
+              <label className="form-label" htmlFor="arca-recipient-email">Email destinatario</label>
+              <input
+                id="arca-recipient-email"
+                className="form-control"
+                type="email"
+                required
+                autoComplete="email"
+                value={recipientEmail}
+                onChange={(event) => setRecipientEmail(event.target.value)}
+                placeholder="cliente@ejemplo.com"
+              />
+            </div>
+            <button className="btn btn-primary" disabled={working}>
+              {working ? "Enviando..." : "Enviar comprobante"}
+            </button>
+            <button type="button" className="btn btn-outline-secondary" disabled={working} onClick={() => setEmailOpen(false)}>Cancelar</button>
+          </div>
+        </form>
+      )}
       {missingIssuerFields.length > 0 && (
         <div className="rental-no-print alert alert-warning">
           Antes de usar una representación fiscal real, completá en el perfil emisor: {missingIssuerFields.join(", ")}.
@@ -290,7 +346,7 @@ const RentalArcaInvoicePage = () => {
           <div className="text-end">
             <p className="mb-1"><strong>CAE:</strong> {draft.cae}</p>
             <p className="mb-1"><strong>Vencimiento CAE:</strong> {formatDate(draft.caeExpirationDate)}</p>
-            <p className="small text-muted mb-0">{isProduction ? "Comprobante fiscal autorizado por ARCA Producción." : "Comprobante autorizado en el ambiente de homologación."}</p>
+            <p className="small text-muted mb-0">{isProduction ? "Comprobante fiscal autorizado por ARCA." : "Comprobante de prueba sin validez fiscal."}</p>
           </div>
         </footer>
         {!isProduction && <div className="arca-homologation-footer">HOMOLOGACIÓN · ESTE DOCUMENTO NO TIENE VALIDEZ FISCAL</div>}
@@ -316,7 +372,7 @@ const RentalArcaInvoicePage = () => {
             {creditNoteOpen && (
               <form className="border rounded-3 p-3 mt-3" onSubmit={prepareCreditNote}>
                 <div className="alert alert-warning small py-2">
-                  Preparar solo consulta la numeración y no solicita CAE. La emisión real requerirá una segunda acción y una frase exacta.
+                  Preparar permite revisar todos los datos antes de emitir. El comprobante fiscal se genera recién cuando confirmás la emisión.
                 </div>
                 <div className="row g-3">
                   <div className="col-md-3">

@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import {
   ARCA_RECEIVER_IVA_CONDITIONS,
   authorizeProductionRentalArcaPreview,
-  authorizeRentalArcaDraft,
   createRentalArcaDraft,
   getArcaOverview,
   prepareProductionRentalArcaPreview,
@@ -42,19 +41,19 @@ const shiftDateKey = (dateKey, days) => {
 };
 
 const STATUS = {
-  draft: ["Borrador", "text-bg-secondary"],
-  authorizing: ["Autorizando", "text-bg-info"],
-  pending_reconciliation: ["A reconciliar", "text-bg-warning"],
-  rejected: ["Rechazado", "text-bg-danger"],
-  authorized: ["Autorizado HOMO", "text-bg-success"],
+  draft: ["Datos preparados", "text-bg-secondary"],
+  authorizing: ["Procesando", "text-bg-info"],
+  pending_reconciliation: ["Requiere revisión", "text-bg-warning"],
+  rejected: ["Revisar datos", "text-bg-danger"],
+  authorized: ["Datos validados", "text-bg-success"],
 };
 
 const PRODUCTION_STATUS = {
   production_preview: ["Preparada para emisión", "text-bg-warning"],
-  authorizing: ["Emitiendo en Producción", "text-bg-info"],
-  pending_reconciliation: ["Respuesta a reconciliar", "text-bg-warning"],
-  rejected: ["Rechazada en Producción", "text-bg-danger"],
-  authorized: ["Autorizada en Producción", "text-bg-success"],
+  authorizing: ["Emitiendo", "text-bg-info"],
+  pending_reconciliation: ["Respuesta a revisar", "text-bg-warning"],
+  rejected: ["Rechazada", "text-bg-danger"],
+  authorized: ["Autorizada", "text-bg-success"],
 };
 
 const PAYMENT_STATUS = {
@@ -276,29 +275,9 @@ const RentalArcaPanel = ({
     }
   };
 
-  const authorize = async (draft) => {
-    const confirmed = window.confirm(
-      "Se solicitará un CAE en HOMOLOGACIÓN. No es una factura fiscal de producción. ¿Continuar?",
-    );
-    if (!confirmed) return;
-    try {
-      setWorking(true);
-      setError("");
-      setNotice("");
-      await authorizeRentalArcaDraft({ inmobiliariaId, draftId: draft.id });
-      await load();
-      setNotice("Comprobante autorizado por ARCA en homologación.");
-    } catch (actionError) {
-      setError(actionError.message || "No se pudo autorizar el comprobante.");
-      await load();
-    } finally {
-      setWorking(false);
-    }
-  };
-
   const prepareProductionPreview = async (draft) => {
     const confirmed = window.confirm(
-      "Se consultará Producción para obtener la numeración actual y generar una vista previa. No se solicitará CAE ni se reservará un número. ¿Continuar?",
+      "Se consultará ARCA para obtener la numeración actual y preparar el comprobante. Todavía no se emitirá la factura. ¿Continuar?",
     );
     if (!confirmed) return;
     try {
@@ -311,7 +290,7 @@ const RentalArcaPanel = ({
       if (!isArcaProductionTestFresh(profile)) {
         const testResult = await testArcaProductionConnection(profileId);
         if (testResult.configuredPointAvailable !== true) {
-          throw new Error("ARCA Producción respondió, pero el punto de venta configurado no está disponible.");
+          throw new Error("ARCA respondió, pero el punto de venta configurado no está disponible.");
         }
         validationRefreshed = true;
       }
@@ -321,9 +300,9 @@ const RentalArcaPanel = ({
         profileId,
       });
       await load();
-      setNotice(`${validationRefreshed ? "Conexión PROD validada. " : ""}Vista previa productiva actualizada. No se solicitó CAE ni se reservó numeración.`);
+      setNotice(`${validationRefreshed ? "Conexión con ARCA validada. " : ""}Factura preparada para la revisión final. Todavía no se solicitó el CAE.`);
     } catch (actionError) {
-      setError(actionError.message || "No se pudo preparar la vista previa productiva.");
+      setError(actionError.message || "No se pudo preparar la factura. Revisá los datos e intentá nuevamente.");
       await load();
     } finally {
       setWorking(false);
@@ -332,7 +311,7 @@ const RentalArcaPanel = ({
 
   const authorizeProduction = async (preview) => {
     const confirmed = window.confirm(
-      `ATENCIÓN: se solicitará un CAE REAL en ARCA Producción por ${formatRentalMoney(preview.amountMinor, "ARS")} para ${preview.recipient?.name}. El comprobante no podrá eliminarse. ¿Querés continuar?`,
+      `ATENCIÓN: se emitirá una factura fiscal por ${formatRentalMoney(preview.amountMinor, "ARS")} para ${preview.recipient?.name}. El comprobante no podrá eliminarse. ¿Querés continuar?`,
     );
     if (!confirmed) return;
     const confirmationText = window.prompt(
@@ -356,9 +335,9 @@ const RentalArcaPanel = ({
         confirmationText,
       });
       await load();
-      setNotice("Factura autorizada por ARCA Producción. El CAE real quedó asociado al período.");
+      setNotice("Factura autorizada por ARCA. El CAE quedó asociado a la obligación.");
     } catch (actionError) {
-      setError(actionError.message || "No se pudo autorizar la factura en ARCA Producción.");
+      setError(actionError.message || "ARCA no pudo autorizar la factura. Revisá el mensaje e intentá nuevamente.");
       await load();
     } finally {
       setWorking(false);
@@ -423,10 +402,13 @@ const RentalArcaPanel = ({
   };
 
   const draftFor = (obligationId) => overview.drafts?.find((item) => item.obligationId === obligationId);
-  const contractProductionPreviews = overview.productionPreviews?.filter(
+  const contractProductionInvoices = overview.productionPreviews?.filter(
     (item) => item.contractId === contract.id && Number(item.voucherType) === 11,
   ) || [];
-  const productionPreviewFor = (obligationId) => contractProductionPreviews.find(
+  const contractFiscalDocuments = overview.productionPreviews?.filter(
+    (item) => item.contractId === contract.id && [11, 13].includes(Number(item.voucherType)),
+  ) || [];
+  const productionPreviewFor = (obligationId) => contractProductionInvoices.find(
     (item) => item.obligationId === obligationId,
   );
   const selectedObligation = obligations.find((item) => item.id === selectedObligationId);
@@ -458,7 +440,7 @@ const RentalArcaPanel = ({
 
   const renderProductionPreviewAction = (preview) => {
     if (preview.status === "authorized") {
-      return <div className="alert alert-success small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Factura fiscal autorizada.</strong> CAE {preview.cae} · vencimiento {preview.caeExpirationDate}.</span><Link className="btn btn-sm btn-success" to={`/admin/alquileres/${contract.id}/comprobantes/${preview.id}`}>Ver comprobante</Link></div>;
+      return <div className="alert alert-success small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Factura autorizada.</strong> CAE {preview.cae} · vencimiento {preview.caeExpirationDate}.</span><Link className="btn btn-sm btn-success" to={`/admin/alquileres/${contract.id}/comprobantes/${preview.id}`}>Ver comprobante</Link></div>;
     }
     const profileEnabled = overview.profiles?.find(
       (item) => item.id === preview.issuerProfileId,
@@ -468,11 +450,11 @@ const RentalArcaPanel = ({
     }
     if (preview.status === "rejected") {
       const sourceDraft = draftFor(preview.obligationId);
-      return <div className="alert alert-danger small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>ARCA rechazó la solicitud.</strong> Revisá las observaciones y generá una vista previa nueva antes de reintentar.</span><button type="button" className="btn btn-sm btn-outline-danger" disabled={working || !sourceDraft} onClick={() => sourceDraft && prepareProductionPreview(sourceDraft)}>Actualizar PROD</button></div>;
+      return <div className="alert alert-danger small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>ARCA rechazó la solicitud.</strong> Revisá las observaciones y actualizá la preparación antes de reintentar.</span><button type="button" className="btn btn-sm btn-outline-danger" disabled={working || !sourceDraft} onClick={() => sourceDraft && prepareProductionPreview(sourceDraft)}>Actualizar preparación</button></div>;
     }
     if (!isArcaProductionPreviewFresh(preview)) {
       const sourceDraft = draftFor(preview.obligationId);
-      return <div className="alert alert-warning small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Vista previa vencida.</strong> Actualizala para volver a consultar la numeración y revisar los datos.</span><button type="button" className="btn btn-sm btn-outline-success" disabled={working || !sourceDraft} onClick={() => sourceDraft && prepareProductionPreview(sourceDraft)}>Actualizar PROD</button></div>;
+      return <div className="alert alert-warning small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>La preparación venció.</strong> Actualizala para consultar la numeración vigente y revisar los datos.</span><button type="button" className="btn btn-sm btn-outline-success" disabled={working || !sourceDraft} onClick={() => sourceDraft && prepareProductionPreview(sourceDraft)}>Actualizar preparación</button></div>;
     }
     return <div className="alert alert-danger small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span><strong>Emisión fiscal disponible.</strong> La numeración es estimada hasta que ARCA otorgue el CAE. Vista previa válida durante 15 minutos.</span><button type="button" className="btn btn-sm btn-danger" disabled={working || preview.status === "authorizing"} onClick={() => authorizeProduction(preview)}>{preview.status === "pending_reconciliation" ? "Reconciliar emisión" : "Emitir factura real"}</button></div>;
   };
@@ -482,11 +464,11 @@ const RentalArcaPanel = ({
       <div className="card-body p-4">
         <div className="d-flex flex-wrap justify-content-between gap-3 mb-3">
           <div>
-            <p className="text-uppercase text-muted small mb-1">Integración fiscal</p>
+            <p className="text-uppercase text-muted small mb-1">Facturación electrónica</p>
             <h2 className="h5 mb-1">Comprobantes ARCA</h2>
-            <p className="text-muted small mb-0">Borradores de homologación y emisión real controlada de Factura C en Producción.</p>
+            <p className="text-muted small mb-0">Prepará, emití y consultá las Facturas C y Notas de Crédito C del contrato.</p>
           </div>
-          <span className="badge text-bg-primary align-self-start">HOMO + PROD</span>
+          <span className="badge text-bg-primary align-self-start">ARCA</span>
         </div>
 
         {error && <div className="alert alert-danger">{error}</div>}
@@ -520,7 +502,6 @@ const RentalArcaPanel = ({
                         ? ["Sin preparar", "text-bg-light text-dark border"]
                         : ["Sin perfil ARCA", "text-bg-light text-dark border"]);
                     const [paymentLabel, paymentBadge] = PAYMENT_STATUS[getObligationStatus(obligation)] || PAYMENT_STATUS.pending;
-                    const canAuthorize = ["draft", "pending_reconciliation"].includes(draft?.status);
                     const externallyInvoiced = obligation.externalInvoice?.registered === true;
                     const closedOutsideManagement = obligation.externalClosure?.closed === true;
                     const externalVoucherLabel = RENTAL_EXTERNAL_VOUCHER_TYPES.find(
@@ -531,13 +512,11 @@ const RentalArcaPanel = ({
                         <td>{contract.contractType === "temporary" ? <><strong>Estadía única</strong><small className="d-block text-muted">{obligation.serviceStartDate} a {obligation.serviceEndDate}</small></> : obligation.periodKey}</td>
                         <td>{formatRentalMoney(draft?.amountMinor ?? obligation.totalAmountMinor, contract.currency)}{draft?.hasFiscalAdjustments && <small className="d-block text-muted">Obligación actual: {formatRentalMoney(obligation.totalAmountMinor, contract.currency)}</small>}</td>
                         <td><span className={`badge ${paymentBadge}`}>{paymentLabel}</span></td>
-                        <td>{externallyInvoiced ? <><span className="badge text-bg-dark">{obligation.externalInvoice.voucherType === "unknown" ? "Gestión fiscal externa · sin datos" : "Facturado externamente"}</span>{obligation.externalInvoice.voucherType !== "unknown" && <small className="d-block text-muted mt-1">{externalVoucherLabel} {obligation.externalInvoice.pointOfSale}-{obligation.externalInvoice.voucherNumber} · {obligation.externalInvoice.invoiceDate}</small>}</> : closedOutsideManagement ? <><span className="badge text-bg-dark">Fuera de gestión</span><small className="d-block text-muted mt-1">Facturación no administrada por ONO Prop</small></> : productionAuthorized ? <><span className="badge text-bg-success">Autorizado PROD</span><small className="d-block text-success mt-1">CAE {productionPreview.cae} · N.º {productionPreview.pointOfSale}-{productionPreview.voucherNumber}</small></> : <><span className={`badge ${badge}`}>{label}</span>{draft?.cae && <small className="d-block text-muted mt-1">CAE HOMO {draft.cae} · N.º {draft.pointOfSale}-{draft.voucherNumber}</small>}{productionPreview && <small className="d-block text-success mt-1">PROD preparada · N.º estimado {productionPreview.pointOfSale}-{productionPreview.proposedVoucherNumber}</small>}</>}</td>
+                        <td>{externallyInvoiced ? <><span className="badge text-bg-dark">{obligation.externalInvoice.voucherType === "unknown" ? "Gestión fiscal externa · sin datos" : "Facturado externamente"}</span>{obligation.externalInvoice.voucherType !== "unknown" && <small className="d-block text-muted mt-1">{externalVoucherLabel} {obligation.externalInvoice.pointOfSale}-{obligation.externalInvoice.voucherNumber} · {obligation.externalInvoice.invoiceDate}</small>}</> : closedOutsideManagement ? <><span className="badge text-bg-dark">Fuera de gestión</span><small className="d-block text-muted mt-1">Facturación no administrada por ONO Prop</small></> : productionAuthorized ? <><span className="badge text-bg-success">Factura autorizada</span><small className="d-block text-success mt-1">CAE {productionPreview.cae} · N.º {productionPreview.pointOfSale}-{productionPreview.voucherNumber}</small>{Number(productionPreview.creditedAmountMinor || 0) > 0 && <small className="d-block text-muted">Notas de crédito: {formatRentalMoney(productionPreview.creditedAmountMinor, "ARS")}</small>}</> : productionPreview ? <><span className={`badge ${PRODUCTION_STATUS[productionPreview.status]?.[1] || "text-bg-warning"}`}>{PRODUCTION_STATUS[productionPreview.status]?.[0] || "Preparada"}</span><small className="d-block text-muted mt-1">N.º estimado {productionPreview.pointOfSale}-{productionPreview.proposedVoucherNumber}</small></> : <span className={`badge ${badge}`}>{label}</span>}</td>
                         <td className="text-end">
-                          {!productionAuthorized && !externallyInvoiced && !closedOutsideManagement && overview.profiles?.length > 0 && !draft?.cae && <button className="btn btn-sm btn-outline-primary" type="button" disabled={working} onClick={() => selectObligation(obligation)}>{draft ? "Revisar" : "Preparar"}</button>}
-                          {!productionAuthorized && !externallyInvoiced && !closedOutsideManagement && draft && !draft.cae && canAuthorize && <button className="btn btn-sm btn-primary ms-2" type="button" disabled={working} onClick={() => authorize(draft)}>Solicitar CAE HOMO</button>}
-                          {!externallyInvoiced && !closedOutsideManagement && draft?.cae && <Link className="btn btn-sm btn-outline-primary" to={`/admin/alquileres/${contract.id}/comprobantes/${draft.id}`}>Ver HOMO</Link>}
-                          {!productionAuthorized && !externallyInvoiced && !closedOutsideManagement && overview.productionPreviewEnabled && productionProfileEnabled && draft && <button className="btn btn-sm btn-outline-success ms-2" type="button" disabled={working} onClick={() => prepareProductionPreview(draft)}>{productionPreview ? "Actualizar PROD" : "Preparar PROD"}</button>}
-                          {productionAuthorized && <Link className="btn btn-sm btn-success ms-2" to={`/admin/alquileres/${contract.id}/comprobantes/${productionPreview.id}`}>Ver factura PROD</Link>}
+                          {!productionAuthorized && !externallyInvoiced && !closedOutsideManagement && overview.profiles?.length > 0 && <button className="btn btn-sm btn-outline-primary" type="button" disabled={working} onClick={() => selectObligation(obligation)}>{draft ? "Revisar datos" : "Preparar factura"}</button>}
+                          {!productionAuthorized && !externallyInvoiced && !closedOutsideManagement && overview.productionPreviewEnabled && productionProfileEnabled && draft && <button className="btn btn-sm btn-outline-success ms-2" type="button" disabled={working} onClick={() => prepareProductionPreview(draft)}>{productionPreview ? "Actualizar preparación" : "Continuar emisión"}</button>}
+                          {productionAuthorized && <Link className="btn btn-sm btn-success ms-2" to={`/admin/alquileres/${contract.id}/comprobantes/${productionPreview.id}`}>Ver factura</Link>}
                           {!productionAuthorized && !externallyInvoiced && <button className="btn btn-sm btn-outline-dark ms-2" type="button" disabled={working} onClick={() => selectExternalInvoice(obligation)}>Factura externa</button>}
                           {externallyInvoiced && <><button className="btn btn-sm btn-outline-secondary" type="button" disabled={working} onClick={() => selectExternalInvoice(obligation)}>Editar datos</button><button className="btn btn-sm btn-outline-danger ms-2" type="button" disabled={working} onClick={() => removeExternalInvoice(obligation)}>Quitar marca</button></>}
                         </td>
@@ -568,21 +547,23 @@ const RentalArcaPanel = ({
               </form>
             )}
 
-            {overview.productionPreviewEnabled && contractProductionPreviews.length > 0 && (
+            {overview.productionPreviewEnabled && contractFiscalDocuments.length > 0 && (
               <div className="mt-4">
                 <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
                   <div>
-                    <h3 className="h6 mb-1">Vistas previas de Producción</h3>
-                    <p className="small text-muted mb-0">Revisá los datos y solicitá el CAE real únicamente cuando el comprobante corresponda.</p>
+                    <h3 className="h6 mb-1">Comprobantes del contrato</h3>
+                    <p className="small text-muted mb-0">Historial de Facturas C y Notas de Crédito C, incluidas las que todavía requieren una acción.</p>
                   </div>
-                  <span className="badge text-bg-danger">PRODUCCIÓN REAL</span>
+                  <span className="badge text-bg-light border text-dark">{contractFiscalDocuments.length} comprobantes</span>
                 </div>
-                {contractProductionPreviews.map((preview) => (
+                {contractFiscalDocuments.map((preview) => {
+                  const isCreditNote = Number(preview.voucherType) === 13;
+                  return (
                   <article className="border border-success rounded-3 p-3 mb-3" key={preview.id}>
                     <div className="d-flex flex-wrap justify-content-between gap-3">
                       <div>
                         <strong>{preview.issuerSnapshot?.legalName}</strong>
-                        <small className="d-block text-muted">CUIT {preview.issuerCuit} · Factura C · PV {preview.pointOfSale}</small>
+                        <small className="d-block text-muted">CUIT {preview.issuerCuit} · {isCreditNote ? "Nota de Crédito C" : "Factura C"} · PV {preview.pointOfSale}</small>
                       </div>
                       <div className="text-end">
                         <span className={`badge ${PRODUCTION_STATUS[preview.status]?.[1] || "text-bg-secondary"}`}>{PRODUCTION_STATUS[preview.status]?.[0] || preview.status}</span>
@@ -592,7 +573,7 @@ const RentalArcaPanel = ({
                     </div>
                     <div className="row g-2 small mt-2">
                       <div className="col-md-6"><strong>Receptor:</strong> {preview.recipient?.name} · {preview.recipient?.documentNumber}</div>
-                      <div className="col-md-3"><strong>Período:</strong> {preview.periodKey}</div>
+                      <div className="col-md-3"><strong>{contract.contractType === "temporary" ? "Estadía:" : "Período:"}</strong> {contract.contractType === "temporary" ? `${preview.serviceFrom} a ${preview.serviceTo}` : preview.periodKey}</div>
                       <div className="col-md-3"><strong>Total:</strong> {formatRentalMoney(preview.amountMinor, "ARS")}</div>
                       <div className="col-md-4"><strong>Comprobante:</strong> {preview.invoiceDate}</div>
                       <div className="col-md-4"><strong>Servicio:</strong> {preview.serviceFrom} a {preview.serviceTo}</div>
@@ -600,9 +581,9 @@ const RentalArcaPanel = ({
                       <div className="col-12"><strong>Concepto interno:</strong> {preview.description}</div>
                       {preview.hasFiscalAdjustments && <div className="col-12 text-warning-emphasis"><strong>Excepción:</strong> {preview.adjustmentReason}</div>}
                     </div>
-                    {renderProductionPreviewAction(preview)}
+                    {preview.status === "authorized" ? <div className="text-end mt-3"><Link className="btn btn-sm btn-success" to={`/admin/alquileres/${contract.id}/comprobantes/${preview.id}`}>Ver {isCreditNote ? "nota de crédito" : "factura"}</Link></div> : isCreditNote ? <div className="alert alert-warning small py-2 mt-3 mb-0 d-flex flex-wrap justify-content-between align-items-center gap-2"><span>La Nota de Crédito todavía requiere completar su emisión.</span><Link className="btn btn-sm btn-outline-danger" to={`/admin/alquileres/${contract.id}/comprobantes/${preview.associatedVoucher?.previewId}`}>Continuar desde la factura</Link></div> : renderProductionPreviewAction(preview)}
                   </article>
-                ))}
+                );})}
               </div>
             )}
 

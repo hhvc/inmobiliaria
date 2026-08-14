@@ -229,6 +229,11 @@
 }
 
 @media print {
+  @page arca-voucher {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
   .rental-account-page,
   .rental-account-page * {
     visibility: visible !important;
@@ -314,7 +319,65 @@
   }
 
   .arca-invoice-sheet {
-    font-size: 11pt;
+    font-size: 9.25pt;
+    line-height: 1.22;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .arca-invoice-page {
+    page: arca-voucher;
+  }
+
+  .arca-invoice-page .rental-receipt-sheet {
+    width: 100%;
+    padding: 0 !important;
+  }
+
+  .arca-invoice-sheet .arca-invoice-header {
+    gap: 0.75rem;
+  }
+
+  .arca-invoice-sheet .arca-voucher-letter strong {
+    font-size: 3.25rem;
+    line-height: 0.9;
+  }
+
+  .arca-invoice-sheet .py-3 {
+    padding-top: 0.45rem !important;
+    padding-bottom: 0.45rem !important;
+  }
+
+  .arca-invoice-sheet .my-3 {
+    margin-top: 0.45rem !important;
+    margin-bottom: 0.45rem !important;
+  }
+
+  .arca-invoice-sheet .mb-4 {
+    margin-bottom: 0.65rem !important;
+  }
+
+  .arca-invoice-sheet .mt-5 {
+    margin-top: 0.75rem !important;
+  }
+
+  .arca-invoice-sheet .pt-4 {
+    padding-top: 0.65rem !important;
+  }
+
+  .arca-invoice-sheet .arca-invoice-table tbody td {
+    min-height: 0;
+    padding-top: 0.6rem;
+    padding-bottom: 1.5rem;
+  }
+
+  .arca-invoice-sheet .arca-qr-box img {
+    width: 100px;
+    height: 100px;
+  }
+
+  .arca-invoice-sheet .arca-invoice-footer {
+    gap: 1rem;
   }
 
   .arca-homologation-banner {

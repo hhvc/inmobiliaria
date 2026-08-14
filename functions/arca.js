@@ -31,6 +31,11 @@ import {
     parseWsfeVoucherQueryResponse,
     validateArcaInvoiceDraft,
 } from "./arca.helpers.js";
+import {
+    buildArcaVoucherPdf,
+    buildArcaVoucherPdfFilename,
+    formatArcaPdfVoucherNumber,
+} from "./arcaPdf.helpers.js";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -2253,5 +2258,125 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
                 message: cleanText(error.message, 200),
             });
         });
+    }
+});
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+const escapeHtml = (value = "") => cleanText(value, 2000)
+    .replace(/&/gu, "&amp;")
+    .replace(/</gu, "&lt;")
+    .replace(/>/gu, "&gt;")
+    .replace(/"/gu, "&quot;")
+    .replace(/'/gu, "&#039;");
+
+export const arcaEmailAuthorizedVoucher = onCall({region: REGION}, async (request) => {
+    const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
+    const previewId = cleanText(request.data?.previewId, 128);
+    const recipientEmail = cleanText(request.data?.recipientEmail, 220).toLowerCase();
+    const access = await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
+    if (!previewId) throw new HttpsError("invalid-argument", "Falta el comprobante a enviar.");
+    if (!EMAIL_PATTERN.test(recipientEmail)) {
+        throw new HttpsError("invalid-argument", "Ingresá un email destinatario válido.");
+    }
+
+    const previewSnap = await productionPreviewRef(inmobiliariaId, previewId).get();
+    if (!previewSnap.exists) throw new HttpsError("not-found", "No se encontró el comprobante.");
+    const voucher = {id: previewSnap.id, ...(previewSnap.data() || {})};
+    if (voucher.environment !== "prod" || voucher.status !== "authorized" || !voucher.cae) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Solo se pueden enviar comprobantes fiscales autorizados por ARCA.",
+        );
+    }
+    if (![11, 13].includes(Number(voucher.voucherType))) {
+        throw new HttpsError("failed-precondition", "El tipo de comprobante no admite este envío.");
+    }
+    const contractId = cleanText(voucher.contractId, 128);
+    if (!contractId || voucher.contractId !== contractId) {
+        throw new HttpsError("failed-precondition", "El comprobante no tiene un contrato válido.");
+    }
+
+    const [profile, contractSnap] = await Promise.all([
+        getProfile(voucher.issuerProfileId),
+        db.collection("inmobiliarias").doc(inmobiliariaId)
+            .collection("rental_contracts").doc(contractId).get(),
+    ]);
+    assertProfileForAgency(profile, inmobiliariaId);
+    if (!contractSnap.exists) throw new HttpsError("not-found", "No se encontró el contrato.");
+    const contract = {id: contractSnap.id, ...(contractSnap.data() || {})};
+
+    try {
+        const pdf = await buildArcaVoucherPdf({voucher, profile, contract});
+        if (pdf.length > 750000) {
+            throw new HttpsError(
+                "resource-exhausted",
+                "El PDF supera el tamaño permitido para enviarlo por email.",
+            );
+        }
+        const isCreditNote = Number(voucher.voucherType) === 13;
+        const voucherLabel = isCreditNote ? "Nota de Crédito C" : "Factura C";
+        const voucherNumber = formatArcaPdfVoucherNumber(
+            voucher.pointOfSale,
+            voucher.voucherNumber,
+        );
+        const issuerName = cleanText(
+            voucher.issuerSnapshot?.legalName || profile.issuerLegalName || profile.name,
+            200,
+        );
+        const mailRef = db.collection("mail").doc();
+        const text = `${voucherLabel} ${voucherNumber}\n\n` +
+            `Adjuntamos el comprobante electrónico emitido por ${issuerName}.\n` +
+            `CAE: ${cleanText(voucher.cae, 30)}.\n\n` +
+            "Este correo fue enviado desde ONO Prop.";
+        const html = `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#0f172a;">` +
+            `<h2 style="margin-bottom:8px;">${escapeHtml(voucherLabel)} ${escapeHtml(voucherNumber)}</h2>` +
+            `<p>Adjuntamos el comprobante electrónico emitido por <strong>${escapeHtml(issuerName)}</strong>.</p>` +
+            `<p><strong>CAE:</strong> ${escapeHtml(voucher.cae)}</p>` +
+            `<p style="font-size:12px;color:#64748b;">Este correo fue enviado desde ONO Prop.</p>` +
+            `</div>`;
+        await mailRef.set({
+            to: [recipientEmail],
+            message: {
+                subject: `${voucherLabel} ${voucherNumber} · ${issuerName}`,
+                text,
+                html,
+                attachments: [{
+                    filename: buildArcaVoucherPdfFilename(voucher),
+                    content: pdf.toString("base64"),
+                    encoding: "base64",
+                    contentType: "application/pdf",
+                }],
+            },
+            source: "arca_authorized_voucher",
+            inmobiliariaId,
+            contractId,
+            previewId: voucher.id,
+            recipientEmail,
+            requestedBy: request.auth.uid,
+            requestedByEmail: cleanText(access.userData?.email, 220),
+            createdAt: FieldValue.serverTimestamp(),
+        });
+        await previewSnap.ref.update({
+            lastEmail: {
+                status: "queued",
+                mailId: mailRef.id,
+                recipientEmail,
+                queuedAt: FieldValue.serverTimestamp(),
+                queuedBy: request.auth.uid,
+            },
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+        return {queued: true, mailId: mailRef.id, recipientEmail};
+    } catch (error) {
+        if (error instanceof HttpsError) throw error;
+        console.error("No se pudo preparar el comprobante ARCA para email.", {
+            previewId,
+            inmobiliariaId,
+            message: cleanText(error?.message, 500),
+        });
+        throw new HttpsError(
+            "internal",
+            "No se pudo generar el PDF para enviarlo. Intentá nuevamente.",
+        );
     }
 });
