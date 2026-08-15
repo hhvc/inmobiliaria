@@ -18,7 +18,9 @@ import {
     buildWsfeLastAuthorizedRequest,
     buildWsfePointsOfSaleRequest,
     buildWsfeVoucherQueryRequest,
+    createArcaCredentialTicketId,
     createArcaRequestId,
+    getArcaAuthorizationMode,
     isValidArcaCuit,
     normalizeArcaCuit,
     parseArcaSoapFault,
@@ -105,13 +107,29 @@ const cleanText = (value = "", maxLength = 500) => (
 
 const cleanDigits = (value = "") => value.toString().replace(/\D/g, "");
 
-const getTicketCacheId = (profile, service = "wsfe", environment = "homo") => {
+const getTicketCacheId = (service = "wsfe", environment = "homo") => {
+    const config = getArcaEnvironment(environment);
+    return createArcaCredentialTicketId({
+        environment: config.name,
+        credentialAlias: config.credentialAlias,
+        service,
+    });
+};
+
+// Compatibilidad con tickets creados antes del soporte multiemisor. En aquella
+// versión el CUIT representado formaba parte de la clave, aunque WSAA emite el
+// ticket para el certificado/computador fiscal y no para cada representado.
+const getLegacyTicketCacheId = (
+    issuerCuit,
+    service = "wsfe",
+    environment = "homo",
+) => {
     const config = getArcaEnvironment(environment);
     return crypto
     .createHash("sha256").update([
         config.name,
         config.credentialAlias,
-        profile.issuerCuit,
+        normalizeArcaCuit(issuerCuit),
         service,
     ].join("|")).digest("hex").slice(0, 32);
 };
@@ -354,13 +372,9 @@ const postSoap = async ({url, action, xml}) => {
     return body;
 };
 
-const createWsaaTicket = async (
-    profile,
-    service = "wsfe",
-    environment = "homo",
-) => {
+const createWsaaTicket = async (service = "wsfe", environment = "homo") => {
     const config = getArcaEnvironment(environment);
-    const cacheId = getTicketCacheId(profile, service, environment);
+    const cacheId = getTicketCacheId(service, environment);
     parseEncryptionKey();
     const cms = signTra(buildWsaaTra({service}), environment);
     const response = await postSoap({
@@ -370,11 +384,11 @@ const createWsaaTicket = async (
     });
     const ticket = parseWsaaLoginTicket(response);
     const encrypted = encryptTicket(ticket);
+    const certificate = inspectCertificate(environment);
     await db.collection(TICKET_COLLECTION).doc(cacheId).set({
         ...encrypted,
         credentialAlias: config.credentialAlias,
-        issuerCuit: profile.issuerCuit,
-        lastProfileId: profile.id,
+        credentialOwnerCuit: certificate.issuerCuit,
         service,
         environment: config.name,
         expiresAt: Timestamp.fromDate(new Date(ticket.expirationTime)),
@@ -384,34 +398,66 @@ const createWsaaTicket = async (
     return ticket;
 };
 
-const getWsaaTicket = async (profile, {
+const readStoredTicket = async (cacheId) => {
+    const snap = await db.collection(TICKET_COLLECTION).doc(cacheId).get();
+    if (!snap.exists) return null;
+    try {
+        const ticket = decryptTicket(snap.data());
+        return isTicketUsable(ticket) ? {ticket, data: snap.data()} : null;
+    } catch (error) {
+        console.warn("No se pudo reutilizar el ticket WSAA cifrado.", {
+            cacheId,
+            message: cleanText(error.message, 200),
+        });
+        return null;
+    }
+};
+
+const getWsaaTicket = async ({
     service = "wsfe",
     forceRefresh = false,
     environment = "homo",
+    legacyIssuerCuit = "",
 } = {}) => {
-    const cacheId = getTicketCacheId(profile, service, environment);
+    const cacheId = getTicketCacheId(service, environment);
     if (!forceRefresh && isTicketUsable(memoryTickets.get(cacheId))) {
         return memoryTickets.get(cacheId);
     }
     if (!forceRefresh) {
-        const snap = await db.collection(TICKET_COLLECTION).doc(cacheId).get();
-        if (snap.exists) {
-            try {
-                const ticket = decryptTicket(snap.data());
-                if (isTicketUsable(ticket)) {
-                    memoryTickets.set(cacheId, ticket);
-                    return ticket;
-                }
-            } catch (error) {
-                console.warn("No se pudo reutilizar el ticket WSAA cifrado.", {
-                    profileId: profile.id,
-                    message: cleanText(error.message, 200),
-                });
-            }
+        const stored = await readStoredTicket(cacheId);
+        if (stored) {
+            memoryTickets.set(cacheId, stored.ticket);
+            return stored.ticket;
+        }
+
+        const certificateOwnerCuit = inspectCertificate(environment).issuerCuit;
+        const legacyIds = [...new Set([
+            legacyIssuerCuit,
+            certificateOwnerCuit,
+        ].map((issuerCuit) => issuerCuit && getLegacyTicketCacheId(
+            issuerCuit,
+            service,
+            environment,
+        )).filter(Boolean))];
+        for (const legacyId of legacyIds) {
+            const legacy = await readStoredTicket(legacyId);
+            if (!legacy) continue;
+            const config = getArcaEnvironment(environment);
+            await db.collection(TICKET_COLLECTION).doc(cacheId).set({
+                ...legacy.data,
+                credentialAlias: config.credentialAlias,
+                credentialOwnerCuit: certificateOwnerCuit,
+                service,
+                environment: config.name,
+                migratedFrom: legacyId,
+                migratedAt: FieldValue.serverTimestamp(),
+            }, {merge: true});
+            memoryTickets.set(cacheId, legacy.ticket);
+            return legacy.ticket;
         }
     }
     if (!pendingTickets.has(cacheId)) {
-        const promise = createWsaaTicket(profile, service, environment).finally(() => {
+        const promise = createWsaaTicket(service, environment).finally(() => {
             pendingTickets.delete(cacheId);
         });
         pendingTickets.set(cacheId, promise);
@@ -432,7 +478,11 @@ const callRegistrationService = async (xml, environment = "homo") => postSoap({
 });
 
 const getWsfeAuth = async (profile, environment = "homo") => {
-    const ticket = await getWsaaTicket(profile, {service: "wsfe", environment});
+    const ticket = await getWsaaTicket({
+        service: "wsfe",
+        environment,
+        legacyIssuerCuit: profile.issuerCuit,
+    });
     return {
         token: ticket.token,
         sign: ticket.sign,
@@ -440,15 +490,17 @@ const getWsfeAuth = async (profile, environment = "homo") => {
     };
 };
 
-const getRegistrationAuth = async (profile, environment = "homo") => {
-    const ticket = await getWsaaTicket(profile, {
+const getRegistrationAuth = async (environment = "homo") => {
+    const certificate = inspectCertificate(environment);
+    const ticket = await getWsaaTicket({
         service: REGISTRATION_SERVICE,
         environment,
+        legacyIssuerCuit: certificate.issuerCuit,
     });
     return {
         token: ticket.token,
         sign: ticket.sign,
-        representedCuit: profile.issuerCuit,
+        representedCuit: certificate.issuerCuit,
     };
 };
 
@@ -472,14 +524,8 @@ const inspectCertificate = (environment = "homo") => {
     };
 };
 
-const inspectProductionCertificateForProfile = (profile) => {
-    const certificate = inspectCertificate("prod");
-    if (certificate.issuerCuit && certificate.issuerCuit !== profile.issuerCuit) {
-        throw new HttpsError(
-            "failed-precondition",
-            "El CUIT del certificado de producción no coincide con el CUIT del perfil fiscal.",
-        );
-    }
+const inspectValidCertificate = (environment = "homo") => {
+    const certificate = inspectCertificate(environment);
     const now = Date.now();
     const validFrom = new Date(certificate.validFrom).getTime();
     const validTo = new Date(certificate.validTo).getTime();
@@ -487,10 +533,52 @@ const inspectProductionCertificateForProfile = (profile) => {
         now < validFrom || now >= validTo) {
         throw new HttpsError(
             "failed-precondition",
-            "El certificado de producción no está vigente.",
+            `El certificado de ${environment === "prod" ? "producción" : "homologación"} no está vigente.`,
         );
     }
     return certificate;
+};
+
+const getAuthorizationContext = (profile, environment = "prod") => {
+    const certificate = inspectValidCertificate(environment);
+    const representedCuit = normalizeArcaCuit(profile.issuerCuit);
+    const credentialOwnerCuit = normalizeArcaCuit(certificate.issuerCuit);
+    return {
+        mode: getArcaAuthorizationMode({
+            credentialOwnerCuit,
+            representedCuit,
+        }),
+        representedCuit,
+        credentialOwnerCuit,
+        certificate,
+    };
+};
+
+const isLikelyDelegationError = (error) => /(?:representaci[oó]n|representad|autoriz|permiso|computador|cuit)/iu
+    .test(`${error?.code || ""} ${error?.message || ""}`);
+
+const buildDelegationError = (profile, error) => new HttpsError(
+    "failed-precondition",
+    `ARCA no autorizó a ONO Prop a operar por el CUIT ${profile.issuerCuit}. ` +
+    "Verificá que el emisor haya delegado Facturación Electrónica, que ONO Prop " +
+    "haya aceptado la designación y que la relación esté asociada al computador fiscal de Producción. " +
+    "Si la relación se completó con un ticket WSAA ya vigente, la autorización puede reflejarse cuando ese ticket se renueve." +
+    (cleanText(error?.message, 220) ? ` Detalle ARCA: ${cleanText(error.message, 220)}` : ""),
+);
+
+const inspectVerifiedProductionCredential = (profile) => {
+    const authorization = getAuthorizationContext(profile, "prod");
+    const verified = profile.productionAuthorization || {};
+    if (verified.status !== "verified" ||
+        normalizeArcaCuit(verified.representedCuit) !== authorization.representedCuit ||
+        normalizeArcaCuit(verified.credentialOwnerCuit) !==
+            authorization.credentialOwnerCuit) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Ejecutá nuevamente “Probar PROD” para verificar la delegación, el certificado de ONO Prop y el punto de venta del emisor.",
+        );
+    }
+    return authorization.certificate;
 };
 
 const todayArgentina = () => new Intl.DateTimeFormat("en-CA", {
@@ -569,6 +657,30 @@ const listProductionPreviews = async (inmobiliariaId) => {
     })).sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 };
 
+const fiscalDocumentForAgencyClient = (document = {}) => {
+    const result = {...document};
+    delete result.certificate;
+    if (result.authorization) {
+        result.authorization = {...result.authorization};
+        delete result.authorization.credentialOwnerCuit;
+    }
+    return result;
+};
+
+const profileForAgencyClient = (profile = {}) => {
+    const result = {...profile};
+    for (const field of ["lastTest", "lastProductionTest"]) {
+        if (!result[field]) continue;
+        result[field] = fiscalDocumentForAgencyClient(result[field]);
+    }
+    if (result.productionAuthorization) {
+        result.productionAuthorization = {...result.productionAuthorization};
+        delete result.productionAuthorization.credentialOwnerCuit;
+        delete result.productionAuthorization.lastError;
+    }
+    return result;
+};
+
 export const arcaGetOverview = onCall({region: REGION}, async (request) => {
     const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
     const access = await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
@@ -578,18 +690,18 @@ export const arcaGetOverview = onCall({region: REGION}, async (request) => {
     });
     return {
         environment: "homo",
-        productionEnabled: access.isRoot,
-        productionPreviewEnabled: access.isRoot,
-        productionInvoiceIssuanceEnabled: access.isRoot && profiles.some(
+        productionEnabled: true,
+        productionPreviewEnabled: true,
+        productionInvoiceIssuanceEnabled: profiles.some(
             (profile) => profile.active === true &&
                 profile.productionIssuanceEnabled === true,
         ),
         receiverIvaConditions: ARCA_RECEIVER_IVA_CONDITIONS,
-        profiles: profiles.filter((profile) => profile.active === true),
+        profiles: profiles.filter((profile) => profile.active === true)
+            .map(profileForAgencyClient),
         drafts: await listDrafts(inmobiliariaId),
-        productionPreviews: access.isRoot
-            ? await listProductionPreviews(inmobiliariaId)
-            : [],
+        productionPreviews: (await listProductionPreviews(inmobiliariaId))
+            .map(fiscalDocumentForAgencyClient),
     };
 });
 
@@ -639,7 +751,7 @@ export const arcaGetRegistrationCertificate = onCall({
             );
         }
 
-        const auth = await getRegistrationAuth(profile);
+        const auth = await getRegistrationAuth("homo");
         const xml = buildArcaRegistrationRequest({
             ...auth,
             personCuit,
@@ -652,7 +764,8 @@ export const arcaGetRegistrationCertificate = onCall({
             source: {
                 service: REGISTRATION_SERVICE,
                 environment: "homo",
-                representedCuit: profile.issuerCuit,
+                representedCuit: auth.representedCuit,
+                personCuit,
                 queriedAt,
                 processedAt: certificate.metadata?.processedAt || "",
             },
@@ -749,6 +862,11 @@ export const arcaUpsertIssuerProfile = onCall({region: REGION}, async (request) 
             productionDisabledAt: FieldValue.serverTimestamp(),
             productionDisabledBy: request.auth.uid,
         } : {}),
+        ...(productionIdentityChanged ? {
+            lastProductionTest: FieldValue.delete(),
+            lastProductionRegistrationLookup: FieldValue.delete(),
+            productionAuthorization: FieldValue.delete(),
+        } : {}),
         ...(existing.exists ? {} : {
             createdAt: FieldValue.serverTimestamp(),
             createdBy: request.auth.uid,
@@ -783,18 +901,39 @@ export const arcaTestHomologation = onCall({
         await assertRoot(request.auth?.uid);
         const profile = await getProfile(request.data?.profileId);
         assertProfileForAgency(profile, profile.inmobiliariaId);
-        const certificate = inspectCertificate();
-        if (certificate.issuerCuit && certificate.issuerCuit !== profile.issuerCuit) {
-            throw new HttpsError(
-                "failed-precondition",
-                "El CUIT del certificado no coincide con el CUIT del perfil fiscal.",
-            );
-        }
+        const authorization = getAuthorizationContext(profile, "homo");
+        const {certificate} = authorization;
         const dummyXml = await callWsfe({
             action: "FEDummy",
             xml: buildWsfeDummyRequest(),
         });
         const dummy = parseWsfeDummyResponse(dummyXml);
+        if (authorization.mode === "platform_delegation") {
+            const result = {
+                checkedAt: new Date().toISOString(),
+                environment: "homo",
+                scope: "platform_only",
+                dummy,
+                certificate,
+                authorization: {
+                    mode: authorization.mode,
+                    representedCuit: authorization.representedCuit,
+                    credentialOwnerCuit: authorization.credentialOwnerCuit,
+                    status: "not_applicable",
+                },
+                representedCuitTested: false,
+                pointsOfSale: [],
+                configuredPointAvailable: null,
+                pointValidationMode: "not_applicable",
+                lastAuthorizedVoucher: null,
+            };
+            await profileRef(profile.id).update({
+                lastTest: result,
+                updatedAt: FieldValue.serverTimestamp(),
+                updatedBy: request.auth.uid,
+            });
+            return result;
+        }
         const auth = await getWsfeAuth(profile);
         const pointsXml = await callWsfe({
             action: "FEParamGetPtosVenta",
@@ -829,6 +968,13 @@ export const arcaTestHomologation = onCall({
             environment: "homo",
             dummy,
             certificate,
+            authorization: {
+                mode: authorization.mode,
+                representedCuit: authorization.representedCuit,
+                credentialOwnerCuit: authorization.credentialOwnerCuit,
+                status: "verified",
+            },
+            representedCuitTested: true,
             pointsOfSale,
             configuredPointAvailable,
             pointValidationMode,
@@ -859,9 +1005,15 @@ export const arcaTestProductionConnection = onCall({
     secrets: arcaProdSecrets,
     timeoutSeconds: 60,
 }, async (request) => {
+    let profile = null;
+    let authorization = null;
+    let access = null;
     try {
-        await assertRoot(request.auth?.uid);
-        const profile = await getProfile(request.data?.profileId);
+        profile = await getProfile(request.data?.profileId);
+        access = await assertCanManageAgency(
+            request.auth?.uid,
+            cleanText(profile.inmobiliariaId, 128),
+        );
         if (profile.active !== true || !isValidArcaCuit(profile.issuerCuit)) {
             throw new HttpsError(
                 "failed-precondition",
@@ -874,7 +1026,8 @@ export const arcaTestProductionConnection = onCall({
                 "El perfil fiscal no contiene un punto de venta válido.",
             );
         }
-        const certificate = inspectProductionCertificateForProfile(profile);
+        authorization = getAuthorizationContext(profile, "prod");
+        const {certificate} = authorization;
         const dummyXml = await callWsfe({
             action: "FEDummy",
             xml: buildWsfeDummyRequest(),
@@ -922,6 +1075,13 @@ export const arcaTestProductionConnection = onCall({
             voucherType: Number(profile.voucherType),
             dummy,
             certificate,
+            authorization: {
+                mode: authorization.mode,
+                status: "verified",
+                representedCuit: authorization.representedCuit,
+                credentialOwnerCuit: authorization.credentialOwnerCuit,
+                verifiedAt: new Date().toISOString(),
+            },
             pointsOfSale,
             configuredPointAvailable,
             pointValidationMode,
@@ -929,12 +1089,37 @@ export const arcaTestProductionConnection = onCall({
         };
         await profileRef(profile.id).update({
             lastProductionTest: result,
+            productionAuthorization: result.authorization,
             updatedAt: FieldValue.serverTimestamp(),
             updatedBy: request.auth.uid,
         });
-        return result;
+        return access.isRoot ? result : fiscalDocumentForAgencyClient(result);
     } catch (error) {
         if (error instanceof HttpsError) throw error;
+        if (profile && authorization?.mode === "platform_delegation" &&
+            isLikelyDelegationError(error)) {
+            const checkedAt = new Date().toISOString();
+            try {
+                await profileRef(profile.id).update({
+                    productionAuthorization: {
+                        mode: authorization.mode,
+                        status: "pending_or_rejected",
+                        representedCuit: authorization.representedCuit,
+                        credentialOwnerCuit: authorization.credentialOwnerCuit,
+                        checkedAt,
+                        lastError: cleanText(error?.message, 300),
+                    },
+                    updatedAt: FieldValue.serverTimestamp(),
+                    updatedBy: request.auth?.uid || "system",
+                });
+            } catch (persistenceError) {
+                console.error("No se pudo guardar el estado de delegación ARCA.", {
+                    profileId: profile.id,
+                    message: cleanText(persistenceError?.message, 200),
+                });
+            }
+            throw buildDelegationError(profile, error);
+        }
         console.error("Falló la prueba de solo lectura en producción ARCA.", {
             code: cleanText(error?.code, 100),
             message: cleanText(error?.message, 500),
@@ -968,8 +1153,8 @@ export const arcaGetProductionRegistrationCertificate = onCall({
                 "El perfil fiscal debe contener un CUIT válido.",
             );
         }
-        inspectProductionCertificateForProfile(profile);
-        const auth = await getRegistrationAuth(profile, "prod");
+        inspectValidCertificate("prod");
+        const auth = await getRegistrationAuth("prod");
         const xml = buildArcaRegistrationRequest({
             ...auth,
             personCuit: profile.issuerCuit,
@@ -982,7 +1167,8 @@ export const arcaGetProductionRegistrationCertificate = onCall({
             source: {
                 service: REGISTRATION_SERVICE,
                 environment: "prod",
-                representedCuit: profile.issuerCuit,
+                representedCuit: auth.representedCuit,
+                personCuit: profile.issuerCuit,
                 queriedAt,
                 processedAt: certificate.metadata?.processedAt || "",
             },
@@ -1260,11 +1446,15 @@ const assertProductionPreparationReady = (profile) => {
         );
     }
     const lastTest = profile.lastProductionTest || {};
+    const authorization = lastTest.authorization || {};
     const checkedAtMs = new Date(lastTest.checkedAt || 0).getTime();
     if (lastTest.configuredPointAvailable !== true ||
         normalizeArcaCuit(lastTest.issuerCuit) !== profile.issuerCuit ||
         Number(lastTest.pointOfSale) !== Number(profile.pointOfSale) ||
         Number(lastTest.voucherType || 0) !== Number(profile.voucherType) ||
+        authorization.status !== "verified" ||
+        normalizeArcaCuit(authorization.representedCuit) !== profile.issuerCuit ||
+        !isValidArcaCuit(authorization.credentialOwnerCuit) ||
         !Number.isFinite(checkedAtMs) ||
         checkedAtMs < Date.now() - PRODUCTION_TEST_MAX_AGE_MS) {
         throw new HttpsError(
@@ -1303,8 +1493,8 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
     timeoutSeconds: 60,
 }, async (request) => {
     try {
-        await assertRoot(request.auth?.uid);
         const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
+        await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
         const sourceDraftId = cleanText(request.data?.draftId, 128);
         if (!inmobiliariaId || !sourceDraftId) {
             throw new HttpsError(
@@ -1355,7 +1545,7 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
             );
         }
         assertProductionPreparationReady(profile);
-        const certificate = inspectProductionCertificateForProfile(profile);
+        const certificate = inspectVerifiedProductionCredential(profile);
         const validationErrors = validateArcaInvoiceDraft(sourceDraft, {
             requestDateKey: todayArgentina(),
         });
@@ -1481,7 +1671,10 @@ export const arcaPrepareProductionRentalInvoicePreview = onCall({
         });
         await batch.commit();
         return {
-            preview: serializeValue({...preview, updatedAt: observedAt}),
+            preview: serializeValue(fiscalDocumentForAgencyClient({
+                ...preview,
+                updatedAt: observedAt,
+            })),
         };
     } catch (error) {
         if (error instanceof HttpsError) throw error;
@@ -1529,8 +1722,8 @@ export const arcaPrepareProductionRentalCreditNotePreview = onCall({
     secrets: arcaProdSecrets,
     timeoutSeconds: 60,
 }, async (request) => {
-    await assertRoot(request.auth?.uid);
     const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
+    await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
     const invoicePreviewId = cleanText(request.data?.invoicePreviewId, 128);
     const amountMinor = Math.round(Number(request.data?.amountMinor) || 0);
     const reason = cleanText(request.data?.reason, 300);
@@ -1554,7 +1747,7 @@ export const arcaPrepareProductionRentalCreditNotePreview = onCall({
     const profile = await getProfile(source.issuerProfileId);
     assertProductionProfileForAgency(profile, inmobiliariaId);
     assertProductionPreparationReady(profile);
-    inspectProductionCertificateForProfile(profile);
+    inspectVerifiedProductionCredential(profile);
     assertCreditNoteSource({source, profile, inmobiliariaId});
     await getRentalDocuments({
         inmobiliariaId,
@@ -1692,7 +1885,10 @@ export const arcaPrepareProductionRentalCreditNotePreview = onCall({
         performedAt: FieldValue.serverTimestamp(),
     });
     await batch.commit();
-    return {preview: serializeValue({...preview, updatedAt: observedAt})};
+    return {preview: serializeValue(fiscalDocumentForAgencyClient({
+        ...preview,
+        updatedAt: observedAt,
+    }))};
 });
 
 const acquireIssueLock = async ({
@@ -1999,7 +2195,6 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
     secrets: arcaProdSecrets,
     timeoutSeconds: 60,
 }, async (request) => {
-    await assertRoot(request.auth?.uid);
     if (request.data?.confirmProduction !== true) {
         throw new HttpsError(
             "failed-precondition",
@@ -2007,6 +2202,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
         );
     }
     const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
+    await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
     const previewId = cleanText(request.data?.previewId, 128);
     if (!inmobiliariaId || !previewId) {
         throw new HttpsError("invalid-argument", "Faltan la inmobiliaria o la vista previa productiva.");
@@ -2016,7 +2212,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
     if (!snap.exists) throw new HttpsError("not-found", "La vista previa de Producción no existe.");
     let preview = {id: snap.id, ...(snap.data() || {})};
     if (preview.status === "authorized" && preview.cae) {
-        return {preview: serializeValue(preview)};
+        return {preview: serializeValue(fiscalDocumentForAgencyClient(preview))};
     }
     if (preview.environment !== "prod" || preview.inmobiliariaId !== inmobiliariaId ||
         preview.productionInvoiceIssuanceEnabled !== true) {
@@ -2046,7 +2242,7 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
     const profile = await getProfile(preview.issuerProfileId);
     assertProductionProfileForAgency(profile, inmobiliariaId);
     assertProductionPreparationReady(profile);
-    inspectProductionCertificateForProfile(profile);
+    inspectVerifiedProductionCredential(profile);
     if (normalizeArcaCuit(preview.issuerCuit) !== profile.issuerCuit ||
         Number(preview.pointOfSale) !== Number(profile.pointOfSale) ||
         ![11, 13].includes(Number(preview.voucherType))) {
@@ -2148,11 +2344,11 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
                     uid: request.auth.uid,
                     source: "production_reconciliation",
                 });
-                return {preview: serializeValue({
+                return {preview: serializeValue(fiscalDocumentForAgencyClient({
                     ...preview,
                     ...recovered,
                     status: "authorized",
-                })};
+                }))};
             }
         }
         const lastXml = buildWsfeLastAuthorizedRequest({
@@ -2231,12 +2427,12 @@ export const arcaAuthorizeProductionRentalInvoice = onCall({
             uid: request.auth.uid,
             source: "FECAESolicitar_PROD",
         });
-        return {preview: serializeValue({
+        return {preview: serializeValue(fiscalDocumentForAgencyClient({
             ...preview,
             ...result,
             voucherNumber,
             status: "authorized",
-        })};
+        }))};
     } catch (error) {
         if (!(error instanceof HttpsError)) {
             await ref.update({
@@ -2269,6 +2465,82 @@ const escapeHtml = (value = "") => cleanText(value, 2000)
     .replace(/"/gu, "&quot;")
     .replace(/'/gu, "&#039;");
 
+const loadAuthorizedVoucherPdf = async ({inmobiliariaId, previewId}) => {
+    const previewSnap = await productionPreviewRef(inmobiliariaId, previewId).get();
+    if (!previewSnap.exists) {
+        throw new HttpsError("not-found", "No se encontró el comprobante.");
+    }
+    const voucher = {id: previewSnap.id, ...(previewSnap.data() || {})};
+    if (voucher.environment !== "prod" || voucher.status !== "authorized" || !voucher.cae) {
+        throw new HttpsError(
+            "failed-precondition",
+            "Solo se pueden compartir comprobantes fiscales autorizados por ARCA.",
+        );
+    }
+    if (![11, 13].includes(Number(voucher.voucherType))) {
+        throw new HttpsError(
+            "failed-precondition",
+            "El tipo de comprobante no admite este envío.",
+        );
+    }
+    const contractId = cleanText(voucher.contractId, 128);
+    if (!contractId || voucher.contractId !== contractId) {
+        throw new HttpsError(
+            "failed-precondition",
+            "El comprobante no tiene un contrato válido.",
+        );
+    }
+    const [profile, contractSnap] = await Promise.all([
+        getProfile(voucher.issuerProfileId),
+        db.collection("inmobiliarias").doc(inmobiliariaId)
+            .collection("rental_contracts").doc(contractId).get(),
+    ]);
+    assertProfileForAgency(profile, inmobiliariaId);
+    if (!contractSnap.exists) {
+        throw new HttpsError("not-found", "No se encontró el contrato.");
+    }
+    const contract = {id: contractSnap.id, ...(contractSnap.data() || {})};
+    const pdf = await buildArcaVoucherPdf({voucher, profile, contract});
+    return {previewSnap, voucher, profile, contract, pdf, contractId};
+};
+
+export const arcaGetAuthorizedVoucherPdf = onCall({region: REGION}, async (request) => {
+    const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
+    const previewId = cleanText(request.data?.previewId, 128);
+    await assertCanManageAgency(request.auth?.uid, inmobiliariaId);
+    if (!previewId) {
+        throw new HttpsError("invalid-argument", "Falta el comprobante a compartir.");
+    }
+    try {
+        const {voucher, pdf} = await loadAuthorizedVoucherPdf({
+            inmobiliariaId,
+            previewId,
+        });
+        if (pdf.length > 2000000) {
+            throw new HttpsError(
+                "resource-exhausted",
+                "El PDF supera el tamaño permitido para compartirlo.",
+            );
+        }
+        return {
+            filename: buildArcaVoucherPdfFilename(voucher),
+            contentType: "application/pdf",
+            pdfBase64: pdf.toString("base64"),
+        };
+    } catch (error) {
+        if (error instanceof HttpsError) throw error;
+        console.error("No se pudo preparar el comprobante ARCA para compartir.", {
+            previewId,
+            inmobiliariaId,
+            message: cleanText(error?.message, 500),
+        });
+        throw new HttpsError(
+            "internal",
+            "No se pudo generar el PDF para compartirlo. Intentá nuevamente.",
+        );
+    }
+});
+
 export const arcaEmailAuthorizedVoucher = onCall({region: REGION}, async (request) => {
     const inmobiliariaId = cleanText(request.data?.inmobiliariaId, 128);
     const previewId = cleanText(request.data?.previewId, 128);
@@ -2279,34 +2551,14 @@ export const arcaEmailAuthorizedVoucher = onCall({region: REGION}, async (reques
         throw new HttpsError("invalid-argument", "Ingresá un email destinatario válido.");
     }
 
-    const previewSnap = await productionPreviewRef(inmobiliariaId, previewId).get();
-    if (!previewSnap.exists) throw new HttpsError("not-found", "No se encontró el comprobante.");
-    const voucher = {id: previewSnap.id, ...(previewSnap.data() || {})};
-    if (voucher.environment !== "prod" || voucher.status !== "authorized" || !voucher.cae) {
-        throw new HttpsError(
-            "failed-precondition",
-            "Solo se pueden enviar comprobantes fiscales autorizados por ARCA.",
-        );
-    }
-    if (![11, 13].includes(Number(voucher.voucherType))) {
-        throw new HttpsError("failed-precondition", "El tipo de comprobante no admite este envío.");
-    }
-    const contractId = cleanText(voucher.contractId, 128);
-    if (!contractId || voucher.contractId !== contractId) {
-        throw new HttpsError("failed-precondition", "El comprobante no tiene un contrato válido.");
-    }
-
-    const [profile, contractSnap] = await Promise.all([
-        getProfile(voucher.issuerProfileId),
-        db.collection("inmobiliarias").doc(inmobiliariaId)
-            .collection("rental_contracts").doc(contractId).get(),
-    ]);
-    assertProfileForAgency(profile, inmobiliariaId);
-    if (!contractSnap.exists) throw new HttpsError("not-found", "No se encontró el contrato.");
-    const contract = {id: contractSnap.id, ...(contractSnap.data() || {})};
-
     try {
-        const pdf = await buildArcaVoucherPdf({voucher, profile, contract});
+        const {
+            previewSnap,
+            voucher,
+            profile,
+            pdf,
+            contractId,
+        } = await loadAuthorizedVoucherPdf({inmobiliariaId, previewId});
         if (pdf.length > 750000) {
             throw new HttpsError(
                 "resource-exhausted",

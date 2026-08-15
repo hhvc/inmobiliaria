@@ -197,9 +197,11 @@ const ArcaAdminPage = () => {
       setNotice("");
       const result = await testArcaHomologation(profile.id);
       setTestResult({ profileId: profile.id, ...result });
-      setNotice(result.configuredPointAvailable
-        ? "WSAA, WSFE y el punto de venta respondieron correctamente."
-        : "WSAA y WSFE respondieron, pero el punto configurado no está disponible.");
+      setNotice(result.scope === "platform_only"
+        ? "La plataforma respondió correctamente en homologación. El CUIT real representado se valida únicamente con Probar PROD."
+        : result.configuredPointAvailable
+          ? "WSAA, WSFE y el punto de venta respondieron correctamente."
+          : "WSAA y WSFE respondieron, pero el punto configurado no está disponible.");
       await load();
     } catch (testError) {
       setError(testError.message || "No se pudo probar la conexión con ARCA.");
@@ -270,6 +272,9 @@ const ArcaAdminPage = () => {
       </header>
 
       <div className="alert alert-info"><strong>Administración fiscal segura.</strong> Las pruebas y consultas de esta pantalla son de solo lectura. La emisión real se inicia exclusivamente desde el contrato, con vista previa, validación reciente y doble confirmación. La aplicación nunca muestra certificados, claves ni tickets WSAA.</div>
+      <div className="alert alert-light border">
+        <strong>Modelo multiemisor por delegación.</strong> ONO Prop utiliza su computador fiscal para operar por cada emisor autorizado. El CUIT y el punto de venta pertenecen al locador; no se cargan certificados ni claves fiscales del cliente. <strong>Probar PROD</strong> verifica la delegación y el punto de venta sin solicitar CAE.
+      </div>
       {error && <div className="alert alert-danger">{error}</div>}
       {notice && <div className="alert alert-success">{notice}</div>}
 
@@ -280,7 +285,7 @@ const ArcaAdminPage = () => {
             <div className="row g-3">
               <div className="col-lg-4"><label className="form-label">Nombre</label><input className="form-control" required placeholder="Emisor homologación ONO Prop" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
               <div className="col-lg-4"><label className="form-label">Inmobiliaria</label><select className="form-select" required value={form.inmobiliariaId} onChange={(event) => setForm({ ...form, inmobiliariaId: event.target.value })}>{agencies.map((agency) => <option value={agency.id} key={agency.id}>{agency.nombre || agency.name || agency.id}</option>)}</select></div>
-              <div className="col-lg-4"><label className="form-label">Locador emisor</label><select className="form-select" value={form.issuerPartyId} onChange={(event) => setForm({ ...form, issuerPartyId: event.target.value })}><option value="">Perfil general de homologación</option>{agencyPeople.map((person) => <option value={person.id} key={person.id}>{person.name} · {person.taxId || "sin CUIT"}</option>)}</select><small className="text-muted">Al elegir un locador, el perfil solo podrá facturar sus contratos.</small></div>
+              <div className="col-lg-4"><label className="form-label">Locador emisor</label><select className="form-select" value={form.issuerPartyId} onChange={(event) => setForm({ ...form, issuerPartyId: event.target.value })}><option value="">Perfil fiscal general</option>{agencyPeople.map((person) => <option value={person.id} key={person.id}>{person.name} · {person.taxId || "sin CUIT"}</option>)}</select><small className="text-muted">Al elegir un locador, el perfil solo podrá facturar sus contratos.</small></div>
               <div className="col-sm-7 col-lg-3"><label className="form-label">CUIT emisor</label><input className="form-control" inputMode="numeric" required value={form.issuerCuit} onChange={(event) => { setForm({ ...form, issuerCuit: event.target.value }); setRegistrationPreview(null); }} /></div>
               <div className="col-sm-5 col-lg-1"><label className="form-label">PV</label><input className="form-control" type="number" min="1" required value={form.pointOfSale || ""} onChange={(event) => setForm({ ...form, pointOfSale: Number(event.target.value) })} /></div>
               <div className="col-lg-5"><label className="form-label">Apellido y nombre / razón social</label><input className="form-control" placeholder="Dato que aparecerá en la factura" value={form.issuerLegalName} onChange={(event) => setForm({ ...form, issuerLegalName: event.target.value })} /></div>
@@ -345,14 +350,14 @@ const ArcaAdminPage = () => {
       <section className="card border-0 shadow-sm">
         <div className="card-body p-4">
           <h2 className="h5">Perfiles configurados</h2>
-          <p className="small text-muted">“Probar HOMO” usa las credenciales de homologación. Probar y consultar PROD son acciones de solo lectura. Emitir exige además habilitar expresamente el perfil.</p>
+          <p className="small text-muted">“Probar plataforma HOMO” controla la integración técnica. “Probar PROD” valida el CUIT representado, la delegación y el punto de venta real sin emitir. Emitir exige además habilitar expresamente el perfil.</p>
           {loading ? <p className="text-muted">Cargando...</p> : profiles.length === 0 ? <p className="text-muted mb-0">Todavía no hay perfiles fiscales.</p> : (
             <div className="table-responsive">
               <table className="table align-middle">
                 <thead><tr><th>Perfil</th><th>Inmobiliaria</th><th>Configuración</th><th>Últimas pruebas</th><th className="text-end">Acciones</th></tr></thead>
                 <tbody>{profiles.map((profile) => (
                   <tr key={profile.id}>
-                    <td><strong>{profile.name}</strong><small className="d-block text-muted">{profile.active ? "Activo" : "Inactivo"}</small><span className={`badge mt-1 ${profile.productionIssuanceEnabled ? "text-bg-danger" : "text-bg-light text-dark border"}`}>{profile.productionIssuanceEnabled ? "Emisión PROD habilitada" : "PROD sin emisión"}</span></td>
+                    <td><strong>{profile.name}</strong><small className="d-block text-muted">{profile.active ? "Activo" : "Inactivo"}</small><span className={`badge mt-1 ${profile.productionIssuanceEnabled ? "text-bg-danger" : "text-bg-light text-dark border"}`}>{profile.productionIssuanceEnabled ? "Emisión PROD habilitada" : "PROD sin emisión"}</span>{profile.productionAuthorization?.status === "verified" ? <span className="badge text-bg-success ms-1">{profile.productionAuthorization.mode === "platform_delegation" ? "Delegación verificada" : "Certificado verificado"}</span> : profile.productionAuthorization?.status === "pending_or_rejected" ? <span className="badge text-bg-warning ms-1">Revisar delegación</span> : <span className="badge text-bg-secondary ms-1">Acceso sin verificar</span>}</td>
                     <td>{agencyNames[profile.inmobiliariaId] || profile.inmobiliariaId}</td>
                     <td>CUIT {profile.issuerCuit}<small className="d-block text-muted">Factura C · PV {profile.pointOfSale}</small></td>
                     <td>
@@ -361,7 +366,7 @@ const ArcaAdminPage = () => {
                     </td>
                     <td className="text-end text-nowrap">
                       <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => edit(profile)}>Editar</button>
-                      <button className="btn btn-sm btn-outline-primary ms-2" type="button" disabled={working || !profile.active} onClick={() => test(profile)}>Probar HOMO</button>
+                      <button className="btn btn-sm btn-outline-primary ms-2" type="button" disabled={working || !profile.active} onClick={() => test(profile)}>Probar plataforma HOMO</button>
                       <button className="btn btn-sm btn-outline-success ms-2" type="button" disabled={working || !profile.active} onClick={() => testProduction(profile)}>Probar PROD</button>
                       <button className="btn btn-sm btn-outline-success ms-2" type="button" disabled={working} onClick={() => lookupProductionRegistration(profile)}>Constancia real</button>
                     </td>
@@ -372,12 +377,12 @@ const ArcaAdminPage = () => {
           )}
           {testResult && (
             <div className="alert alert-light border mt-3 mb-0">
-              <strong>HOMO:</strong> App {testResult.dummy?.appServer}, DB {testResult.dummy?.dbServer}, Auth {testResult.dummy?.authServer}. Certificado vigente hasta {new Date(testResult.certificate?.validTo).toLocaleDateString("es-AR")}. {testResult.pointValidationMode === "last-authorized" ? `PV validado por numeración; último comprobante: ${testResult.lastAuthorizedVoucher || 0}.` : `Puntos WSFE: ${testResult.pointsOfSale?.map((item) => item.number).join(", ") || "ninguno"}.`}
+              <strong>HOMO:</strong> App {testResult.dummy?.appServer}, DB {testResult.dummy?.dbServer}, Auth {testResult.dummy?.authServer}. Certificado de ONO Prop vigente hasta {new Date(testResult.certificate?.validTo).toLocaleDateString("es-AR")}. {testResult.scope === "platform_only" ? "Esta prueba no valida el CUIT ni el punto de venta real del cliente; usá Probar PROD." : testResult.pointValidationMode === "last-authorized" ? `PV validado por numeración; último comprobante: ${testResult.lastAuthorizedVoucher || 0}.` : `Puntos WSFE: ${testResult.pointsOfSale?.map((item) => item.number).join(", ") || "ninguno"}.`}
             </div>
           )}
           {productionTestResult && (
             <div className="alert alert-success mt-3 mb-0">
-              <strong>PROD · solo lectura:</strong> App {productionTestResult.dummy?.appServer}, DB {productionTestResult.dummy?.dbServer}, Auth {productionTestResult.dummy?.authServer}. Certificado vigente hasta {new Date(productionTestResult.certificate?.validTo).toLocaleDateString("es-AR")}. {productionTestResult.pointValidationMode === "last-authorized" ? `PV validado por numeración; último comprobante real: ${productionTestResult.lastAuthorizedVoucher || 0}.` : `Puntos WSFE: ${productionTestResult.pointsOfSale?.map((item) => item.number).join(", ") || "ninguno"}.`} No se solicitó CAE.
+              <strong>PROD · solo lectura:</strong> {productionTestResult.authorization?.mode === "platform_delegation" ? "Delegación" : "Acceso directo"} verificado para CUIT {productionTestResult.authorization?.representedCuit}. App {productionTestResult.dummy?.appServer}, DB {productionTestResult.dummy?.dbServer}, Auth {productionTestResult.dummy?.authServer}. Certificado de ONO Prop vigente hasta {new Date(productionTestResult.certificate?.validTo).toLocaleDateString("es-AR")}. {productionTestResult.pointValidationMode === "last-authorized" ? `PV validado por numeración; último comprobante real: ${productionTestResult.lastAuthorizedVoucher || 0}.` : `Puntos WSFE: ${productionTestResult.pointsOfSale?.map((item) => item.number).join(", ") || "ninguno"}.`} No se solicitó CAE.
             </div>
           )}
           {productionRegistrationPreview && (

@@ -7,7 +7,9 @@ import {
     buildProductionConfirmationText,
     buildWsaaTra,
     buildWsfeCaeRequest,
+    createArcaCredentialTicketId,
     createArcaRequestId,
+    getArcaAuthorizationMode,
     isValidArcaCuit,
     parseArcaSoapFault,
     parseArcaRegistrationResponse,
@@ -36,6 +38,35 @@ const validDraft = {
     serviceTo: "2026-08-31",
     paymentDueDate: "2026-08-10",
 };
+
+test("separa el computador fiscal del CUIT representado", () => {
+    assert.equal(getArcaAuthorizationMode({
+        credentialOwnerCuit: issuerCuit,
+        representedCuit: issuerCuit,
+    }), "certificate_owner");
+    assert.equal(getArcaAuthorizationMode({
+        credentialOwnerCuit: issuerCuit,
+        representedCuit: "23262883264",
+    }), "platform_delegation");
+});
+
+test("el ticket WSAA se identifica por credencial, ambiente y servicio", () => {
+    const wsfeId = createArcaCredentialTicketId({
+        environment: "prod",
+        credentialAlias: "onoprop_facturacion_prod",
+        service: "wsfe",
+    });
+    assert.equal(wsfeId, createArcaCredentialTicketId({
+        environment: "prod",
+        credentialAlias: "onoprop_facturacion_prod",
+        service: "wsfe",
+    }));
+    assert.notEqual(wsfeId, createArcaCredentialTicketId({
+        environment: "prod",
+        credentialAlias: "onoprop_facturacion_prod",
+        service: "ws_sr_constancia_inscripcion",
+    }));
+});
 
 test("valida el CUIT completo y no solo su longitud", () => {
     assert.equal(isValidArcaCuit(issuerCuit), true);

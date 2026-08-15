@@ -56,6 +56,11 @@ export const emailAuthorizedArcaVoucher = (payload) => callArcaFunction(
   payload,
 );
 
+export const getAuthorizedArcaVoucherPdf = (payload) => callArcaFunction(
+  "arcaGetAuthorizedVoucherPdf",
+  payload,
+);
+
 export const getArcaOverview = (inmobiliariaId) => callArcaFunction(
   "arcaGetOverview",
   { inmobiliariaId },

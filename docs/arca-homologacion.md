@@ -1,53 +1,52 @@
-# Integración ARCA — homologación
+# Integración ARCA — multiemisor por delegación
 
-La primera etapa de ONO Prop está deliberadamente limitada a:
+ONO Prop opera como prestador tecnológico con un computador fiscal propio por ambiente. Cada locador conserva su identidad fiscal, punto de venta y numeración, y autoriza a ONO Prop a actuar como representante mediante el Administrador de Relaciones de ARCA.
 
-- WSAA y WSFEv1 de homologación.
-- Factura C (`CbteTipo 11`).
-- Servicios (`Concepto 2`).
-- Pesos argentinos.
-- Un perfil fiscal por emisor y punto de venta.
-- Emisión idempotente vinculada a una obligación de alquiler.
+No se solicitan ni almacenan la clave fiscal, el certificado ni la clave privada del cliente.
 
-Producción permanece bloqueada en backend aunque alguien altere el frontend.
+## Separación de identidades
 
-## Seguridad de credenciales
+- **Titular de la credencial:** CUIT asociado al certificado/computador fiscal de ONO Prop.
+- **Emisor o representado:** CUIT del locador que figura en el perfil fiscal y en `Auth.Cuit` de WSFE.
+- **Punto de venta:** pertenece al emisor representado.
+- **Ticket WSAA:** se obtiene una vez por ambiente, credencial y servicio; no se genera un ticket por cliente.
 
-No reutilizar certificados ni claves privadas que hayan sido versionados en Git. Generar un par nuevo para homologación, registrar el certificado en ARCA y autorizar el servicio `wsfe` para el CUIT representado.
+El perfil fiscal nunca guarda secretos. Conserva el CUIT representado, punto de venta, locador vinculado, datos impresos y el estado de la validación productiva.
 
-Los tres valores se cargan únicamente en Google Secret Manager:
+## Alta de un nuevo emisor en Producción
+
+1. Crear el perfil fiscal en `/admin/arca`, vincularlo al locador y dejar deshabilitada la emisión real.
+2. El cliente ingresa personalmente a ARCA y delega **Facturación Electrónica** al CUIT con el que opera ONO Prop.
+3. ONO Prop acepta la designación.
+4. Actuando por el CUIT representado, ONO Prop asocia el servicio a su computador fiscal de Producción.
+5. Verificar que el punto de venta WSFE del cliente esté activo.
+6. Ejecutar **Probar PROD**. Esta acción consulta WSFE y la numeración, pero no solicita CAE.
+7. Consultar la constancia real, completar los datos impresos y revisar Ingresos Brutos e inicio de actividades.
+8. Habilitar expresamente la emisión real escribiendo la confirmación solicitada.
+
+Si la delegación se completa mientras existe un ticket WSAA vigente, la nueva relación puede no quedar disponible hasta la renovación del ticket.
+
+## Homologación
+
+Homologación valida la integración técnica de la plataforma. Cuando el CUIT del perfil es distinto del certificado de prueba, **Probar plataforma HOMO** controla solamente FEDummy y la vigencia de la credencial; el CUIT y punto de venta reales se validan con **Probar PROD**.
+
+## Seguridad y permisos
+
+Los secretos se guardan exclusivamente en Google Secret Manager:
 
 ```powershell
 firebase functions:secrets:set ARCA_HOMO_CERTIFICATE
 firebase functions:secrets:set ARCA_HOMO_PRIVATE_KEY
+firebase functions:secrets:set ARCA_PROD_CERTIFICATE
+firebase functions:secrets:set ARCA_PROD_PRIVATE_KEY
 firebase functions:secrets:set ARCA_TOKEN_ENCRYPTION_KEY
 ```
 
-El certificado y la clave aceptan PEM real, PEM con saltos escritos como `\n` o el archivo PEM completo codificado en Base64. La clave de cifrado debe ser una cadena Base64 de 32 bytes aleatorios.
+La clave de cifrado debe contener 32 bytes aleatorios codificados en Base64. Los tokens y firmas WSAA se cifran con AES-256-GCM y nunca se devuelven al navegador.
 
-Ejemplo para generar la clave de cifrado:
+- Solo ONO Prop (`root`) crea perfiles, prueba la plataforma en HOMO, consulta la constancia desde Administración y habilita o deshabilita Producción.
+- Un administrador puede probar la conexión productiva de los perfiles de su inmobiliaria.
+- Una vez habilitado el perfil, el administrador puede preparar y emitir facturas o notas de crédito solamente dentro de esa inmobiliaria.
+- Cada emisión conserva doble confirmación, bloqueo por CUIT/punto/tipo, idempotencia, auditoría y reconciliación.
 
-```powershell
-$arcaKeyBytes = New-Object byte[] 32
-[Security.Cryptography.RandomNumberGenerator]::Fill($arcaKeyBytes)
-[Convert]::ToBase64String($arcaKeyBytes)
-```
-
-El signo y token de WSAA se cifran con AES-256-GCM antes de almacenarse. Nunca se devuelven al navegador.
-
-## Puesta en marcha
-
-1. Crear en ARCA un certificado de homologación nuevo y autorizar `wsfe`.
-2. Crear un punto de venta específico para Web Services de factura electrónica.
-3. Cargar los tres secretos.
-4. Desplegar funciones, reglas y hosting.
-5. Ingresar como root a `/admin/arca`.
-6. Crear el perfil con el CUIT y punto de venta correspondientes.
-7. Ejecutar **Probar conexión**. El control valida WSAA, servidores WSFE, certificado, CUIT y puntos de venta.
-8. Desde un contrato de alquiler, preparar el borrador y solicitar el CAE de prueba.
-
-## Modelo multiemisor
-
-Cada emisor tendrá un perfil fiscal separado. El perfil guarda configuración y referencia de credencial, nunca la clave privada. Para incorporar propietarios distintos se deberá contar con su delegación/autorización en ARCA y asignar un juego de credenciales aislado al perfil correspondiente.
-
-Antes de habilitar producción faltan, como mínimo, el almacén de credenciales multiemisor, autorización expresa por propietario, representación y puntos de venta reales, comprobantes PDF/QR, notas de crédito, auditoría operativa y pruebas integrales de correlatividad.
+Referencias oficiales: [delegación de Web Services](https://www.afip.gob.ar/ws/wsaa/adminrel.delegarws.pdf) y [manual WSAA](https://www.arca.gob.ar/ws/WSAA/WSAAmanualDev.pdf).

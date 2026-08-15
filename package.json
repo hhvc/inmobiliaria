@@ -16,6 +16,7 @@
     "test:consorcios": "node --test tests/consorcio.helpers.test.js",
     "test:auth": "node --test tests/auth.helpers.test.js",
     "test:arca-invoice": "node --test tests/arcaInvoice.helpers.test.js",
+    "test:arca-share": "node --test tests/arcaVoucherShare.helpers.test.js",
     "test:whatsapp": "node --test tests/whatsapp.helpers.test.js",
     "test:emprendimientos": "node --test tests/emprendimientoSchema.test.js",
     "test:unidades": "node --test tests/emprendimientoUnits.test.js",

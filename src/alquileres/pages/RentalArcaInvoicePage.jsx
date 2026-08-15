@@ -8,6 +8,7 @@ import {
   ARCA_RECEIVER_IVA_CONDITIONS,
   authorizeProductionRentalArcaPreview,
   emailAuthorizedArcaVoucher,
+  getAuthorizedArcaVoucherPdf,
   getArcaOverview,
   prepareProductionRentalArcaCreditNotePreview,
 } from "../services/arca.service";
@@ -18,6 +19,11 @@ import {
   getArcaDocumentLabel,
   isArcaProductionPreviewFresh,
 } from "../utils/arcaInvoice.helpers";
+import {
+  buildArcaWhatsAppMessage,
+  buildArcaWhatsAppUrl,
+  isValidWhatsAppPhone,
+} from "../utils/arcaVoucherShare.helpers";
 import { formatRentalMoney } from "../utils/rental.helpers";
 import "../rental.css";
 
@@ -38,6 +44,38 @@ const majorToMinor = (value) => Math.round(Number(
   String(value ?? "").trim().replace(/\./g, "").replace(",", "."),
 ) * 100) || 0;
 
+const pdfBlobFromBase64 = (value = "") => {
+  const binary = window.atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], {type: "application/pdf"});
+};
+
+const downloadPdf = (blob, filename) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+};
+
+const browserCanSharePdf = () => {
+  if (typeof File !== "function" || typeof navigator.share !== "function"
+    || typeof navigator.canShare !== "function") return false;
+  try {
+    return navigator.canShare({
+      files: [new File([""], "comprobante.pdf", {type: "application/pdf"})],
+    });
+  } catch {
+    return false;
+  }
+};
+
 const RentalArcaInvoicePage = () => {
   const { id: contractId, draftId } = useParams();
   const { activeInmobiliariaId } = useActiveInmobiliariaModules();
@@ -53,6 +91,8 @@ const RentalArcaInvoicePage = () => {
   const [working, setWorking] = useState(false);
   const [emailOpen, setEmailOpen] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState("");
+  const [whatsappOpen, setWhatsappOpen] = useState(false);
+  const [recipientPhone, setRecipientPhone] = useState("");
   const [creditNoteOpen, setCreditNoteOpen] = useState(false);
   const [creditNoteForm, setCreditNoteForm] = useState({
     amount: "",
@@ -81,6 +121,9 @@ const RentalArcaInvoicePage = () => {
       setDraft(draftData);
       setRecipientEmail((current) => current
         || contractData.partySnapshots?.tenants?.find((party) => party.email)?.email
+        || "");
+      setRecipientPhone((current) => current
+        || contractData.partySnapshots?.tenants?.find((party) => party.phone)?.phone
         || "");
       setProfile(overview.profiles?.find(
         (item) => item.id === draftData.issuerProfileId,
@@ -218,6 +261,61 @@ const RentalArcaInvoicePage = () => {
     };
   }, [draft, profile]);
 
+  const shareByWhatsApp = async (event) => {
+    event.preventDefault();
+    if (!isValidWhatsAppPhone(recipientPhone)) {
+      setError("Ingresá el número de WhatsApp con código de área. Podés incluir el código de país.");
+      return;
+    }
+    const canSharePdf = browserCanSharePdf();
+    const whatsappWindow = canSharePdf
+      ? null
+      : window.open("about:blank", "_blank");
+    if (whatsappWindow) whatsappWindow.opener = null;
+    try {
+      setWorking(true);
+      setError("");
+      setNotice("");
+      const result = await getAuthorizedArcaVoucherPdf({
+        inmobiliariaId: activeInmobiliariaId,
+        previewId: draft.id,
+      });
+      const blob = pdfBlobFromBase64(result.pdfBase64);
+      const filename = result.filename || `${voucherLabel}-${voucherNumber}.pdf`;
+      const message = buildArcaWhatsAppMessage({
+        voucherLabel,
+        voucherNumber,
+        issuerName: issuer.legalName || profile?.name || "",
+      });
+      if (canSharePdf) {
+        const file = new File([blob], filename, {type: "application/pdf"});
+        await navigator.share({
+          title: `${voucherLabel} ${voucherNumber}`,
+          text: message,
+          files: [file],
+        });
+        setNotice("Se abrió el selector para compartir el comprobante. Elegí WhatsApp y el contacto destinatario.");
+      } else {
+        downloadPdf(blob, filename);
+        const whatsappUrl = buildArcaWhatsAppUrl({
+          phone: recipientPhone,
+          message,
+        });
+        if (whatsappWindow) whatsappWindow.location.href = whatsappUrl;
+        else window.location.href = whatsappUrl;
+        setNotice("El PDF se descargó y se abrió WhatsApp. Adjuntalo desde Descargas antes de enviar el mensaje.");
+      }
+      setWhatsappOpen(false);
+    } catch (actionError) {
+      if (whatsappWindow) whatsappWindow.close();
+      if (actionError?.name !== "AbortError") {
+        setError(actionError.message || "No se pudo compartir el comprobante por WhatsApp.");
+      }
+    } finally {
+      setWorking(false);
+    }
+  };
+
   const missingIssuerFields = useMemo(() => ([
     ["apellido y nombre / razón social", issuer.legalName],
     ["domicilio comercial", issuer.commercialAddress],
@@ -243,8 +341,13 @@ const RentalArcaInvoicePage = () => {
         <Link className="btn btn-outline-secondary" to={`/admin/alquileres/${contractId}`}>Volver al contrato</Link>
         <div className="d-flex flex-wrap gap-2">
           {isProduction && (
-            <button type="button" className="btn btn-outline-primary" onClick={() => setEmailOpen((value) => !value)}>
+            <button type="button" className="btn btn-outline-primary" onClick={() => { setEmailOpen((value) => !value); setWhatsappOpen(false); }}>
               Enviar PDF por email
+            </button>
+          )}
+          {isProduction && (
+            <button type="button" className="btn btn-outline-success" onClick={() => { setWhatsappOpen((value) => !value); setEmailOpen(false); }}>
+              Enviar PDF por WhatsApp
             </button>
           )}
           <button type="button" className="btn btn-primary" onClick={() => window.print()}>Imprimir / guardar PDF</button>
@@ -270,6 +373,34 @@ const RentalArcaInvoicePage = () => {
               {working ? "Enviando..." : "Enviar comprobante"}
             </button>
             <button type="button" className="btn btn-outline-secondary" disabled={working} onClick={() => setEmailOpen(false)}>Cancelar</button>
+          </div>
+        </form>
+      )}
+      {whatsappOpen && (
+        <form className="rental-no-print card border-success shadow-sm mb-4" onSubmit={shareByWhatsApp}>
+          <div className="card-body">
+            <div className="d-flex flex-wrap align-items-end gap-3">
+              <div className="flex-grow-1">
+                <label className="form-label" htmlFor="arca-recipient-whatsapp">Número de WhatsApp</label>
+                <input
+                  id="arca-recipient-whatsapp"
+                  className="form-control"
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  value={recipientPhone}
+                  onChange={(event) => setRecipientPhone(event.target.value)}
+                  placeholder="Ej.: 351 555-1234"
+                />
+              </div>
+              <button className="btn btn-success" disabled={working}>
+                {working ? "Preparando PDF..." : "Compartir comprobante"}
+              </button>
+              <button type="button" className="btn btn-outline-secondary" disabled={working} onClick={() => setWhatsappOpen(false)}>Cancelar</button>
+            </div>
+            <p className="small text-muted mt-2 mb-0">
+              En celulares compatibles se compartirá el PDF como archivo. En escritorio se descargará el comprobante y se abrirá el chat; adjuntalo desde Descargas antes de enviarlo.
+            </p>
           </div>
         </form>
       )}

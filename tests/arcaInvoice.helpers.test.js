@@ -66,6 +66,7 @@ test("limita la vigencia de las validaciones productivas", () => {
       issuerCuit: "20253006219",
       pointOfSale: 4,
       voucherType: 11,
+      authorization: {status: "verified", representedCuit: "20253006219"},
       checkedAt: "2026-08-12T15:00:01.000Z",
     },
   }, now), true);
@@ -78,6 +79,7 @@ test("limita la vigencia de las validaciones productivas", () => {
       issuerCuit: "20253006219",
       pointOfSale: 4,
       voucherType: 11,
+      authorization: {status: "verified", representedCuit: "20253006219"},
       checkedAt: "2026-08-12T14:59:59.000Z",
     },
   }, now), false);
@@ -90,6 +92,20 @@ test("limita la vigencia de las validaciones productivas", () => {
       issuerCuit: "20253006219",
       pointOfSale: 4,
       voucherType: 11,
+      authorization: {status: "verified", representedCuit: "20253006219"},
+      checkedAt: "2026-08-13T14:59:00.000Z",
+    },
+  }, now), false);
+  assert.equal(isArcaProductionTestFresh({
+    issuerCuit: "23262883264",
+    pointOfSale: 2,
+    voucherType: 11,
+    lastProductionTest: {
+      configuredPointAvailable: true,
+      issuerCuit: "23262883264",
+      pointOfSale: 2,
+      voucherType: 11,
+      authorization: {status: "pending_or_rejected", representedCuit: "23262883264"},
       checkedAt: "2026-08-13T14:59:00.000Z",
     },
   }, now), false);

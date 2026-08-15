@@ -6,6 +6,9 @@ export const isArcaProductionTestFresh = (profile = {}, nowMs = Date.now()) => {
     && digits(profile.lastProductionTest?.issuerCuit) === digits(profile.issuerCuit)
     && Number(profile.lastProductionTest?.pointOfSale) === Number(profile.pointOfSale)
     && Number(profile.lastProductionTest?.voucherType) === Number(profile.voucherType || 11)
+    && profile.lastProductionTest?.authorization?.status === "verified"
+    && digits(profile.lastProductionTest?.authorization?.representedCuit)
+      === digits(profile.issuerCuit)
     && Number.isFinite(checkedAt)
     && checkedAt >= nowMs - (24 * 60 * 60 * 1000)
     && checkedAt <= nowMs + (5 * 60 * 1000);

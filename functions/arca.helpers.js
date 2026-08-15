@@ -95,6 +95,24 @@ export const createArcaRequestId = ({
         .digest("hex").slice(0, 32);
 };
 
+export const createArcaCredentialTicketId = ({
+    environment,
+    credentialAlias,
+    service,
+} = {}) => crypto.createHash("sha256").update([
+    environment?.toString?.().trim() || "",
+    credentialAlias?.toString?.().trim() || "",
+    service?.toString?.().trim() || "",
+].join("|")).digest("hex").slice(0, 32);
+
+export const getArcaAuthorizationMode = ({
+    credentialOwnerCuit,
+    representedCuit,
+} = {}) => (
+    normalizeArcaCuit(credentialOwnerCuit) === normalizeArcaCuit(representedCuit) ?
+        "certificate_owner" : "platform_delegation"
+);
+
 export const buildWsaaTra = ({
     service = "wsfe",
     uniqueId = Math.floor(Date.now() / 1000),
