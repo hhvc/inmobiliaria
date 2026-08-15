@@ -116,6 +116,7 @@ import RentalSettlementReceiptPage from "./alquileres/pages/RentalSettlementRece
 import RentalOwnerAccountPage from "./alquileres/pages/RentalOwnerAccountPage";
 import RentalOwnerAccountsPage from "./alquileres/pages/RentalOwnerAccountsPage";
 import RentalArcaInvoicePage from "./alquileres/pages/RentalArcaInvoicePage";
+import RentalArcaVoucherCenterPage from "./alquileres/pages/RentalArcaVoucherCenterPage";
 import ArcaAdminPage from "./alquileres/pages/ArcaAdminPage";
 
 // Administración de consorcios
@@ -492,6 +493,19 @@ function App() {
                       <InmobiliariaModuleGuard moduleId="alquileres">
                         <InmobiliariaInternalPermissionGuard permission="canViewRentals">
                           <RentalOwnerAccountPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/alquileres/comprobantes"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="alquileres">
+                        <InmobiliariaInternalPermissionGuard permission="canViewRentals">
+                          <RentalArcaVoucherCenterPage />
                         </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>

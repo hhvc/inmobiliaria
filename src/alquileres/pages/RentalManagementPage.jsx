@@ -102,6 +102,7 @@ const RentalManagementPage = () => {
           <p className="text-muted mb-0">{activeInmobiliaria?.nombre || "Inmobiliaria activa"} · contratos, cobros y liquidaciones.</p>
         </div>
         <div className="d-flex flex-wrap gap-2">
+          <Link className="btn btn-outline-primary" to="/admin/alquileres/comprobantes">Comprobantes ARCA</Link>
           <Link className="btn btn-outline-success" to="/admin/alquileres/cuentas-locadores">Cuentas de locadores</Link>
           <Link className="btn btn-outline-secondary" to="/admin/alquileres/personas">Personas</Link>
           <Link className="btn btn-primary" to="/admin/alquileres/nuevo">+ Nuevo contrato</Link>

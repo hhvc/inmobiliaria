@@ -451,15 +451,26 @@ const Navbar = () => {
                           )}
 
                           {canViewRentals && (
-                            <li>
-                              <Link
-                                className="dropdown-item"
-                                to="/admin/alquileres"
-                                onClick={closeMenus}
-                              >
-                                Administración de alquileres
-                              </Link>
-                            </li>
+                            <>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/alquileres"
+                                  onClick={closeMenus}
+                                >
+                                  Administración de alquileres
+                                </Link>
+                              </li>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
+                                  to="/admin/alquileres/comprobantes"
+                                  onClick={closeMenus}
+                                >
+                                  Comprobantes ARCA
+                                </Link>
+                              </li>
+                            </>
                           )}
 
                           {canViewConsortiums && (
