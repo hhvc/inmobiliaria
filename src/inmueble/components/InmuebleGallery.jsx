@@ -265,8 +265,8 @@ const InmuebleGallery = ({
                                     Apta portales
                                   </span>
                                 ) : (
-                                  <span className="badge bg-warning text-dark">
-                                    Revisar
+                                  <span className="badge bg-warning text-dark" title={img.qualityWarnings?.[0] || "Dimensiones no óptimas"}>
+                                    Sugerimos mejorar
                                   </span>
                                 )}
                               </div>

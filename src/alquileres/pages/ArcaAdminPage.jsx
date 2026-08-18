@@ -265,10 +265,20 @@ const ArcaAdminPage = () => {
   return (
     <main className="container py-4">
       <SEO title="Integración ARCA | Administración" noIndex />
-      <header className="mb-4">
-        <p className="text-uppercase text-muted small mb-1">Administración ONO Prop</p>
-        <h1 className="h3 mb-1">Integración ARCA</h1>
-        <p className="text-muted mb-0">Perfiles multiemisor, homologación y controles de Producción.</p>
+      <header className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+          <p className="text-uppercase text-muted small mb-1">Administración ONO Prop</p>
+          <h1 className="h3 mb-1">Integración ARCA</h1>
+          <p className="text-muted mb-0">Perfiles multiemisor, homologación y controles de Producción.</p>
+        </div>
+        <a
+          className="btn btn-outline-primary"
+          href="/guias/delegacion-arca"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Instructivo para clientes
+        </a>
       </header>
 
       <div className="alert alert-info"><strong>Administración fiscal segura.</strong> Las pruebas y consultas de esta pantalla son de solo lectura. La emisión real se inicia exclusivamente desde el contrato, con vista previa, validación reciente y doble confirmación. La aplicación nunca muestra certificados, claves ni tickets WSAA.</div>

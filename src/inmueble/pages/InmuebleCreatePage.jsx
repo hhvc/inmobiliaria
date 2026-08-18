@@ -865,8 +865,8 @@ const InmuebleCreatePage = () => {
           isDuplicateCreation
             ? true
             : sourceRequest && formValues?.noIndex !== false
-            ? true
-            : Boolean(formValues?.noIndex),
+              ? true
+              : Boolean(formValues?.noIndex),
 
         sharing: normalizedSharing,
 
@@ -907,7 +907,7 @@ const InmuebleCreatePage = () => {
 
       if (sourceImages.length > 0 && inmuebleId) {
         try {
-          copiedImages = await copySourceImagesToInmueble({
+          const result = await copySourceImagesToInmueble({
             images: sourceImages,
             inmuebleId,
             inmobiliariaId: selectedInmobiliariaId,
@@ -916,6 +916,20 @@ const InmuebleCreatePage = () => {
               ? "particular_publication_request"
               : "inmueble_duplicate",
           });
+
+          // Manejar el caso donde devuelve { uploaded, errors }
+          if (result && typeof result === 'object' && 'uploaded' in result) {
+            copiedImages = result.uploaded || [];
+
+            if (result.errors && result.errors.length > 0) {
+              imageCopyError = `No se pudieron copiar ${result.errors.length} imagen(es): ${result.errors.map(e => e.error).join('. ')}`;
+
+              // Mostrar alerta al usuario pero continuar
+              console.warn('Errores al copiar imágenes:', result.errors);
+            }
+          } else {
+            copiedImages = Array.isArray(result) ? result : [];
+          }
 
           if (copiedImages.length > 0) {
             await updateInmuebleImages(
@@ -1034,8 +1048,8 @@ const InmuebleCreatePage = () => {
           {duplicateSource
             ? "Revisá la copia precargada y editá sus diferencias antes de crearla."
             : sourceRequest
-            ? "Revisá y completá la información precargada desde la solicitud particular."
-            : "Cargá la información básica para publicar el inmueble."}
+              ? "Revisá y completá la información precargada desde la solicitud particular."
+              : "Cargá la información básica para publicar el inmueble."}
         </p>
       </header>
 

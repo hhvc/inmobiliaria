@@ -12,6 +12,7 @@ import EmailVerificationPage from "./pages/EmailVerificationPage";
 import PrivacyPolicyPage from "./legal/PrivacyPolicyPage";
 import TermsPage from "./legal/TermsPage";
 import DataDeletionPage from "./legal/DataDeletionPage";
+import ArcaDelegationGuidePage from "./guides/ArcaDelegationGuidePage";
 
 // Páginas para usuarios registrados particulares
 import ParticularPublicationRequestPage from "./particular/pages/ParticularPublicationRequestPage";
@@ -164,6 +165,10 @@ function App() {
                 <Route
                   path="/eliminacion-de-datos"
                   element={<DataDeletionPage />}
+                />
+                <Route
+                  path="/guias/delegacion-arca"
+                  element={<ArcaDelegationGuidePage />}
                 />
 
                 {/* =========================

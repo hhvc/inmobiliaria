@@ -261,23 +261,28 @@ const validateImageDimensions = ({ width, height, imageName }) => {
   const longSide = Math.max(width, height);
   const shortSide = Math.min(width, height);
 
-  if (
-    longSide < MIN_IMAGE_WIDTH ||
-    shortSide < MIN_IMAGE_HEIGHT
-  ) {
-    throw new Error(
-      `La imagen "${imageName}" mide ${width} x ${height}px. ` +
-      `El mínimo requerido es ${MIN_IMAGE_WIDTH} x ${MIN_IMAGE_HEIGHT}px ` +
-      `en cualquier orientación.`
-    );
+  // Ya no lanzamos error por dimensiones menores, solo registramos warning
+  if (longSide < MIN_IMAGE_WIDTH || shortSide < MIN_IMAGE_HEIGHT) {
+    return {
+      isValid: false,
+      warnings: [
+        `La imagen "${imageName}" mide ${width} x ${height}px. ` +
+        `El tamaño recomendado es ${MIN_IMAGE_WIDTH} x ${MIN_IMAGE_HEIGHT}px o superior.`
+      ]
+    };
   }
 
   if (width > MAX_IMAGE_WIDTH || height > MAX_IMAGE_HEIGHT) {
-    throw new Error(
-      `La imagen "${imageName}" mide ${width} x ${height}px. ` +
-      `El máximo permitido es ${MAX_IMAGE_WIDTH} x ${MAX_IMAGE_HEIGHT}px.`
-    );
+    return {
+      isValid: false,
+      warnings: [
+        `La imagen "${imageName}" mide ${width} x ${height}px. ` +
+        `El tamaño máximo permitido es ${MAX_IMAGE_WIDTH} x ${MAX_IMAGE_HEIGHT}px.`
+      ]
+    };
   }
+
+  return { isValid: true, warnings: [] };
 };
 
 const getContainedSize = ({
@@ -372,19 +377,27 @@ const prepareImageForUpload = async ({ source, imageName }) => {
   const loadedImage = await loadImageElement(processableSource, imageName);
 
   try {
-    validateImageDimensions({
+    // Validar dimensiones pero sin lanzar error
+    const dimensionValidation = validateImageDimensions({
       width: loadedImage.width,
       height: loadedImage.height,
       imageName,
     });
 
+    const qualityWarnings = [];
+
+    if (!dimensionValidation.isValid) {
+      qualityWarnings.push(...dimensionValidation.warnings);
+    }
+
+    // Si las dimensiones no son ideales, igual procesamos la imagen
     const portalReadySize = getContainedSize({
       width: loadedImage.width,
       height: loadedImage.height,
       maxWidth: PORTAL_READY_MAX_WIDTH,
       maxHeight: PORTAL_READY_MAX_HEIGHT,
-      minWidth: MIN_IMAGE_WIDTH,
-      minHeight: MIN_IMAGE_HEIGHT,
+      minWidth: 0, // Ya no exigimos mínimo para poder subir
+      minHeight: 0,
     });
 
     const thumbnailSize = getContainedSize({
@@ -417,11 +430,12 @@ const prepareImageForUpload = async ({ source, imageName }) => {
       height: portalReadySize.height,
       thumbnailWidth: thumbnailSize.width,
       thumbnailHeight: thumbnailSize.height,
-      portalReady: true,
+      portalReady: dimensionValidation.isValid,
       convertedFromHeic,
-      qualityWarnings: [],
+      qualityWarnings,
     };
   } finally {
+    // 🔥 Siempre revocar la URL del objeto, incluso si hay error
     URL.revokeObjectURL(loadedImage.objectUrl);
   }
 };
@@ -482,31 +496,23 @@ const uploadImageVersions = async ({
 
   return {
     id: imageId,
-
     url,
     storagePath,
-
     thumbnailUrl,
     thumbnailPath,
-
     order,
     filename: originalName || safeOriginalName,
     name: originalName || safeOriginalName,
-
     size: preparedImage.portalBlob.size || 0,
     type: OUTPUT_CONTENT_TYPE,
     contentType: OUTPUT_CONTENT_TYPE,
-
     width: preparedImage.width,
     height: preparedImage.height,
-
     thumbnailWidth: preparedImage.thumbnailWidth,
     thumbnailHeight: preparedImage.thumbnailHeight,
-
     portalReady: preparedImage.portalReady,
     convertedFromHeic: preparedImage.convertedFromHeic,
     qualityWarnings: preparedImage.qualityWarnings,
-
     source: {
       originalWidth: preparedImage.sourceWidth,
       originalHeight: preparedImage.sourceHeight,
@@ -515,9 +521,7 @@ const uploadImageVersions = async ({
       originalName: originalName || safeOriginalName,
       convertedFromHeic: preparedImage.convertedFromHeic,
     },
-
     createdAt: new Date().toISOString(),
-
     ...extraImageData,
   };
 };
@@ -576,33 +580,58 @@ export const uploadInmuebleImages = async ({
 
   const baseOrder = Number.isFinite(startOrder) ? startOrder : currentCount;
   const uploadedImages = [];
+  const errors = [];
 
   for (let index = 0; index < filesArray.length; index += 1) {
     const file = filesArray[index];
     const originalName = file?.name || `imagen-${index + 1}.jpg`;
 
+    // Si no es formato permitido, registrar error pero continuar
     if (!isAllowedImage({ type: file?.type, name: originalName })) {
-      throw new Error(
-        `Formato no permitido en "${originalName}". Usá JPG, JPEG, PNG, WEBP, GIF, BMP, HEIC o HEIF.`,
-      );
+      errors.push({
+        name: originalName,
+        error: `Formato no permitido en "${originalName}". Usá JPG, JPEG, PNG, WEBP, GIF, BMP, HEIC o HEIF.`,
+      });
+      continue;
     }
 
+    // Si supera 10MB, registrar error pero continuar
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      throw new Error(
-        `La imagen "${originalName}" supera el máximo permitido de 10 MB.`,
-      );
+      errors.push({
+        name: originalName,
+        error: `La imagen "${originalName}" supera el máximo permitido de 10 MB.`,
+      });
+      continue;
     }
 
-    const uploadedImage = await uploadImageVersions({
-      source: file,
-      originalName,
-      inmuebleId,
-      inmobiliariaId,
-      index,
-      order: baseOrder + index,
-    });
+    try {
+      const uploadedImage = await uploadImageVersions({
+        source: file,
+        originalName,
+        inmuebleId,
+        inmobiliariaId,
+        index,
+        order: baseOrder + index,
+      });
 
-    uploadedImages.push(uploadedImage);
+      uploadedImages.push(uploadedImage);
+    } catch (error) {
+      console.error(`Error subiendo imagen ${originalName}:`, error);
+      errors.push({
+        name: originalName,
+        error: error.message || `Error al procesar "${originalName}"`,
+      });
+    }
+  }
+
+  // Si hubo errores, los devolvemos en el resultado
+  if (errors.length > 0) {
+    console.warn("Errores en algunas imágenes:", errors);
+    // Podemos devolver los errores como parte del resultado o lanzar un error con detalles
+    return {
+      uploaded: uploadedImages,
+      errors,
+    };
   }
 
   return uploadedImages;
@@ -643,31 +672,57 @@ export const copySourceImagesToInmueble = async ({
   }
 
   const uploadedImages = [];
+  const errors = [];
 
   for (let index = 0; index < sourceImages.length; index += 1) {
     const image = sourceImages[index];
     const originalName =
       image.filename || image.name || `solicitud-${index + 1}.jpg`;
 
-    const blob = await downloadSourceImageAsBlob(image);
+    try {
+      const blob = await downloadSourceImageAsBlob(image);
 
-    const uploadedImage = await uploadImageVersions({
-      source: blob,
-      originalName,
-      inmuebleId,
-      inmobiliariaId,
-      index,
-      order: startOrder + index,
-      customMetadata: {
-        source,
-        sourceStoragePath: image.storagePath || "",
-      },
-      extraImageData: {
-        copiedFrom: image.storagePath || image.url || "",
-      },
-    });
+      // Verificar tamaño antes de procesar
+      if (blob.size > MAX_IMAGE_SIZE_BYTES) {
+        errors.push({
+          name: originalName,
+          error: `La imagen "${originalName}" supera el máximo permitido de 10 MB.`,
+        });
+        continue;
+      }
 
-    uploadedImages.push(uploadedImage);
+      const uploadedImage = await uploadImageVersions({
+        source: blob,
+        originalName,
+        inmuebleId,
+        inmobiliariaId,
+        index,
+        order: startOrder + index,
+        customMetadata: {
+          source,
+          sourceStoragePath: image.storagePath || "",
+        },
+        extraImageData: {
+          copiedFrom: image.storagePath || image.url || "",
+        },
+      });
+
+      uploadedImages.push(uploadedImage);
+    } catch (error) {
+      console.error(`Error copiando imagen ${originalName}:`, error);
+      errors.push({
+        name: originalName,
+        error: error.message || `Error al copiar "${originalName}"`,
+      });
+    }
+  }
+
+  if (errors.length > 0) {
+    console.warn("Errores copiando algunas imágenes:", errors);
+    return {
+      uploaded: uploadedImages,
+      errors,
+    };
   }
 
   return uploadedImages;
