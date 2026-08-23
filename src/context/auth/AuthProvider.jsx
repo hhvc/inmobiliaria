@@ -327,6 +327,30 @@ export const AuthProvider = ({ children }) => {
     }
   }, [getUserWithRole, handleError]);
 
+  const refreshUserAccess = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) {
+      throw new Error("La sesión ya no está activa.");
+    }
+
+    try {
+      // Renueva también posibles custom claims antes de releer roles y
+      // vinculaciones desde Firestore.
+      await currentUser.getIdToken(true);
+      const refreshedUser = await getUserWithRole(currentUser);
+      const refreshedInmobiliariaId = validateActiveInmobiliariaId(refreshedUser);
+
+      setUser(refreshedUser);
+      setActiveInmobiliariaId(refreshedInmobiliariaId);
+
+      return refreshedUser;
+    } catch (error) {
+      throw new Error(
+        handleError(error, "No se pudieron actualizar los permisos de la sesión."),
+      );
+    }
+  }, [getUserWithRole, handleError]);
+
   const signInWithEmail = useCallback(
     async (email, password) => {
       try {
@@ -606,6 +630,7 @@ export const AuthProvider = ({ children }) => {
     signInWithEmail,
     resendVerificationEmail,
     refreshEmailVerification,
+    refreshUserAccess,
     resetPassword,
     setupPhoneAuth,
     sendSMSCode,

@@ -18,7 +18,7 @@ const getUserInmobiliarias = (user) => {
 
 const InmobiliariaSelfRegistrationPage = () => {
     const navigate = useNavigate();
-    const { user, activeInmobiliariaId } = useAuth();
+    const { user, activeInmobiliariaId, refreshUserAccess } = useAuth();
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -66,11 +66,23 @@ const InmobiliariaSelfRegistrationPage = () => {
                 }
             }
 
+            const refreshedUser = await refreshUserAccess();
+            const hasCreatedInmobiliaria = refreshedUser.inmobiliarias?.includes(
+                inmobiliariaId,
+            );
+            const hasAdminRole = refreshedUser.roles?.includes("admin");
+
+            if (!hasCreatedInmobiliaria || !hasAdminRole) {
+                throw new Error(
+                    "La inmobiliaria fue creada, pero no se pudieron actualizar los permisos de la sesión. Volvé a ingresar para continuar.",
+                );
+            }
+
             alert(
                 "✅ Inmobiliaria creada correctamente. Ya podés operar, aunque quedará pendiente de documentación para validar.",
             );
 
-            navigate("/admin/inmobiliaria");
+            navigate("/admin/inmobiliaria", { replace: true });
         } catch (err) {
             console.error("Error en alta autogestionada de inmobiliaria:", err);
             setError(err?.message || "No se pudo crear la inmobiliaria");

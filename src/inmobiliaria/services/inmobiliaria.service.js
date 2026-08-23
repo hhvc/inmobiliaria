@@ -301,6 +301,7 @@ export async function createSelfRegisteredInmobiliaria(formData = {}) {
       email: currentUser.email || "",
       displayName: currentUser.displayName || "",
       role: roleToWrite,
+      primaryRole: roleToWrite,
       roles: arrayUnion("admin"),
       inmobiliarias: arrayUnion(inmobiliariaId),
       activeInmobiliariaId: inmobiliariaId,
