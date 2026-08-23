@@ -87,14 +87,69 @@ function isSelfCreatedInmobiliaria(inmoId) {
         && userInmobiliarias().size() > 0;
     }
 
-    function adminHasInmobiliaria(inmoId) {
-      return isAdmin()
-        && inmoId in userInmobiliarias();
-    }
-
     function belongsToUserInmobiliaria(inmoId) {
       return isSignedIn()
         && inmoId in userInmobiliarias();
+    }
+
+    function inmobiliariaListsUserAsAdmin(inmoId) {
+      return isSignedIn()
+        && exists(inmobiliariaPath(inmoId))
+        && get(inmobiliariaPath(inmoId)).data.keys().hasAny(["admins"])
+        && get(inmobiliariaPath(inmoId)).data.admins is list
+        && request.auth.uid in get(inmobiliariaPath(inmoId)).data.admins;
+    }
+
+    function adminHasInmobiliaria(inmoId) {
+      return isAdmin()
+        && belongsToUserInmobiliaria(inmoId);
+    }
+
+    function userInmobiliariaRole(inmoId) {
+      return inmobiliariaListsUserAsAdmin(inmoId)
+        ? "admin"
+        : isSignedIn()
+        && userDoc().data.keys().hasAny(["inmobiliariaRoles"])
+        && userDoc().data.inmobiliariaRoles is map
+        && inmoId in userDoc().data.inmobiliariaRoles
+        ? userDoc().data.inmobiliariaRoles[inmoId]
+        : (adminHasInmobiliaria(inmoId) ? "admin" : "viewer");
+    }
+
+    function userInmobiliariaBranchIds(inmoId) {
+      return isSignedIn()
+        && userDoc().data.keys().hasAny(["inmobiliariaBranchIds"])
+        && userDoc().data.inmobiliariaBranchIds is map
+        && inmoId in userDoc().data.inmobiliariaBranchIds
+        && userDoc().data.inmobiliariaBranchIds[inmoId] is list
+        ? userDoc().data.inmobiliariaBranchIds[inmoId]
+        : [];
+    }
+
+    function isPrincipalAgencyAdmin(inmoId) {
+      return isRoot()
+        || inmobiliariaListsUserAsAdmin(inmoId)
+        || (
+          adminHasInmobiliaria(inmoId)
+          && userInmobiliariaRole(inmoId) == "admin"
+        );
+    }
+
+    function canManageAgencyInmueble(inmoId, data) {
+      return isRoot()
+        || inmobiliariaListsUserAsAdmin(inmoId)
+        || (
+          adminHasInmobiliaria(inmoId)
+          && (
+            userInmobiliariaRole(inmoId) == "admin"
+            || userInmobiliariaRole(inmoId) == "editor"
+            || (
+              userInmobiliariaRole(inmoId) == "branch_manager"
+              && data.keys().hasAny(["sucursalId"])
+              && data.sucursalId in userInmobiliariaBranchIds(inmoId)
+            )
+          )
+        );
     }
 
     function hasVerifiedAuthEmail() {
@@ -321,10 +376,16 @@ function isSelfCreatedInmobiliaria(inmoId) {
     }
 
     function canManageInmueblePrivateData(inmoId, inmuebleId) {
-      return isRoot()
-        || adminHasInmobiliaria(inmoId)
+      return (
+          hasParentInmueble(inmoId, inmuebleId)
+          && canManageAgencyInmueble(
+            inmoId,
+            parentInmueble(inmoId, inmuebleId).data
+          )
+        )
         || (
           hasParentInmueble(inmoId, inmuebleId)
+          && !belongsToUserInmobiliaria(inmoId)
           && isOwner(parentInmueble(inmoId, inmuebleId))
         );
     }
@@ -383,6 +444,20 @@ function isSelfCreatedInmobiliaria(inmoId) {
           : {};
       }
 
+      function existingUserInmobiliariaBranchIds() {
+        return resource.data.keys().hasAny(["inmobiliariaBranchIds"])
+          && resource.data.inmobiliariaBranchIds is map
+          ? resource.data.inmobiliariaBranchIds
+          : {};
+      }
+
+      function requestedUserInmobiliariaBranchIds() {
+        return request.resource.data.keys().hasAny(["inmobiliariaBranchIds"])
+          && request.resource.data.inmobiliariaBranchIds is map
+          ? request.resource.data.inmobiliariaBranchIds
+          : {};
+      }
+
 function adminCanOnlyChangeOwnInmobiliariaLinks() {
   return isAdmin()
     && request.resource.data
@@ -391,6 +466,7 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
       .hasOnly([
         "inmobiliarias",
         "inmobiliariaRoles",
+        "inmobiliariaBranchIds",
         "updatedAt"
       ])
     && requestedUserInmobiliarias()
@@ -399,6 +475,10 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
       .hasOnly(requestedUserInmobiliarias().concat(userInmobiliarias()))
     && requestedUserInmobiliariaRoles()
       .diff(existingUserInmobiliariaRoles())
+      .affectedKeys()
+      .hasOnly(userInmobiliarias())
+    && requestedUserInmobiliariaBranchIds()
+      .diff(existingUserInmobiliariaBranchIds())
       .affectedKeys()
       .hasOnly(userInmobiliarias());
 }
@@ -456,6 +536,7 @@ function selfCanCompleteInmobiliariaRegistration() {
         "email",
         "displayName",
         "role",
+        "primaryRole",
         "roles",
         "inmobiliarias",
         "activeInmobiliariaId",
@@ -482,6 +563,12 @@ function selfCanCompleteInmobiliariaRegistration() {
       && resource.data.role == "root"
         ? request.resource.data.role == "root"
         : request.resource.data.role == "admin"
+    )
+    && (
+      resource.data.keys().hasAny(["primaryRole"])
+      && resource.data.primaryRole == "root"
+        ? request.resource.data.primaryRole == "root"
+        : request.resource.data.primaryRole == "admin"
     )
     && (
       !request.resource.data.keys().hasAny(["inmobiliariaRoles"])
@@ -641,7 +728,7 @@ function canCreateSelfRegisteredInmobiliaria() {
 
 function adminCanUpdateOwnInmobiliaria(inmoId) {
   return isSignedIn()
-    && adminHasInmobiliaria(inmoId)
+    && isPrincipalAgencyAdmin(inmoId)
     && request.resource.data
       .diff(resource.data)
       .affectedKeys()
@@ -709,7 +796,7 @@ function adminCanAddInmobiliariaAdmin(inmoId) {
 
       allow read: if
         isRoot()
-        || adminHasInmobiliaria(inmoId)
+        || belongsToUserInmobiliaria(inmoId)
         || isPublicInmobiliaria(resource);
 
 allow create: if
@@ -724,6 +811,38 @@ allow update: if
 
 allow delete: if isRoot();
 
+      match /branches/{branchId} {
+        allow read: if resource.data.active != false || belongsToUserInmobiliaria(inmoId);
+        allow create: if isPrincipalAgencyAdmin(inmoId)
+          && request.resource.data.agencyId == inmoId;
+        allow update: if isPrincipalAgencyAdmin(inmoId)
+          || (
+            adminHasInmobiliaria(inmoId)
+            && userInmobiliariaRole(inmoId) == "branch_manager"
+            && branchId in userInmobiliariaBranchIds(inmoId)
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              "address", "contact", "branding", "updatedAt", "updatedBy"
+            ])
+          );
+        allow delete: if isPrincipalAgencyAdmin(inmoId);
+      }
+
+      match /shared_publications/{publicationId} {
+        allow read: if true;
+        allow create: if isPrincipalAgencyAdmin(inmoId)
+          && request.resource.data.hostAgencyId == inmoId
+          && request.resource.data.keys().hasOnly([
+            "hostAgencyId", "ownerAgencyId", "inmuebleId", "hiddenOnMain",
+            "branchIds", "updatedAt", "updatedBy"
+          ]);
+        allow update: if isPrincipalAgencyAdmin(inmoId)
+          && request.resource.data.hostAgencyId == inmoId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "hiddenOnMain", "branchIds", "updatedAt", "updatedBy"
+          ]);
+        allow delete: if isPrincipalAgencyAdmin(inmoId);
+      }
+
       /* ============================
          SUBCOLECCIÓN INMUEBLES
          ============================ */
@@ -735,7 +854,7 @@ allow delete: if isRoot();
            ========= */
         allow read: if
           isRoot()
-          || adminHasInmobiliaria(inmoId)
+          || belongsToUserInmobiliaria(inmoId)
           || isOwner(resource)
           || canSharedRead(resource, inmoId)
           || canReadNetworkInmueble(resource)
@@ -750,8 +869,7 @@ allow delete: if isRoot();
           && (
             isRoot()
             || (
-              isAdmin()
-              && belongsToUserInmobiliaria(inmoId)
+              canManageAgencyInmueble(inmoId, request.resource.data)
               && request.resource.data.ownerId == request.auth.uid
               && request.resource.data.ownerInmobiliariaId == inmoId
             )
@@ -765,8 +883,10 @@ allow delete: if isRoot();
           && inmueblePublicDataHasNoProtectedFields(request.resource.data)
           && (
             isRoot()
-            || adminHasInmobiliaria(inmoId)
-            || isOwner(resource)
+            || (
+              canManageAgencyInmueble(inmoId, resource.data)
+              && canManageAgencyInmueble(inmoId, request.resource.data)
+            )
             || (
               canSharedUpdate(resource, inmoId)
               && sharedCanUpdateOnlyAllowedFields(resource)
@@ -778,7 +898,7 @@ allow delete: if isRoot();
            ========= */
         allow delete: if
           isRoot()
-          || adminHasInmobiliaria(inmoId);
+          || isPrincipalAgencyAdmin(inmoId);
 
         /* ============================
            DATOS PRIVADOS DEL INMUEBLE
@@ -1474,6 +1594,39 @@ allow delete: if isRoot();
         );
 
       allow delete: if false;
+    }
+
+    /* ============================
+       RED PRIVADA DE INMOBILIARIAS
+       ============================ */
+
+    match /agency_friend_groups/{groupId} {
+      allow read: if true;
+      allow create: if isPrincipalAgencyAdmin(request.resource.data.ownerAgencyId)
+        && request.resource.data.active == true;
+      allow update, delete: if isPrincipalAgencyAdmin(resource.data.ownerAgencyId);
+    }
+
+    match /agency_friend_group_members/{membershipId} {
+      allow read: if true;
+      allow create: if
+        exists(/databases/$(database)/documents/agency_friend_groups/$(request.resource.data.groupId))
+        && isPrincipalAgencyAdmin(
+          get(
+            /databases/$(database)/documents/agency_friend_groups/$(request.resource.data.groupId)
+          ).data.ownerAgencyId
+        );
+      allow update: if
+        isPrincipalAgencyAdmin(resource.data.ownerAgencyId)
+        || (
+          isPrincipalAgencyAdmin(resource.data.agencyId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status", "answeredAt", "answeredBy", "updatedAt"
+          ])
+          && request.resource.data.status in ["accepted", "rejected"]
+        );
+      allow delete: if isPrincipalAgencyAdmin(resource.data.ownerAgencyId)
+        || isPrincipalAgencyAdmin(resource.data.agencyId);
     }
 
     /* ============================

@@ -89,6 +89,9 @@ const sortConsultasByDateDesc = (consultas = []) => {
 
 export const createInmuebleConsulta = async ({
     inmueble,
+    recipientInmobiliariaId = "",
+    recipientBranchId = "",
+    pageUrl = "",
     nombre,
     email,
     telefono,
@@ -124,9 +127,13 @@ export const createInmuebleConsulta = async ({
         inmuebleTipo: inmueble.tipo || "",
 
         // Relación con inmobiliaria
-        inmobiliariaId: inmueble.inmobiliariaId,
+        inmobiliariaId: recipientInmobiliariaId || inmueble.inmobiliariaId,
         ownerInmobiliariaId:
             inmueble.ownerInmobiliariaId || inmueble.inmobiliariaId,
+        recipientBranchId: cleanText(recipientBranchId),
+        syndicated: Boolean(
+            recipientInmobiliariaId && recipientInmobiliariaId !== inmueble.inmobiliariaId
+        ),
 
         // Datos del interesado
         nombre: normalizedNombre,
@@ -136,7 +143,7 @@ export const createInmuebleConsulta = async ({
 
         // Origen
         source: "inmueble_public_page",
-        pageUrl: buildPageUrl(inmueble.slug),
+        pageUrl: pageUrl || buildPageUrl(inmueble.slug),
 
         // Gestión interna
         estado: "nueva",

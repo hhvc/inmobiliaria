@@ -19,6 +19,8 @@
     "test:arca-share": "node --test tests/arcaVoucherShare.helpers.test.js",
     "test:arca-center": "node --test tests/arcaVoucherCenter.helpers.test.js",
     "test:whatsapp": "node --test tests/whatsapp.helpers.test.js",
+    "test:agency-network": "node --test tests/agencyNetwork.helpers.test.js",
+    "test:inmueble-admin-list": "node --test tests/inmuebleAdminList.helpers.test.js",
     "test:emprendimientos": "node --test tests/emprendimientoSchema.test.js",
     "test:unidades": "node --test tests/emprendimientoUnits.test.js",
     "test:importar-unidades": "node --test tests/emprendimientoUnitsCsv.test.js",

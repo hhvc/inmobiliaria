@@ -21,6 +21,7 @@ const ROLE_ALIASES = {
   solo_lectura: "viewer",
   readonly: "viewer",
   editor: "editor",
+  branch_manager: "branch_manager",
   admin: "admin",
   root: "root",
 };
@@ -29,6 +30,7 @@ const INTERNAL_ROLE_LABELS = {
   root: "Root",
   admin: "Administrador",
   editor: "Editor",
+  branch_manager: "Responsable de sucursal",
   viewer: "Solo lectura",
   usuario: "Usuario",
 };
@@ -163,7 +165,9 @@ export const canCreateInmueble = (user, inmobiliariaId) => {
 
   if (isRoot(user)) return true;
 
-  return isAdmin(user) && userHasInmobiliaria(user, inmobiliariaId);
+  const role = getUserInmobiliariaRole(user, inmobiliariaId);
+  return isAdmin(user) && userHasInmobiliaria(user, inmobiliariaId) &&
+    ["admin", "editor", "branch_manager"].includes(role);
 };
 
 /* ============================
@@ -176,7 +180,13 @@ export const canEditInmueble = (user, inmueble) => {
   if (isRoot(user)) return true;
 
   if (isAdmin(user)) {
-    return userHasInmobiliaria(user, inmueble.inmobiliariaId);
+    if (!userHasInmobiliaria(user, inmueble.inmobiliariaId)) return false;
+    const role = getUserInmobiliariaRole(user, inmueble.inmobiliariaId);
+    if (role === "branch_manager") {
+      const branchIds = user?.inmobiliariaBranchIds?.[inmueble.inmobiliariaId] || [];
+      return Boolean(inmueble.sucursalId) && branchIds.includes(inmueble.sucursalId);
+    }
+    return role === "admin" || role === "editor";
   }
 
   return isOwner(user, inmueble);
@@ -191,7 +201,8 @@ export const canDeleteInmueble = (user, inmueble) => {
 
   if (isRoot(user)) return true;
 
-  return isAdmin(user) && userHasInmobiliaria(user, inmueble.inmobiliariaId);
+  if (!isAdmin(user) || !userHasInmobiliaria(user, inmueble.inmobiliariaId)) return false;
+  return getUserInmobiliariaRole(user, inmueble.inmobiliariaId) === "admin";
 };
 
 /* ============================

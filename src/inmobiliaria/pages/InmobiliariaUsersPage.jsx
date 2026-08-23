@@ -16,6 +16,7 @@ import {
     getAllInmobiliarias,
     getInmobiliariasByRole,
 } from "../services/inmobiliaria.service";
+import { getInmobiliariaBranches } from "../services/agencyNetwork.service";
 
 const DEFAULT_MODULES = ["inmuebles", "consultas"];
 
@@ -29,6 +30,11 @@ const INTERNAL_ROLE_OPTIONS = [
         id: "editor",
         label: "Editor",
         description: "Puede cargar y editar publicaciones.",
+    },
+    {
+        id: "branch_manager",
+        label: "Responsable de sucursal",
+        description: "Ve todo el inventario, pero solo modifica inmuebles y marca de sus sucursales.",
     },
     {
         id: "viewer",
@@ -123,6 +129,10 @@ const mapUserDoc = (docSnap) => {
             ? data.inmobiliarias
             : [],
         inmobiliariaRoles: getSafeInmobiliariaRoles(data),
+        inmobiliariaBranchIds:
+            data.inmobiliariaBranchIds && typeof data.inmobiliariaBranchIds === "object"
+                ? data.inmobiliariaBranchIds
+                : {},
     };
 };
 
@@ -168,6 +178,7 @@ const InmobiliariaUsersPage = () => {
     const [activeInmobiliariaId, setActiveInmobiliariaId] = useState("");
 
     const [teamUsers, setTeamUsers] = useState([]);
+    const [branches, setBranches] = useState([]);
     const [emailToAdd, setEmailToAdd] = useState("");
     const [defaultRoleToAdd, setDefaultRoleToAdd] = useState("viewer");
 
@@ -255,8 +266,11 @@ const InmobiliariaUsersPage = () => {
                 });
 
                 setActiveInmobiliariaId(initialId);
-
-                await loadTeamUsers(initialId);
+                const [branchItems] = await Promise.all([
+                    getInmobiliariaBranches(initialId),
+                    loadTeamUsers(initialId),
+                ]);
+                setBranches(branchItems);
             } catch (err) {
                 console.error("Error cargando módulo de usuarios:", err);
                 setError("No se pudo cargar el módulo de usuarios.");
@@ -279,6 +293,7 @@ const InmobiliariaUsersPage = () => {
         setEmailToAdd("");
         setError(null);
         setSuccessMessage(null);
+        setBranches(await getInmobiliariaBranches(nextId));
 
         if (typeof window !== "undefined") {
             window.localStorage.setItem("activeInmobiliariaId", nextId);
@@ -351,8 +366,12 @@ const InmobiliariaUsersPage = () => {
             };
 
             await updateDoc(doc(db, "users", targetUser.id), {
+                role: "admin",
+                roles: Array.from(new Set([...(targetUser.roles || []), "admin"])),
                 inmobiliarias: nextInmobiliarias,
                 inmobiliariaRoles: nextInmobiliariaRoles,
+                activeInmobiliariaId:
+                    targetUser.activeInmobiliariaId || activeInmobiliaria.id,
                 updatedAt: serverTimestamp(),
             });
 
@@ -415,9 +434,12 @@ const InmobiliariaUsersPage = () => {
                 ...targetUser.inmobiliariaRoles,
                 [activeInmobiliaria.id]: nextRole,
             };
+            const nextBranchMap = { ...(targetUser.inmobiliariaBranchIds || {}) };
+            if (nextRole !== "branch_manager") delete nextBranchMap[activeInmobiliaria.id];
 
             await updateDoc(doc(db, "users", targetUser.id), {
                 inmobiliariaRoles: nextInmobiliariaRoles,
+                inmobiliariaBranchIds: nextBranchMap,
                 updatedAt: serverTimestamp(),
             });
 
@@ -427,6 +449,7 @@ const InmobiliariaUsersPage = () => {
                         ? {
                             ...teamUser,
                             inmobiliariaRoles: nextInmobiliariaRoles,
+                            inmobiliariaBranchIds: nextBranchMap,
                         }
                         : teamUser,
                 ),
@@ -448,6 +471,26 @@ const InmobiliariaUsersPage = () => {
         } finally {
             setUpdatingUserId("");
         }
+    };
+
+    const handleToggleBranch = async (targetUser, branchId) => {
+        if (!activeInmobiliaria) return;
+        const current = targetUser.inmobiliariaBranchIds?.[activeInmobiliaria.id] || [];
+        const next = current.includes(branchId)
+            ? current.filter((id) => id !== branchId)
+            : [...current, branchId];
+        const nextMap = { ...(targetUser.inmobiliariaBranchIds || {}), [activeInmobiliaria.id]: next };
+        try {
+            setUpdatingUserId(targetUser.id);
+            await updateDoc(doc(db, "users", targetUser.id), {
+                inmobiliariaBranchIds: nextMap,
+                updatedAt: serverTimestamp(),
+            });
+            setTeamUsers((items) => items.map((item) => item.id === targetUser.id
+                ? { ...item, inmobiliariaBranchIds: nextMap }
+                : item));
+        } catch (err) { setError(err.message || "No se pudo asignar la sucursal."); }
+        finally { setUpdatingUserId(""); }
     };
 
     const handleRemoveUser = async (targetUser) => {
@@ -494,6 +537,10 @@ const InmobiliariaUsersPage = () => {
             await updateDoc(doc(db, "users", targetUser.id), {
                 inmobiliarias: nextInmobiliarias,
                 inmobiliariaRoles: nextInmobiliariaRoles,
+                inmobiliariaBranchIds: {
+                    ...(targetUser.inmobiliariaBranchIds || {}),
+                    [activeInmobiliaria.id]: [],
+                },
                 updatedAt: serverTimestamp(),
             });
 
@@ -697,6 +744,7 @@ const InmobiliariaUsersPage = () => {
                                                     <th>Usuario</th>
                                                     <th>Rol global</th>
                                                     <th>Rol interno</th>
+                                                    <th>Sucursales asignadas</th>
                                                     <th>Inmobiliarias</th>
                                                     <th className="text-end">Acciones</th>
                                                 </tr>
@@ -767,6 +815,23 @@ const InmobiliariaUsersPage = () => {
                                                                         Usuario actual
                                                                     </div>
                                                                 )}
+                                                            </td>
+
+                                                            <td style={{ minWidth: 210 }}>
+                                                                {currentInternalRole === "branch_manager" ? (
+                                                                    branches.length > 0 ? branches.map((branch) => (
+                                                                        <label className="form-check small" key={branch.id}>
+                                                                            <input
+                                                                                className="form-check-input"
+                                                                                type="checkbox"
+                                                                                checked={(teamUser.inmobiliariaBranchIds?.[activeInmobiliariaId] || []).includes(branch.id)}
+                                                                                onChange={() => handleToggleBranch(teamUser, branch.id)}
+                                                                                disabled={cannotModify}
+                                                                            />
+                                                                            <span className="form-check-label">{branch.name}</span>
+                                                                        </label>
+                                                                    )) : <span className="text-muted small">Creá una sucursal primero.</span>
+                                                                ) : <span className="text-muted small">No corresponde</span>}
                                                             </td>
 
                                                             <td>

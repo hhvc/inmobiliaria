@@ -4,7 +4,14 @@ import { Link, useParams } from "react-router-dom";
 import SEO from "../../components/SEO";
 import { getPublicInmuebleBySlug } from "../services/inmueble.service";
 import { createInmuebleConsulta } from "../services/inmuebleConsulta.service";
-import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
+import {
+  getInmobiliariaBySlug,
+  getPublicInmobiliariaById,
+} from "../../inmobiliaria/services/inmobiliaria.service";
+import {
+  getFriendSharedPublications,
+  getPublicBranchBySlug,
+} from "../../inmobiliaria/services/agencyNetwork.service";
 import InmuebleVideoSection from "../components/InmuebleVideoSection";
 import InmuebleMediaGallery from "../components/InmuebleMediaGallery";
 import { getVisibleInmuebleVideos } from "../utils/inmuebleVideos.helpers";
@@ -108,7 +115,7 @@ const getCurrentPageUrl = (slug) => {
     return `/inmueble/${slug}`;
   }
 
-  return `${window.location.origin}/inmueble/${slug}`;
+  return window.location.href;
 };
 
 const getAgencyUrl = (inmobiliaria) => {
@@ -309,10 +316,12 @@ const buildPropertyJsonLd = ({
 };
 
 const InmueblePublicPage = () => {
-  const { slug } = useParams();
+  const { slug, agencySlug = "", branchSlug = "" } = useParams();
 
   const [inmueble, setInmueble] = useState(null);
   const [inmobiliaria, setInmobiliaria] = useState(null);
+  const [presentationBranch, setPresentationBranch] = useState(null);
+  const [syndicatedPresentation, setSyndicatedPresentation] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [contactLoading, setContactLoading] = useState(false);
@@ -361,8 +370,11 @@ const InmueblePublicPage = () => {
   const address = buildAddress(inmueble);
   const featureItems = getFeatureItems(inmueble || {});
   const contactoInmobiliaria = useMemo(() => {
-    return inmobiliaria?.configuracion?.contacto || {};
-  }, [inmobiliaria]);
+    return presentationBranch?.contact || inmobiliaria?.configuracion?.contacto || {};
+  }, [inmobiliaria, presentationBranch]);
+  const presentationAgency = useMemo(() => presentationBranch
+    ? { ...inmobiliaria, nombre: presentationBranch.name }
+    : inmobiliaria, [inmobiliaria, presentationBranch]);
   const expensas = toNumber(inmueble?.expensas);
 
   const seoUrl = useMemo(() => {
@@ -374,24 +386,24 @@ const InmueblePublicPage = () => {
   }, [selectedImage?.url, sortedImages]);
 
   const seoTitle = useMemo(() => {
-    return buildSeoTitle(inmueble, inmobiliaria);
-  }, [inmobiliaria, inmueble]);
+    return buildSeoTitle(inmueble, presentationAgency);
+  }, [inmueble, presentationAgency]);
 
   const seoDescription = useMemo(() => {
     return buildSeoDescription({
       inmueble,
-      inmobiliaria,
+      inmobiliaria: presentationAgency,
       address,
       featureItems,
     });
-  }, [address, featureItems, inmobiliaria, inmueble]);
+  }, [address, featureItems, inmueble, presentationAgency]);
 
   const inmuebleJsonLd = useMemo(() => {
     if (!inmueble) return null;
 
     return buildPropertyJsonLd({
       inmueble,
-      inmobiliaria,
+      inmobiliaria: presentationAgency,
       seoTitle,
       seoDescription,
       seoUrl,
@@ -402,7 +414,7 @@ const InmueblePublicPage = () => {
   }, [
     address,
     contactoInmobiliaria,
-    inmobiliaria,
+    presentationAgency,
     inmueble,
     seoDescription,
     seoImage,
@@ -430,6 +442,8 @@ const InmueblePublicPage = () => {
       try {
         setLoading(true);
         setError(null);
+        setSyndicatedPresentation(false);
+        setPresentationBranch(null);
         setInmobiliaria(null);
 
         if (!slug) {
@@ -440,6 +454,39 @@ const InmueblePublicPage = () => {
 
         if (!data) {
           setError("El inmueble no existe o ya no está publicado");
+          return;
+        }
+
+        if (agencySlug) {
+          const hostAgency = await getInmobiliariaBySlug(agencySlug);
+          if (!hostAgency) throw new Error("La inmobiliaria de presentación no existe.");
+          const hostId = hostAgency.id || hostAgency.inmobiliariaId;
+          const ownerId = data.ownerInmobiliariaId || data.inmobiliariaId;
+          const selectedBranch = branchSlug
+            ? await getPublicBranchBySlug(hostId, branchSlug)
+            : null;
+          if (branchSlug && !selectedBranch) throw new Error("La sucursal no existe.");
+          if (ownerId !== hostId) {
+            const allowed = await getFriendSharedPublications({
+              agencyId: hostId,
+              agencySlug,
+              branchId: selectedBranch?.id || "",
+              branchSlug,
+            });
+            const syndicated = allowed.find((item) => (
+              item.id === data.id && item.sourceInmobiliariaId === ownerId
+            ));
+            if (!syndicated) throw new Error("Este inmueble no está disponible en esta inmobiliaria.");
+            setInmueble(syndicated);
+            setSyndicatedPresentation(true);
+          } else {
+            if (selectedBranch && data.sucursalId !== selectedBranch.id) {
+              throw new Error("Este inmueble no pertenece a la sucursal seleccionada.");
+            }
+            setInmueble(data);
+          }
+          setPresentationBranch(selectedBranch);
+          setInmobiliaria(hostAgency);
           return;
         }
 
@@ -477,7 +524,7 @@ const InmueblePublicPage = () => {
     };
 
     fetchInmueble();
-  }, [slug]);
+  }, [agencySlug, branchSlug, slug]);
 
   const handleConsultaChange = (e) => {
     const { name, value } = e.target;
@@ -501,6 +548,9 @@ const InmueblePublicPage = () => {
 
       await createInmuebleConsulta({
         inmueble,
+        recipientInmobiliariaId: inmobiliaria?.id || inmobiliaria?.inmobiliariaId || "",
+        recipientBranchId: presentationBranch?.id || "",
+        pageUrl: typeof window !== "undefined" ? window.location.href : "",
         ...consultaValues,
       });
 
@@ -627,8 +677,9 @@ const InmueblePublicPage = () => {
         image={seoImage}
         url={seoUrl}
         type="article"
-        siteName={inmobiliaria?.nombre || "LaDoctaProp"}
+        siteName={presentationAgency?.nombre || "LaDoctaProp"}
         jsonLd={inmuebleJsonLd}
+        noIndex={Boolean(agencySlug) || syndicatedPresentation || Boolean(inmueble.noIndex)}
       />
 
       <section className="py-4 py-lg-5">
@@ -692,15 +743,15 @@ const InmueblePublicPage = () => {
 
                   {address && <p className="text-muted mb-3">{address}</p>}
 
-                  {inmobiliaria?.nombre && (
+                  {presentationAgency?.nombre && (
                     <p className="text-muted mb-4">
                       Publicado por{" "}
                       {inmobiliaria.slug ? (
-                        <Link to={`/inmobiliaria/${inmobiliaria.slug}`}>
-                          <strong>{inmobiliaria.nombre}</strong>
+                        <Link to={`/inmobiliaria/${inmobiliaria.slug}${presentationBranch?.slug ? `/${presentationBranch.slug}` : ""}`}>
+                          <strong>{presentationAgency.nombre}</strong>
                         </Link>
                       ) : (
-                        <strong>{inmobiliaria.nombre}</strong>
+                        <strong>{presentationAgency.nombre}</strong>
                       )}
                     </p>
                   )}
@@ -860,9 +911,9 @@ const InmueblePublicPage = () => {
                     </a>
                   )}
 
-                  {inmobiliaria?.nombre && (
+                  {presentationAgency?.nombre && (
                     <div className="small text-muted mb-2">
-                      Inmobiliaria: <strong>{inmobiliaria.nombre}</strong>
+                      Inmobiliaria: <strong>{presentationAgency.nombre}</strong>
                     </div>
                   )}
 

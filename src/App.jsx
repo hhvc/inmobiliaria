@@ -65,6 +65,9 @@ import InmobiliariaModuleGuard from "./inmobiliaria/components/InmobiliariaModul
 import { DomainAgencyProvider } from "./inmobiliaria/context/DomainAgencyContext";
 import InmobiliariaBrandingPage from "./inmobiliaria/pages/InmobiliariaBrandingPage";
 import InmobiliariaUsersPage from "./inmobiliaria/pages/InmobiliariaUsersPage";
+import InmobiliariaBranchesPage from "./inmobiliaria/pages/InmobiliariaBranchesPage";
+import InmobiliariaFriendsPage from "./inmobiliaria/pages/InmobiliariaFriendsPage";
+import InmobiliariaSharedCatalogPage from "./inmobiliaria/pages/InmobiliariaSharedCatalogPage";
 import InmobiliariaParticularRequestsPage from "./particular/pages/InmobiliariaParticularRequestsPage";
 
 // Inmuebles
@@ -194,6 +197,18 @@ function App() {
                 />
 
                 <Route
+                  path="/inmobiliaria/:agencySlug/inmueble/:slug"
+                  element={<InmueblePublicPage />}
+                />
+                <Route
+                  path="/inmobiliaria/:agencySlug/:branchSlug/inmueble/:slug"
+                  element={<InmueblePublicPage />}
+                />
+                <Route
+                  path="/inmobiliaria/:slug/:branchSlug"
+                  element={<InmobiliariaPublicPage />}
+                />
+                <Route
                   path="/inmobiliaria/:slug"
                   element={<InmobiliariaPublicPage />}
                 />
@@ -272,6 +287,41 @@ function App() {
                       <InmobiliariaModuleGuard moduleId="usuarios">
                         <InmobiliariaInternalPermissionGuard permission="canManageUsers">
                           <InmobiliariaUsersPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmobiliaria/sucursales"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaInternalPermissionGuard permission="canManageBranches">
+                        <InmobiliariaBranchesPage />
+                      </InmobiliariaInternalPermissionGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmobiliaria/amigas"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaInternalPermissionGuard permission="canManageUsers">
+                        <InmobiliariaFriendsPage />
+                      </InmobiliariaInternalPermissionGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/inmobiliaria/catalogo-compartido"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canManageUsers">
+                          <InmobiliariaSharedCatalogPage />
                         </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>

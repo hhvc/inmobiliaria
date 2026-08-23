@@ -15,6 +15,11 @@ import InmuebleGallery from "./InmuebleGallery";
 import InmuebleVideos from "./InmuebleVideos";
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 import { getEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
+import {
+  getAgencyFriendGroups,
+  getInmobiliariaBranches,
+} from "../../inmobiliaria/services/agencyNetwork.service";
+import { getInternalRoleForInmobiliaria } from "../../inmobiliaria/utils/inmobiliariaPermissions";
 import MapPointPicker from "../../mapa/components/MapPointPicker";
 import { getParcelAtPoint } from "../../mapa/services/parcelas.service";
 import { normalizeMapCoordinates } from "../../mapa/utils/mapa.helpers";
@@ -46,6 +51,8 @@ import {
 const DEFAULT_SHARING = {
   enabled: false,
   mode: "all_colleagues",
+  shareWithOnopropNetwork: false,
+  friendGroupIds: [],
   allowColleagueContact: true,
   showExactAddressToColleagues: false,
   showOwnerDataToColleagues: false,
@@ -133,6 +140,8 @@ const InmuebleForm = ({
   const [loadingInmobiliarias, setLoadingInmobiliarias] = useState(false);
   const [emprendimientos, setEmprendimientos] = useState([]);
   const [loadingEmprendimientos, setLoadingEmprendimientos] = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [friendGroups, setFriendGroups] = useState([]);
   const [locationValidationError, setLocationValidationError] = useState("");
   const [parcelLoading, setParcelLoading] = useState(false);
   const [parcelError, setParcelError] = useState("");
@@ -251,6 +260,20 @@ const InmuebleForm = ({
     };
   }, [selectedInmobiliariaId]);
 
+  useEffect(() => {
+    let mounted = true;
+    if (!selectedInmobiliariaId) return undefined;
+    Promise.all([
+      getInmobiliariaBranches(selectedInmobiliariaId),
+      getAgencyFriendGroups(selectedInmobiliariaId),
+    ]).then(([branchItems, groupItems]) => {
+      if (!mounted) return;
+      setBranches(branchItems);
+      setFriendGroups(groupItems);
+    }).catch((error) => console.warn("No se pudo cargar la organización de red:", error));
+    return () => { mounted = false; };
+  }, [selectedInmobiliariaId]);
+
   const puedeCambiarInmobiliaria =
     selectorInmobiliariaIds.length > 1 &&
     (userHasRole(user, "root") || userHasRole(user, "admin"));
@@ -266,6 +289,14 @@ const InmuebleForm = ({
   };
 
   const sharingEnabled = Boolean(sharingValues.enabled);
+  const shareWithOnopropNetwork = values?.sharing?.shareWithOnopropNetwork === undefined
+    ? Boolean(sharingValues.enabled && sharingValues.mode === "all_colleagues")
+    : Boolean(sharingValues.shareWithOnopropNetwork);
+  const internalRole = getInternalRoleForInmobiliaria(user, selectedInmobiliariaId);
+  const assignedBranchIds = user?.inmobiliariaBranchIds?.[selectedInmobiliariaId] || [];
+  const availableBranches = internalRole === "branch_manager"
+    ? branches.filter((branch) => assignedBranchIds.includes(branch.id))
+    : branches;
 
   const selectedTipo = values?.tipo || "";
 
@@ -328,6 +359,21 @@ const InmuebleForm = ({
 
   const updateSharingField = (field, value) => {
     handleNestedChange("sharing", field, value);
+  };
+
+  const toggleFriendGroup = (groupId) => {
+    const current = Array.isArray(sharingValues.friendGroupIds)
+      ? sharingValues.friendGroupIds
+      : [];
+    const next = current.includes(groupId)
+      ? current.filter((id) => id !== groupId)
+      : [...current, groupId];
+    handleNestedChange("sharing", "friendGroupIds", next);
+    handleNestedChange(
+      "sharing",
+      "enabled",
+      shareWithOnopropNetwork || next.length > 0,
+    );
   };
 
   const updateNetworkDataField = (field, value) => {
@@ -418,7 +464,12 @@ const InmuebleForm = ({
     const normalizedSharing = {
       ...DEFAULT_SHARING,
       ...(values?.sharing || {}),
-      enabled: Boolean(sharingValues.enabled),
+      enabled: shareWithOnopropNetwork || Boolean(sharingValues.friendGroupIds?.length),
+      shareWithOnopropNetwork,
+      friendGroupIds: Array.isArray(sharingValues.friendGroupIds)
+        ? sharingValues.friendGroupIds
+        : [],
+      mode: shareWithOnopropNetwork ? "all_colleagues" : "friend_groups",
       allowColleagueContact: Boolean(sharingValues.allowColleagueContact),
       showExactAddressToColleagues: Boolean(
         sharingValues.showExactAddressToColleagues,
@@ -577,6 +628,25 @@ const InmuebleForm = ({
                 : "Vinculá esta publicación como unidad de un edificio, loteo o desarrollo."}
             </div>
           </div>
+
+          {availableBranches.length > 0 && (
+            <div className="col-md-6">
+              <label className="form-label">Sucursal responsable</label>
+              <select
+                className="form-select"
+                name="sucursalId"
+                value={values?.sucursalId || ""}
+                onChange={handleChange}
+                required={internalRole === "branch_manager"}
+              >
+                <option value="">Casa central / sin asignar</option>
+                {availableBranches.map((branch) => (
+                  <option value={branch.id} key={branch.id}>{branch.name}</option>
+                ))}
+              </select>
+              <div className="form-text">Define permisos internos y el filtro de la página principal.</div>
+            </div>
+          )}
 
           {values?.emprendimientoId && (
             <>
@@ -1711,14 +1781,35 @@ const InmuebleForm = ({
             <input
               className="form-check-input"
               type="checkbox"
-              id="sharingEnabled"
-              checked={sharingEnabled}
-              onChange={(e) => updateSharingField("enabled", e.target.checked)}
+              id="sharingOnopropNetwork"
+              checked={shareWithOnopropNetwork}
+              onChange={(e) => {
+                updateSharingField("shareWithOnopropNetwork", e.target.checked);
+                updateSharingField("mode", e.target.checked ? "all_colleagues" : "friend_groups");
+                updateSharingField("enabled", e.target.checked || Boolean(sharingValues.friendGroupIds?.length));
+              }}
             />
 
-            <label className="form-check-label" htmlFor="sharingEnabled">
-              Compartir este inmueble con colegas
+            <label className="form-check-label" htmlFor="sharingOnopropNetwork">
+              Compartir con toda la red ONO Prop
             </label>
+          </div>
+
+          <div className="mb-3">
+            <div className="fw-semibold mb-2">Compartir con grupos de inmobiliarias amigas</div>
+            {friendGroups.length === 0 ? (
+              <div className="small text-muted">No hay grupos aceptados. Podés crearlos desde Inmobiliaria &gt; Inmobiliarias amigas.</div>
+            ) : friendGroups.map((group) => (
+              <label className="form-check" key={group.id}>
+                <input
+                  className="form-check-input"
+                  type="checkbox"
+                  checked={(sharingValues.friendGroupIds || []).includes(group.id)}
+                  onChange={() => toggleFriendGroup(group.id)}
+                />
+                <span className="form-check-label">{group.name}</span>
+              </label>
+            ))}
           </div>
 
           <p className="text-muted small mb-0">
@@ -1737,28 +1828,6 @@ const InmuebleForm = ({
               </div>
 
               <div className="row g-3">
-                <div className="col-md-4">
-                  <label className="form-label">Alcance de colaboración</label>
-
-                  <select
-                    className="form-select"
-                    value={sharingValues.mode || "all_colleagues"}
-                    onChange={(e) => updateSharingField("mode", e.target.value)}
-                  >
-                    <option value="all_colleagues">
-                      Todos los colegas habilitados
-                    </option>
-                    <option value="selected_agencies" disabled>
-                      Inmobiliarias seleccionadas próximamente
-                    </option>
-                  </select>
-
-                  <div className="form-text">
-                    En esta primera versión se comparte con colegas habilitados
-                    de la red.
-                  </div>
-                </div>
-
                 <div className="col-md-4">
                   <label className="form-label">
                     Comisión / colaboración ofrecida

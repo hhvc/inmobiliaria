@@ -6,6 +6,12 @@ import {
   getInmobiliariaBySlug,
 } from "../services/inmobiliaria.service";
 import { getPublicInmueblesByInmobiliaria } from "../../inmueble/services/inmueble.service";
+import {
+  getFriendSharedPublications,
+  getInmobiliariaBranches,
+  getPublicBranchBySlug,
+} from "../services/agencyNetwork.service";
+import { buildAgencyPropertyPath } from "../utils/agencyNetwork.helpers";
 import { getPublicEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
 import {
   getEmprendimientoStatusLabel,
@@ -40,6 +46,7 @@ const INITIAL_FILTERS = {
   jardin: false,
   aptoCredito: false,
   sortBy: "destacados",
+  sucursalId: "",
 };
 
 const DEFAULT_SEO_IMAGE = "/assets/img/Logo.png";
@@ -278,6 +285,12 @@ const inmuebleMatchesFilters = (inmueble, filters) => {
   }
 
   if (
+    filters.sucursalId &&
+    inmueble.sucursalId !== filters.sucursalId &&
+    !(inmueble.syndicated && inmueble.localPublication?.branchIds?.includes(filters.sucursalId))
+  ) return false;
+
+  if (
     filters.ciudad &&
     normalizeText(getDireccionValue(inmueble, "ciudad")) !==
     normalizeText(filters.ciudad)
@@ -420,6 +433,7 @@ const getActiveFilterBadges = (filters) => {
   if (filters.search) badges.push({ key: "search", label: filters.search });
   if (filters.operacion) badges.push({ key: "operacion", label: filters.operacion });
   if (filters.tipo) badges.push({ key: "tipo", label: filters.tipo });
+  if (filters.sucursalId) badges.push({ key: "sucursalId", label: "Sucursal seleccionada" });
   if (filters.ciudad) badges.push({ key: "ciudad", label: filters.ciudad });
   if (filters.barrio) badges.push({ key: "barrio", label: filters.barrio });
   if (filters.dormitoriosMin) {
@@ -650,13 +664,15 @@ const InmueblePublicCard = ({ inmueble }) => {
 };
 
 export default function InmobiliariaPublicPage({ forcedSlug = null }) {
-  const { slug: routeSlug } = useParams();
+  const { slug: routeSlug, branchSlug = "" } = useParams();
   const { slug: contextDomainSlug } = useDomainAgency();
 
   const domainSlug = getAgencySlugFromDomain();
   const slug = routeSlug || forcedSlug || contextDomainSlug || domainSlug;
 
   const [inmobiliaria, setInmobiliaria] = useState(null);
+  const [branch, setBranch] = useState(null);
+  const [branches, setBranches] = useState([]);
   const [inmuebles, setInmuebles] = useState([]);
   const [emprendimientos, setEmprendimientos] = useState([]);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -700,11 +716,27 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
       try {
         setInmueblesLoading(true);
 
-        const result = await getPublicInmueblesByInmobiliaria(inmobiliariaId, {
-          pageSize: 72,
+        const [result, branchItems, selectedBranch] = await Promise.all([
+          getPublicInmueblesByInmobiliaria(inmobiliariaId, { pageSize: 72 }),
+          getInmobiliariaBranches(inmobiliariaId),
+          branchSlug ? getPublicBranchBySlug(inmobiliariaId, branchSlug) : Promise.resolve(null),
+        ]);
+        if (branchSlug && !selectedBranch) throw new Error("Sucursal no encontrada.");
+        setBranches(branchItems);
+        setBranch(selectedBranch);
+        const ownItems = (Array.isArray(result?.data) ? result.data : [])
+          .filter((item) => !selectedBranch || item.sucursalId === selectedBranch.id)
+          .map((item) => ({
+            ...item,
+            publicPath: buildAgencyPropertyPath({ agencySlug: data.slug || slug, branchSlug, inmueble: item }),
+          }));
+        const friendItems = await getFriendSharedPublications({
+          agencyId: inmobiliariaId,
+          agencySlug: data.slug || slug,
+          branchId: selectedBranch?.id || "",
+          branchSlug,
         });
-
-        setInmuebles(Array.isArray(result?.data) ? result.data : []);
+        setInmuebles([...ownItems, ...friendItems]);
       } catch (err) {
         console.error("Error cargando inmuebles de la inmobiliaria:", err);
 
@@ -742,15 +774,15 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     } finally {
       setLoading(false);
     }
-  }, [slug]);
+  }, [branchSlug, slug]);
 
   useEffect(() => {
     loadInmobiliaria();
   }, [loadInmobiliaria]);
 
   const contacto = useMemo(() => {
-    return inmobiliaria?.configuracion?.contacto || {};
-  }, [inmobiliaria]);
+    return branch?.contact || inmobiliaria?.configuracion?.contacto || {};
+  }, [branch, inmobiliaria]);
 
   const whatsappUrl = useMemo(() => {
     return buildWhatsappUrl({
@@ -836,8 +868,9 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
       ? tiposPermitidos.slice(0, 4).join(", ")
       : "casas, departamentos, terrenos y locales";
 
-  const heroBackground = getHeroBackgroundUrl(inmobiliaria);
+  const heroBackground = branch?.branding?.heroImageUrl || getHeroBackgroundUrl(inmobiliaria);
   const logoUrl = getLogoUrl(inmobiliaria);
+  const publicName = branch?.name || inmobiliaria?.nombre;
 
   const seoUrl = useMemo(() => {
     if (typeof window !== "undefined") {
@@ -852,10 +885,10 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
   }, [heroBackground, logoUrl]);
 
   const seoTitle = useMemo(() => {
-    return inmobiliaria?.nombre
-      ? `${inmobiliaria?.nombre} | Propiedades publicadas`
+    return publicName
+      ? `${publicName} | Propiedades publicadas`
       : "Inmobiliaria | ONO Prop";
-  }, [inmobiliaria]);
+  }, [publicName]);
 
   const seoDescription = useMemo(() => {
     return buildSeoDescription({
@@ -1001,7 +1034,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
         image={seoImage}
         url={seoUrl}
         type="website"
-        siteName={inmobiliaria?.nombre || "ONO Prop"}
+        siteName={publicName || "ONO Prop"}
         jsonLd={inmobiliariaJsonLd}
         noIndex={shouldNoIndexInmobiliaria}
       />
@@ -1036,7 +1069,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                   </div>
 
                   <h1 className="display-4 fw-bold mb-3">
-                    {inmobiliaria?.nombre}
+                    {publicName}
                   </h1>
 
                   <p
@@ -1104,7 +1137,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                       )}
 
                       <div>
-                        <div className="fw-bold">{inmobiliaria?.nombre}</div>
+                        <div className="fw-bold">{publicName}</div>
                         <div className="text-muted small">
                           {isVerifiedAgency(inmobiliaria)
                             ? "Perfil validado por ONO Prop"
@@ -1157,6 +1190,14 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
         </div>
       </section>
 
+      {branches.length > 0 && (
+        <section className="pb-4"><div className="container"><div className="card border-0 shadow-sm"><div className="card-body d-flex flex-wrap align-items-center gap-2">
+          <strong className="me-2">Sucursales:</strong>
+          <Link className={`btn btn-sm ${branch ? "btn-outline-primary" : "btn-primary"}`} to={`/inmobiliaria/${slug}`}>Todas</Link>
+          {branches.map((item) => <Link key={item.id} className={`btn btn-sm ${branch?.id === item.id ? "btn-primary" : "btn-outline-primary"}`} to={`/inmobiliaria/${slug}/${item.slug}`}>{item.name}</Link>)}
+        </div></div></div></section>
+      )}
+
       {featuredInmuebles.length > 0 && (
         <section className="pb-4">
           <div className="container">
@@ -1175,7 +1216,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
 
             <div className="row g-4">
               {featuredInmuebles.map((inmueble) => (
-                <div className="col-12 col-md-6 col-xl-4" key={inmueble.id}>
+                <div className="col-12 col-md-6 col-xl-4" key={`${inmueble.sourceInmobiliariaId || inmobiliaria.id}_${inmueble.id}`}>
                   <InmueblePublicCard inmueble={inmueble} />
                 </div>
               ))}
@@ -1274,7 +1315,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
               <p className="text-uppercase text-muted small mb-1">
                 Inmuebles publicados
               </p>
-              <h2 className="h3 mb-1">Propiedades de {inmobiliaria?.nombre}</h2>
+              <h2 className="h3 mb-1">Propiedades de {publicName}</h2>
               <p className="text-muted mb-0">
                 Filtrá dentro del catálogo público de esta inmobiliaria.
               </p>
@@ -1289,6 +1330,15 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
           <section className="card border-0 shadow-sm mb-4">
             <div className="card-body p-3 p-lg-4">
               <div className="row g-3">
+                {!branch && branches.length > 0 && (
+                  <div className="col-6 col-lg-2">
+                    <label className="form-label">Sucursal</label>
+                    <select name="sucursalId" className="form-select" value={filters.sucursalId} onChange={handleFilterChange}>
+                      <option value="">Todas</option>
+                      {branches.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="col-12 col-lg-4">
                   <label className="form-label">Buscar</label>
                   <input
@@ -1519,7 +1569,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
           {!inmueblesLoading && !inmueblesError && filteredInmuebles.length > 0 && (
             <div className="row g-4">
               {filteredInmuebles.map((inmueble) => (
-                <div className="col-12 col-md-6 col-xl-4" key={inmueble.id}>
+                <div className="col-12 col-md-6 col-xl-4" key={`${inmueble.sourceInmobiliariaId || inmobiliaria.id}_${inmueble.id}`}>
                   <InmueblePublicCard inmueble={inmueble} />
                 </div>
               ))}
@@ -1535,7 +1585,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
               <div className="card border-0 shadow-sm h-100">
                 <div className="card-body p-4 p-lg-5">
                   <p className="text-uppercase text-muted small mb-1">Contacto</p>
-                  <h2 className="h3 mb-3">Hablá con {inmobiliaria?.nombre}</h2>
+                  <h2 className="h3 mb-3">Hablá con {publicName}</h2>
                   <p className="text-muted mb-4">
                     Consultá por sus propiedades publicadas o solicitá una
                     tasación. La inmobiliaria recibirá tu contacto directamente.
@@ -1589,7 +1639,7 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                   <div className="vstack gap-3">
                     <div>
                       <div className="small text-muted">Nombre comercial</div>
-                      <div className="fw-semibold">{inmobiliaria?.nombre}</div>
+                      <div className="fw-semibold">{publicName}</div>
                     </div>
 
                     {inmobiliaria.razonSocial && (

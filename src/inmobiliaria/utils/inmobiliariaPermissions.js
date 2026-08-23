@@ -1,12 +1,14 @@
 export const INTERNAL_ROLES = {
     ADMIN: "admin",
     EDITOR: "editor",
+    BRANCH_MANAGER: "branch_manager",
     VIEWER: "viewer",
 };
 
 export const INTERNAL_ROLE_LABELS = {
     admin: "Administrador",
     editor: "Editor",
+    branch_manager: "Responsable de sucursal",
     viewer: "Solo lectura",
 };
 
@@ -18,6 +20,7 @@ const ROLE_ALIASES = {
     solo_lectura: "viewer",
     readonly: "viewer",
     editor: "editor",
+    branch_manager: "branch_manager",
     admin: "admin",
     root: "root",
 };
@@ -89,16 +92,6 @@ export const getInternalRoleForInmobiliaria = (user, inmobiliariaId) => {
 
     const belongsToInmobiliaria = userHasInmobiliaria(user, inmobiliariaId);
 
-    /**
-     * Este fallback es clave:
-     * Firestore permite operar a un admin global que pertenece a la inmobiliaria.
-     * Por eso el frontend no debe bloquearlo como viewer aunque falte o falle
-     * inmobiliariaRoles[inmobiliariaId].
-     */
-    if (isGlobalAdmin(user) && belongsToInmobiliaria) {
-        return INTERNAL_ROLES.ADMIN;
-    }
-
     const rolesMap =
         user.inmobiliariaRoles && typeof user.inmobiliariaRoles === "object"
             ? user.inmobiliariaRoles
@@ -109,9 +102,14 @@ export const getInternalRoleForInmobiliaria = (user, inmobiliariaId) => {
     if (
         explicitRole === INTERNAL_ROLES.ADMIN ||
         explicitRole === INTERNAL_ROLES.EDITOR ||
+        explicitRole === INTERNAL_ROLES.BRANCH_MANAGER ||
         explicitRole === INTERNAL_ROLES.VIEWER
     ) {
         return explicitRole;
+    }
+
+    if (isGlobalAdmin(user) && belongsToInmobiliaria) {
+        return INTERNAL_ROLES.ADMIN;
     }
 
     if (belongsToInmobiliaria) {
@@ -124,11 +122,14 @@ export const getInternalRoleForInmobiliaria = (user, inmobiliariaId) => {
 export const isInternalAdmin = (role) => role === INTERNAL_ROLES.ADMIN;
 
 export const isInternalEditor = (role) =>
-    role === INTERNAL_ROLES.ADMIN || role === INTERNAL_ROLES.EDITOR;
+    role === INTERNAL_ROLES.ADMIN ||
+    role === INTERNAL_ROLES.EDITOR ||
+    role === INTERNAL_ROLES.BRANCH_MANAGER;
 
 export const isInternalViewer = (role) =>
     role === INTERNAL_ROLES.ADMIN ||
     role === INTERNAL_ROLES.EDITOR ||
+    role === INTERNAL_ROLES.BRANCH_MANAGER ||
     role === INTERNAL_ROLES.VIEWER;
 
 export const getInternalPermissions = (role, isRoot = false) => {
@@ -149,6 +150,7 @@ export const getInternalPermissions = (role, isRoot = false) => {
             canViewConsultas: true,
             canManageConsultas: true,
             canManageBranding: true,
+            canManageBranches: true,
             canManageDomains: true,
             canManageUsers: true,
         };
@@ -171,6 +173,7 @@ export const getInternalPermissions = (role, isRoot = false) => {
             canViewConsultas: true,
             canManageConsultas: true,
             canManageBranding: true,
+            canManageBranches: true,
             canManageDomains: true,
             canManageUsers: true,
         };
@@ -198,6 +201,29 @@ export const getInternalPermissions = (role, isRoot = false) => {
         };
     }
 
+    if (role === INTERNAL_ROLES.BRANCH_MANAGER) {
+        return {
+            canViewInmuebles: true,
+            canCreateInmuebles: true,
+            canEditInmuebles: true,
+            canViewTasaciones: true,
+            canCreateTasaciones: false,
+            canEditTasaciones: false,
+            canViewRentals: true,
+            canManageRentals: false,
+            canViewConsortiums: true,
+            canManageConsortiums: false,
+            canViewTaxes: true,
+            canManageTaxes: false,
+            canViewConsultas: true,
+            canManageConsultas: true,
+            canManageBranding: false,
+            canManageBranches: true,
+            canManageDomains: false,
+            canManageUsers: false,
+        };
+    }
+
     return {
         canViewInmuebles: true,
         canCreateInmuebles: false,
@@ -214,6 +240,7 @@ export const getInternalPermissions = (role, isRoot = false) => {
         canViewConsultas: true,
         canManageConsultas: false,
         canManageBranding: false,
+        canManageBranches: false,
         canManageDomains: false,
         canManageUsers: false,
     };

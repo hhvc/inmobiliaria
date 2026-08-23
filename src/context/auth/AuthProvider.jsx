@@ -39,6 +39,14 @@ const buildUserWithRole = (firebaseUser, userData = {}) => {
     roles,
     primaryRole: userData.primaryRole || role,
     inmobiliarias,
+    inmobiliariaRoles:
+      userData.inmobiliariaRoles && typeof userData.inmobiliariaRoles === "object"
+        ? userData.inmobiliariaRoles
+        : {},
+    inmobiliariaBranchIds:
+      userData.inmobiliariaBranchIds && typeof userData.inmobiliariaBranchIds === "object"
+        ? userData.inmobiliariaBranchIds
+        : {},
     inmobiliariaId: inmobiliarias.length === 1 ? inmobiliarias[0] : null,
     emailVerified: firebaseUser.emailVerified === true,
     emailVerificationRequired: userData.emailVerificationRequired === true,

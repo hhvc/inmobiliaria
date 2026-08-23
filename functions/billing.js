@@ -2457,19 +2457,71 @@ export const billingApplyHighlightCredits = onCall(
     async (request) => {
         const uid = request.auth?.uid;
         const inmobiliariaId = cleanBillingText(request.data?.inmobiliariaId, 128);
-        await assertCanManageInmobiliaria(uid, inmobiliariaId);
+        const agencyAccess = await assertCanManageInmobiliaria(uid, inmobiliariaId);
         const inmuebleId = cleanBillingText(request.data?.inmuebleId, 128);
+        const sharedPublication = request.data?.sharedPublication === true;
+        if (
+            sharedPublication &&
+            !agencyAccess.isRoot &&
+            agencyAccess.userData?.inmobiliariaRoles?.[inmobiliariaId] &&
+            agencyAccess.userData.inmobiliariaRoles[inmobiliariaId] !== "admin"
+        ) {
+            throw new HttpsError(
+                "permission-denied",
+                "Solo la administración principal puede destacar avisos compartidos.",
+            );
+        }
+        const ownerInmobiliariaId = sharedPublication
+            ? cleanBillingText(request.data?.ownerInmobiliariaId, 128)
+            : inmobiliariaId;
+        if (!ownerInmobiliariaId) {
+            throw new HttpsError("invalid-argument", "Falta la inmobiliaria titular del aviso.");
+        }
         const days = Math.max(
             1,
             Math.min(365, Math.trunc(Number(request.data?.days || 1))),
         );
-        const inmuebleRef = db.collection("inmobiliarias").doc(inmobiliariaId)
+        const inmuebleRef = db.collection("inmobiliarias").doc(ownerInmobiliariaId)
             .collection("inmuebles").doc(inmuebleId);
+        const localPublicationRef = db.collection("inmobiliarias").doc(inmobiliariaId)
+            .collection("shared_publications")
+            .doc(`${ownerInmobiliariaId}_${inmuebleId}`);
         const usageRef = creditUsagesRef(inmobiliariaId).doc();
         let promotionEndsAtMs = 0;
 
+        if (sharedPublication) {
+            if (ownerInmobiliariaId === inmobiliariaId) {
+                throw new HttpsError(
+                    "invalid-argument",
+                    "Usá el destaque normal para un aviso propio.",
+                );
+            }
+            const [inmuebleSnap, membershipsSnap] = await Promise.all([
+                inmuebleRef.get(),
+                db.collection("agency_friend_group_members")
+                    .where("agencyId", "==", inmobiliariaId)
+                    .get(),
+            ]);
+            const sharedGroupIds = Array.isArray(inmuebleSnap.data()?.sharing?.friendGroupIds)
+                ? inmuebleSnap.data().sharing.friendGroupIds
+                : [];
+            const acceptedGroupIds = membershipsSnap.docs
+                .filter((snap) => ["owner", "accepted"].includes(snap.data()?.status))
+                .map((snap) => snap.data()?.groupId)
+                .filter(Boolean);
+            if (!inmuebleSnap.exists || !sharedGroupIds.some((id) => acceptedGroupIds.includes(id))) {
+                throw new HttpsError(
+                    "permission-denied",
+                    "El aviso no está compartido con un grupo aceptado por tu inmobiliaria.",
+                );
+            }
+        }
+
         await db.runTransaction(async (transaction) => {
             const inmuebleSnap = await transaction.get(inmuebleRef);
+            const localPublicationSnap = sharedPublication
+                ? await transaction.get(localPublicationRef)
+                : null;
             if (!inmuebleSnap.exists || inmuebleSnap.data()?.deleted === true) {
                 throw new HttpsError("not-found", "No se encontró el inmueble.");
             }
@@ -2523,7 +2575,9 @@ export const billingApplyHighlightCredits = onCall(
             }
 
             const currentPromotionEnd = timestampToMillis(
-                inmuebleSnap.data()?.promotion?.endsAt,
+                sharedPublication
+                    ? localPublicationSnap?.data()?.promotion?.endsAt
+                    : inmuebleSnap.data()?.promotion?.endsAt,
             );
             const startsAtMs = Math.max(nowMs, currentPromotionEnd || nowMs);
             promotionEndsAtMs = startsAtMs + days * 24 * 60 * 60 * 1000;
@@ -2536,14 +2590,28 @@ export const billingApplyHighlightCredits = onCall(
                 updatedAt: Timestamp.now(),
                 updatedBy: uid,
             };
-            transaction.update(inmuebleRef, {
-                destacado: true,
-                promotion,
-                updatedAt: Timestamp.now(),
-            });
+            if (sharedPublication) {
+                transaction.set(localPublicationRef, {
+                    hostAgencyId: inmobiliariaId,
+                    ownerAgencyId: ownerInmobiliariaId,
+                    inmuebleId,
+                    localDestacado: true,
+                    promotion,
+                    updatedAt: Timestamp.now(),
+                    updatedBy: uid,
+                }, { merge: true });
+            } else {
+                transaction.update(inmuebleRef, {
+                    destacado: true,
+                    promotion,
+                    updatedAt: Timestamp.now(),
+                });
+            }
             transaction.set(usageRef, {
                 inmobiliariaId,
                 inmuebleId,
+                ownerInmobiliariaId,
+                sharedPublication,
                 inmuebleTitulo: inmuebleSnap.data()?.titulo || inmuebleId,
                 quantity: days,
                 unit: "highlight_day_24h",

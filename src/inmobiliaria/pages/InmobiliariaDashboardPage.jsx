@@ -12,6 +12,33 @@ const DEFAULT_MODULES = ["inmuebles", "consultas"];
 
 const MODULE_CARDS = [
     {
+        id: "branches",
+        title: "Sucursales",
+        description: "Crear páginas de sucursal, asignar responsables y administrar sus datos de contacto.",
+        route: "/admin/inmobiliaria/sucursales",
+        cta: "Administrar sucursales",
+        icon: "🏢",
+        alwaysAvailable: true,
+    },
+    {
+        id: "friends",
+        title: "Inmobiliarias amigas",
+        description: "Crear grupos privados, enviar invitaciones y definir con quién compartir avisos.",
+        route: "/admin/inmobiliaria/amigas",
+        cta: "Administrar red privada",
+        icon: "🤝",
+        alwaysAvailable: true,
+    },
+    {
+        id: "shared-catalog",
+        title: "Catálogo compartido",
+        description: "Mostrar, ocultar, asignar a sucursales o destacar avisos de inmobiliarias amigas.",
+        route: "/admin/inmobiliaria/catalogo-compartido",
+        cta: "Abrir catálogo compartido",
+        icon: "🔁",
+        alwaysAvailable: true,
+    },
+    {
         id: "billing",
         title: "Cuenta corriente y servicios",
         description:

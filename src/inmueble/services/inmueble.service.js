@@ -34,6 +34,8 @@ import { getActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobi
 const DEFAULT_SHARING = {
   enabled: false,
   mode: "all_colleagues",
+  shareWithOnopropNetwork: false,
+  friendGroupIds: [],
   allowColleagueContact: true,
   showExactAddressToColleagues: false,
   showOwnerDataToColleagues: false,
@@ -305,11 +307,19 @@ const buildInmueblePublisherSnapshot = async (inmobiliariaId) => {
    ========================================================= */
 
 const normalizeSharing = (value = {}) => {
+  const friendGroupIds = Array.isArray(value.friendGroupIds)
+    ? [...new Set(value.friendGroupIds.filter(Boolean))]
+    : [];
+  const shareWithOnopropNetwork = value.shareWithOnopropNetwork === undefined
+    ? Boolean(value.enabled && value.mode === "all_colleagues")
+    : Boolean(value.shareWithOnopropNetwork);
   return {
     ...DEFAULT_SHARING,
     ...value,
-    enabled: Boolean(value.enabled),
-    mode: value.mode || "all_colleagues",
+    enabled: shareWithOnopropNetwork || friendGroupIds.length > 0,
+    mode: shareWithOnopropNetwork ? "all_colleagues" : "friend_groups",
+    shareWithOnopropNetwork,
+    friendGroupIds,
     allowColleagueContact:
       value.allowColleagueContact === undefined
         ? true
@@ -675,6 +685,25 @@ export const getInmueblesByInmobiliaria = async (
   };
 };
 
+/**
+ * Carga el inventario completo para el panel administrativo.
+ * Se usa cuando la vista necesita ordenar y exportar el conjunto filtrado,
+ * incluyendo documentos antiguos que pudieran no tener createdAt.
+ */
+export const getAllInmueblesByInmobiliaria = async (inmobiliariaId) => {
+  if (!inmobiliariaId) return [];
+
+  const snap = await getDocs(inmueblesCollection(inmobiliariaId));
+
+  return snap.docs
+    .map((docSnap) => ({
+      id: docSnap.id,
+      inmobiliariaId,
+      ...docSnap.data(),
+    }))
+    .filter((inmueble) => inmueble.deleted !== true);
+};
+
 /* =========================================================
    READ PÚBLICO / PORTAL
    ========================================================= */
@@ -918,6 +947,30 @@ export const updateInmueble = async (
     console.error("❌ Error en updateInmueble:", error);
     throw error;
   }
+};
+
+/**
+ * Actualiza únicamente los destinos de compartición desde el listado admin.
+ * Los datos privados de colaboración permanecen en /private/networkData.
+ */
+export const updateInmuebleSharing = async (
+  inmobiliariaId,
+  inmuebleId,
+  sharingData = {},
+) => {
+  if (!inmobiliariaId || !inmuebleId) {
+    throw new Error("IDs requeridos para actualizar la compartición");
+  }
+
+  await assertInmobiliariaActiva(inmobiliariaId);
+
+  const sharing = normalizeSharing(sharingData);
+  await updateDoc(inmuebleDoc(inmobiliariaId, inmuebleId), {
+    sharing,
+    updatedAt: serverTimestamp(),
+  });
+
+  return sharing;
 };
 
 export const updateInmuebleDistributionChannel = async (

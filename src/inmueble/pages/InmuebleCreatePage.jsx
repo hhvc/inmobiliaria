@@ -36,6 +36,8 @@ import {
 const DEFAULT_SHARING = {
   enabled: false,
   mode: "all_colleagues",
+  shareWithOnopropNetwork: false,
+  friendGroupIds: [],
   allowColleagueContact: true,
   showExactAddressToColleagues: false,
   showOwnerDataToColleagues: false,
@@ -117,6 +119,7 @@ const INITIAL_VALUES = {
 
   inmobiliariaId: "",
   ownerInmobiliariaId: "",
+  sucursalId: "",
 
   sharedWith: {},
   deleted: false,
@@ -370,11 +373,17 @@ const getConvertedPublicPathFromRequest = (request) => {
    ========================= */
 
 const normalizeSharing = (value = {}) => {
+  const friendGroupIds = Array.isArray(value.friendGroupIds) ? value.friendGroupIds : [];
+  const shareWithOnopropNetwork = value.shareWithOnopropNetwork === undefined
+    ? Boolean(value.enabled && value.mode === "all_colleagues")
+    : Boolean(value.shareWithOnopropNetwork);
   return {
     ...DEFAULT_SHARING,
     ...value,
-    enabled: Boolean(value.enabled),
-    mode: value.mode || "all_colleagues",
+    enabled: shareWithOnopropNetwork || friendGroupIds.length > 0,
+    mode: shareWithOnopropNetwork ? "all_colleagues" : "friend_groups",
+    shareWithOnopropNetwork,
+    friendGroupIds,
     allowColleagueContact: Boolean(value.allowColleagueContact),
     showExactAddressToColleagues: Boolean(
       value.showExactAddressToColleagues,

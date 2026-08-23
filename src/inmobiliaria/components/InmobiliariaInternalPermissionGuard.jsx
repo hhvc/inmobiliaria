@@ -26,6 +26,7 @@ const PERMISSION_LABELS = {
     canViewConsultas: "ver consultas",
     canManageConsultas: "gestionar consultas",
     canManageBranding: "gestionar branding",
+    canManageBranches: "gestionar sucursales",
     canManageDomains: "gestionar dominios",
     canManageUsers: "gestionar usuarios",
 };

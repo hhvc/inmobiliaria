@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -7,13 +7,27 @@ import {
 } from "../utils/inmuebleDetailsSchema";
 
 import {
-  getInmueblesByInmobiliaria,
+  getAllInmueblesByInmobiliaria,
   deleteInmueble,
   updateInmueble,
+  updateInmuebleSharing,
 } from "../services/inmueble.service";
 
 import { useAuth } from "../../context/auth/useAuth";
 import InmuebleFilters from "../components/InmuebleFilters";
+import InmuebleSharingQuickEdit from "../components/InmuebleSharingQuickEdit";
+import { canDeleteInmueble, canEditInmueble } from "../helpers/permissions";
+import {
+  getAgencyFriendGroups,
+  getInmobiliariaBranches,
+} from "../../inmobiliaria/services/agencyNetwork.service";
+import {
+  buildAdminInmueblesCsv,
+  filterAdminInmuebles,
+  INMUEBLE_ADMIN_SORT_OPTIONS,
+  normalizeInmuebleSharing,
+  sortAdminInmuebles,
+} from "../utils/inmuebleAdminList.helpers";
 
 
 const PAGE_SIZE = 10;
@@ -69,6 +83,23 @@ const getOperationTypeLabel = (inmueble) => {
   const tipo = inmueble?.tipo || "Sin tipo";
 
   return `${operacion} · ${tipo}`;
+};
+
+const formatAdminDate = (value) => {
+  const date = typeof value?.toDate === "function"
+    ? value.toDate()
+    : value instanceof Date
+      ? value
+      : Number.isFinite(value?.seconds)
+        ? new Date(value.seconds * 1000)
+        : new Date(value || "");
+
+  if (Number.isNaN(date.getTime())) return "Sin fecha";
+
+  return new Intl.DateTimeFormat("es-AR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
 };
 
 const getCaracteristicas = (inmueble = {}) => {
@@ -167,66 +198,72 @@ const InmuebleListPage = () => {
   const { user, activeInmobiliariaId } = useAuth();
 
   const [inmuebles, setInmuebles] = useState([]);
-  const [lastDoc, setLastDoc] = useState(null);
+  const [branchesById, setBranchesById] = useState({});
+  const [friendGroups, setFriendGroups] = useState([]);
 
   const [filters, setFilters] = useState(INITIAL_FILTERS);
+  const [sortOption, setSortOption] = useState("created_desc");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
 
   const [deletingId, setDeletingId] = useState(null);
   const [togglingDestacadoId, setTogglingDestacadoId] = useState(null);
   const [togglingPortalId, setTogglingPortalId] = useState(null);
+  const [updatingSharingId, setUpdatingSharingId] = useState(null);
+
+  const filteredAndSortedInmuebles = useMemo(() => sortAdminInmuebles(
+    filterAdminInmuebles(inmuebles, filters),
+    sortOption,
+  ), [filters, inmuebles, sortOption]);
+
+  const visibleInmuebles = useMemo(
+    () => filteredAndSortedInmuebles.slice(0, visibleCount),
+    [filteredAndSortedInmuebles, visibleCount],
+  );
+
+  const friendGroupsById = useMemo(
+    () => Object.fromEntries(friendGroups.map((group) => [group.id, group])),
+    [friendGroups],
+  );
+
+  const hasMore = visibleCount < filteredAndSortedInmuebles.length;
 
   /* =========================================================
      Fetch inmuebles
      ========================================================= */
 
   const fetchInmuebles = useCallback(
-    async ({ append = false, cursor = null } = {}) => {
+    async () => {
       if (!user?.uid) {
         setInmuebles([]);
-        setLastDoc(null);
         setLoading(false);
         return;
       }
 
       if (!activeInmobiliariaId) {
         setInmuebles([]);
-        setLastDoc(null);
         setLoading(false);
         setError("No hay inmobiliaria activa seleccionada");
         return;
       }
 
       try {
-        append ? setLoadingMore(true) : setLoading(true);
+        setLoading(true);
         setError(null);
 
-        const result = await getInmueblesByInmobiliaria(activeInmobiliariaId, {
-          ...filters,
-          pageSize: PAGE_SIZE,
-          lastDoc: append ? cursor : null,
-        });
-
-        const data = Array.isArray(result) ? result : result?.data || [];
-
-        const newLastDoc = Array.isArray(result)
-          ? null
-          : result?.lastDoc || null;
-
-        setInmuebles((prev) => (append ? [...prev, ...data] : data));
-        setLastDoc(newLastDoc);
+        const data = await getAllInmueblesByInmobiliaria(activeInmobiliariaId);
+        setInmuebles(data);
+        setVisibleCount(PAGE_SIZE);
       } catch (err) {
         console.error("Error cargando inmuebles:", err);
         setError(err.message || "Error al cargar los inmuebles");
       } finally {
         setLoading(false);
-        setLoadingMore(false);
       }
     },
-    [user?.uid, activeInmobiliariaId, filters],
+    [user?.uid, activeInmobiliariaId],
   );
 
   /* =========================================================
@@ -234,9 +271,28 @@ const InmuebleListPage = () => {
      ========================================================= */
 
   useEffect(() => {
-    setLastDoc(null);
-    fetchInmuebles({ append: false, cursor: null });
+    fetchInmuebles();
   }, [fetchInmuebles]);
+
+  useEffect(() => {
+    if (!activeInmobiliariaId) return;
+    Promise.all([
+      getInmobiliariaBranches(activeInmobiliariaId),
+      getAgencyFriendGroups(activeInmobiliariaId),
+    ]).then(([branches, groups]) => {
+      setBranchesById(Object.fromEntries(
+        branches.map((item) => [item.id, item]),
+      ));
+      setFriendGroups(groups);
+    }).catch(() => {
+      setBranchesById({});
+      setFriendGroups([]);
+    });
+  }, [activeInmobiliariaId]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [filters, sortOption]);
 
   /* =========================================================
      Acciones
@@ -355,16 +411,61 @@ const InmuebleListPage = () => {
     }
   };
 
+  const handleSharingChange = async (inmueble, nextSharing) => {
+    if (!activeInmobiliariaId) {
+      alert("No hay inmobiliaria activa seleccionada");
+      return;
+    }
+
+    try {
+      setUpdatingSharingId(inmueble.id);
+      const sharing = await updateInmuebleSharing(
+        activeInmobiliariaId,
+        inmueble.id,
+        nextSharing,
+      );
+
+      setInmuebles((prev) => prev.map((item) => (
+        item.id === inmueble.id
+          ? { ...item, sharing, updatedAt: new Date() }
+          : item
+      )));
+    } catch (err) {
+      console.error("Error actualizando compartición:", err);
+      alert(err.message || "No se pudo actualizar la compartición del inmueble");
+    } finally {
+      setUpdatingSharingId(null);
+    }
+  };
+
   const handleResetFilters = () => {
     setFilters(INITIAL_FILTERS);
-    setLastDoc(null);
+    setVisibleCount(PAGE_SIZE);
   };
 
   const handleLoadMore = () => {
-    fetchInmuebles({
-      append: true,
-      cursor: lastDoc,
+    setVisibleCount((current) => current + PAGE_SIZE);
+  };
+
+  const handleExport = () => {
+    if (filteredAndSortedInmuebles.length === 0) return;
+
+    const csv = buildAdminInmueblesCsv(filteredAndSortedInmuebles, {
+      branchesById,
+      friendGroupsById,
+      publicOrigin: window.location.origin,
     });
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+
+    link.href = url;
+    link.download = `inmuebles-${date}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   /* =========================================================
@@ -388,7 +489,7 @@ const InmuebleListPage = () => {
         <button
           type="button"
           className="btn btn-outline-primary"
-          onClick={() => fetchInmuebles({ append: false, cursor: null })}
+          onClick={fetchInmuebles}
         >
           Reintentar
         </button>
@@ -423,6 +524,15 @@ const InmuebleListPage = () => {
 
           <button
             type="button"
+            className="btn btn-outline-secondary"
+            onClick={handleExport}
+            disabled={filteredAndSortedInmuebles.length === 0}
+          >
+            Exportar CSV
+          </button>
+
+          <button
+            type="button"
             className="btn btn-outline-primary"
             onClick={() => navigate("/admin/inmuebles/importar")}
             disabled={!activeInmobiliariaId}
@@ -448,57 +558,119 @@ const InmuebleListPage = () => {
             filters={filters}
             onChange={setFilters}
             onReset={handleResetFilters}
-            loading={loading || loadingMore}
+            loading={loading}
           />
+
+          <div className="row g-3 align-items-end border-top pt-3">
+            <div className="col-12 col-md-6 col-lg-4">
+              <label className="form-label" htmlFor="inmuebleSortOption">
+                Ordenar listado
+              </label>
+              <select
+                id="inmuebleSortOption"
+                className="form-select"
+                value={sortOption}
+                onChange={(event) => setSortOption(event.target.value)}
+              >
+                {INMUEBLE_ADMIN_SORT_OPTIONS.map((option) => (
+                  <option value={option.value} key={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-12 col-md-6 col-lg-8 d-flex flex-wrap align-items-center justify-content-md-end gap-2">
+              <span className="text-muted small">
+                {filteredAndSortedInmuebles.length} resultado
+                {filteredAndSortedInmuebles.length === 1 ? "" : "s"}
+                {inmuebles.length !== filteredAndSortedInmuebles.length
+                  ? ` de ${inmuebles.length}`
+                  : ""}
+              </span>
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={handleExport}
+                disabled={filteredAndSortedInmuebles.length === 0}
+              >
+                Exportar resultados
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
-      {inmuebles.length === 0 ? (
+      {filteredAndSortedInmuebles.length === 0 ? (
         <section className="card border-0 shadow-sm">
           <div className="card-body p-5 text-center">
             <div className="display-6 mb-3">🏠</div>
 
-            <h2 className="h5">No hay inmuebles cargados</h2>
+            <h2 className="h5">
+              {inmuebles.length === 0
+                ? "No hay inmuebles cargados"
+                : "No hay inmuebles que coincidan con los filtros"}
+            </h2>
 
             <p className="text-muted mb-4">
-              Creá tu primera publicación para comenzar a mostrar propiedades en
-              el portal.
+              {inmuebles.length === 0
+                ? "Creá tu primera publicación para comenzar a mostrar propiedades en el portal."
+                : "Modificá o limpiá los filtros para volver a ver el inventario."}
             </p>
 
-            <button
-              type="button"
-              className="btn btn-outline-primary me-2"
-              onClick={() => navigate("/admin/inmuebles/importar")}
-              disabled={!activeInmobiliariaId}
-            >
-              Importar CSV
-            </button>
+            {inmuebles.length === 0 ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-outline-primary me-2"
+                  onClick={() => navigate("/admin/inmuebles/importar")}
+                  disabled={!activeInmobiliariaId}
+                >
+                  Importar CSV
+                </button>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() => navigate("/admin/inmuebles/nuevo")}
-              disabled={!activeInmobiliariaId}
-            >
-              + Nuevo inmueble
-            </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => navigate("/admin/inmuebles/nuevo")}
+                  disabled={!activeInmobiliariaId}
+                >
+                  + Nuevo inmueble
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-outline-secondary"
+                onClick={handleResetFilters}
+              >
+                Limpiar filtros
+              </button>
+            )}
           </div>
         </section>
       ) : (
         <>
           <section className="vstack gap-3">
-            {inmuebles.map((inmueble) => {
+            {visibleInmuebles.map((inmueble) => {
               const coverImage = getCoverImage(inmueble);
               const publicUrl = buildPublicUrl(inmueble.slug);
               const isPublicado = inmueble.publicarEnPortal === true;
               const isActivo = inmueble.estado === "activo";
               const updatingPortal = togglingPortalId === inmueble.id;
               const updatingDestacado = togglingDestacadoId === inmueble.id;
+              const updatingSharing = updatingSharingId === inmueble.id;
               const deleting = deletingId === inmueble.id;
+              const canEditThis = canEditInmueble(user, inmueble);
+              const canDeleteThis = canDeleteInmueble(user, inmueble);
 
               const featureBadges = getFeatureBadges(inmueble);
               const amenityBadges = getAmenityBadges(inmueble);
               const publicationQuality = getPublicationQuality(inmueble);
+              const sharing = normalizeInmuebleSharing(inmueble.sharing || {});
+              const sharedGroupNames = sharing.friendGroupIds.map(
+                (groupId) => friendGroupsById[groupId]?.name || groupId,
+              );
 
               return (
                 <article
@@ -563,6 +735,30 @@ const InmuebleListPage = () => {
                               🏗️ {inmueble.emprendimientoNombre || "Unidad de emprendimiento"}
                             </span>
                           )}
+
+                          {inmueble.sucursalId && (
+                            <span className="badge text-bg-light border text-dark">
+                              Sucursal: {branchesById[inmueble.sucursalId]?.name || inmueble.sucursalId}
+                            </span>
+                          )}
+
+                          {sharing.shareWithOnopropNetwork && (
+                            <span className="badge text-bg-success">
+                              Compartido con red ONO Prop
+                            </span>
+                          )}
+
+                          {sharedGroupNames.length > 0 && (
+                            <span className="badge text-bg-info">
+                              Amigas: {sharedGroupNames.join(", ")}
+                            </span>
+                          )}
+
+                          {!sharing.enabled && (
+                            <span className="badge text-bg-light border text-dark">
+                              No compartido
+                            </span>
+                          )}
                         </div>
 
                         <h2 className="h5 mb-2">
@@ -604,11 +800,29 @@ const InmuebleListPage = () => {
                           </div>
                         )}
 
+                        <InmuebleSharingQuickEdit
+                          inmueble={inmueble}
+                          friendGroups={friendGroups}
+                          disabled={!canEditThis}
+                          saving={updatingSharing}
+                          onChange={(nextSharing) => handleSharingChange(
+                            inmueble,
+                            nextSharing,
+                          )}
+                        />
+
                         {inmueble.slug && (
-                          <p className="small text-muted mb-0">
+                          <p className="small text-muted mt-3 mb-1">
                             <strong>Slug:</strong> {inmueble.slug}
                           </p>
                         )}
+
+                        <p className="small text-muted mb-0">
+                          <strong>Carga:</strong> {formatAdminDate(inmueble.createdAt)}
+                          {" · "}
+                          <strong>Última modificación:</strong>{" "}
+                          {formatAdminDate(inmueble.updatedAt)}
+                        </p>
                       </div>
                     </div>
 
@@ -618,6 +832,7 @@ const InmuebleListPage = () => {
                           type="button"
                           className="btn btn-primary btn-sm w-100"
                           onClick={() => handleEdit(inmueble.id)}
+                          disabled={!canEditThis}
                         >
                           Editar
                         </button>
@@ -626,6 +841,7 @@ const InmuebleListPage = () => {
                           type="button"
                           className="btn btn-outline-primary btn-sm w-100"
                           onClick={() => handleDuplicate(inmueble.id)}
+                          disabled={!canEditThis}
                         >
                           Duplicar como borrador
                         </button>
@@ -642,6 +858,7 @@ const InmuebleListPage = () => {
                           type="button"
                           className="btn btn-outline-success btn-sm w-100"
                           onClick={() => handleMarketing(inmueble.id)}
+                          disabled={!canEditThis}
                         >
                           Marketing
                         </button>
@@ -650,6 +867,7 @@ const InmuebleListPage = () => {
                           type="button"
                           className="btn btn-outline-primary btn-sm w-100"
                           onClick={() => handleDistribution(inmueble.id)}
+                          disabled={!canEditThis}
                         >
                           Difusión
                         </button>
@@ -673,7 +891,7 @@ const InmuebleListPage = () => {
                             ? "btn-outline-warning"
                             : "btn-outline-primary"
                             }`}
-                          disabled={updatingPortal}
+                          disabled={updatingPortal || !canEditThis}
                           onClick={() => togglePublicarEnPortal(inmueble)}
                         >
                           {updatingPortal
@@ -686,7 +904,7 @@ const InmuebleListPage = () => {
                         <button
                           type="button"
                           className="btn btn-outline-warning btn-sm w-100"
-                          disabled={updatingDestacado}
+                          disabled={updatingDestacado || !canEditThis}
                           onClick={() => toggleDestacado(inmueble)}
                         >
                           {updatingDestacado
@@ -700,7 +918,7 @@ const InmuebleListPage = () => {
                           <button
                             type="button"
                             className="btn btn-outline-danger btn-sm w-100"
-                            disabled={deleting}
+                            disabled={deleting || !canDeleteThis}
                             onClick={() => handleDelete(inmueble.id)}
                           >
                             {deleting ? "Eliminando..." : "Eliminar"}
@@ -714,15 +932,17 @@ const InmuebleListPage = () => {
             })}
           </section>
 
-          {lastDoc && (
+          {hasMore && (
             <div className="text-center mt-4">
               <button
                 type="button"
                 className="btn btn-outline-primary"
-                disabled={loadingMore}
                 onClick={handleLoadMore}
               >
-                {loadingMore ? "Cargando..." : "Cargar más"}
+                Cargar {Math.min(
+                  PAGE_SIZE,
+                  filteredAndSortedInmuebles.length - visibleCount,
+                )} más
               </button>
             </div>
           )}

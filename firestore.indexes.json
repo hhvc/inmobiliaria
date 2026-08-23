@@ -129,6 +129,16 @@
     },
     {
       "collectionGroup": "inmuebles",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "sharing.friendGroupIds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "deleted", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "publicarEnPortal", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inmuebles",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "deleted", "order": "ASCENDING" },
