@@ -29,6 +29,93 @@ export const normalizeConsortiumEmails = (values = []) => {
     return [...new Set(source.map(normalizeConsortiumEmail).filter(Boolean))];
 };
 
+export const buildConsortiumPortalUnit = (unitId = "", value = {}) => ({
+    id: cleanConsortiumText(unitId, 128),
+    inmobiliariaId: cleanConsortiumText(value.inmobiliariaId, 128),
+    consortiumId: cleanConsortiumText(value.consortiumId, 128),
+    consortiumName: cleanConsortiumText(value.consortiumName, 200),
+    consortiumAddress: cleanConsortiumText(value.consortiumAddress, 300),
+    consortiumCurrency: cleanConsortiumText(value.consortiumCurrency, 10) || "ARS",
+    code: cleanConsortiumText(value.code, 80),
+    floor: cleanConsortiumText(value.floor, 40),
+    apartment: cleanConsortiumText(value.apartment, 40),
+    type: cleanConsortiumText(value.type, 40) || "apartment",
+    portalAccessRole: value.portalAccessRole === "owner" ? "owner" : "occupant",
+    coefficient: Math.max(0, Number(value.coefficient) || 0),
+    creditBalanceMinor: Math.max(
+        0,
+        Math.round(Number(value.creditBalanceMinor) || 0),
+    ),
+});
+
+const buildManagedMessageReference = (claim = {}) => {
+    const date = cleanConsortiumText(
+        claim.createdDate || claim.createdAtIso,
+        40,
+    ).replace(/\D/g, "").slice(0, 8) || "SFECHA";
+    const suffix = cleanConsortiumText(claim.id, 128)
+        .replace(/[^a-z0-9]/gi, "")
+        .slice(-6)
+        .toUpperCase() || "NUEVO";
+    return `MSG-${date}-${suffix}`;
+};
+
+export const buildConsortiumManagedMessages = ({
+    claims = [],
+    events = [],
+} = {}) => {
+    const publicCategoryLabels = {
+        plumbing: "Agua y plomería",
+        electricity: "Electricidad",
+        gas: "Gas",
+        elevator: "Ascensores",
+        security: "Seguridad y accesos",
+        cleaning: "Limpieza",
+        common_area: "Espacios comunes",
+        administration: "Gestión administrativa",
+        other: "Asunto general",
+    };
+    const eventsByClaim = new Map();
+    events
+        .filter((event) => event?.type === "status_update" && event.claimId)
+        .forEach((event) => {
+            const current = eventsByClaim.get(event.claimId) || [];
+            current.push({
+                previousStatus: cleanConsortiumText(event.previousStatus, 40),
+                status: cleanConsortiumText(event.status, 40),
+                createdAtIso: cleanConsortiumText(event.createdAtIso, 40),
+            });
+            eventsByClaim.set(event.claimId, current);
+        });
+    return claims
+        .filter((claim) => claim?.deleted !== true && claim?.portalVisible === true)
+        .map((claim) => {
+            const category = cleanConsortiumText(claim.category, 60) || "other";
+            return {
+                id: cleanConsortiumText(claim.id, 128),
+                reference: buildManagedMessageReference(claim),
+                title: cleanConsortiumText(claim.portalPublicTitle, 220) ||
+                    `Gestión sobre ${publicCategoryLabels[category] || publicCategoryLabels.other}`,
+                communicationType: ["notice", "request", "claim"]
+                    .includes(claim.communicationType) ? claim.communicationType : "claim",
+                category,
+                priority: cleanConsortiumText(claim.priority, 40) || "normal",
+                status: cleanConsortiumText(claim.status, 40) || "open",
+                featured: claim.featuredInPortal === true,
+                createdAtIso: cleanConsortiumText(claim.createdAtIso, 40),
+                lastActivityAtIso: cleanConsortiumText(claim.lastActivityAtIso, 40),
+                statusHistory: (eventsByClaim.get(claim.id) || [])
+                    .sort((first, second) => (
+                        first.createdAtIso.localeCompare(second.createdAtIso)
+                    )),
+            };
+        })
+        .sort((first, second) => (
+            Number(second.featured) - Number(first.featured) ||
+            second.lastActivityAtIso.localeCompare(first.lastActivityAtIso)
+        ));
+};
+
 export const normalizeReminderDays = (value, fallback = []) => {
     if (value == null) return [...fallback];
     const source = Array.isArray(value) ? value : String(value || "").split(/[;,\s]+/);

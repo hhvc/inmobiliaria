@@ -15,9 +15,76 @@
   scroll-margin-top: 1rem;
 }
 
+.consortium-workspace-nav .nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.consortium-workspace-nav .nav-link {
+  min-height: 4.25rem;
+  padding: 0.65rem 0.8rem;
+  color: var(--bs-body-color);
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+}
+
+.consortium-workspace-nav .nav-link:not(.active):hover {
+  background: var(--bs-light);
+  border-color: var(--bs-border-color);
+}
+
+.consortium-workspace-nav .nav-link small {
+  margin-top: 0.15rem;
+  color: var(--bs-secondary-color);
+  font-size: 0.72rem;
+  line-height: 1.15;
+}
+
+.consortium-workspace-nav .nav-link.active small {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.consortium-monthly-close-assistant {
+  scroll-margin-top: 1rem;
+}
+
+.consortium-close-item-icon {
+  display: inline-flex;
+  flex: 0 0 1.65rem;
+  align-items: center;
+  justify-content: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  font-size: 1rem;
+}
+
 .consortium-expense-list {
   max-height: 28rem;
   overflow-y: auto;
+}
+
+.consortium-claim-list {
+  max-height: 42rem;
+  overflow-y: auto;
+}
+
+.consortium-claim-list .list-group-item {
+  border-radius: 0.75rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--bs-border-color);
+}
+
+.consortium-claim-detail {
+  background: linear-gradient(180deg, #fff 0%, #fbfcfd 100%);
+}
+
+.consortium-claim-timeline article:last-child {
+  padding-bottom: 0 !important;
+}
+
+.consortium-claim-summary .rounded,
+.consortium-treasury-summary .rounded {
+  background: #fff;
 }
 
 .consortium-unit-table th,
@@ -32,12 +99,36 @@
   font-variant-numeric: tabular-nums;
 }
 
+@media (min-width: 1200px) {
+  .consortium-workspace-nav .nav {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 575.98px) {
+  .consortium-workspace-nav .nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .consortium-receipt-page {
   max-width: 900px;
 }
 
 .consortium-assessment-page {
   max-width: 1050px;
+}
+
+.consortium-economic-page {
+  max-width: 1100px;
+}
+
+.consortium-economic-sheet {
+  padding: 2.5rem;
+  background: #fff;
+  border: 1px solid #dce2e8;
+  border-radius: 1rem;
+  box-shadow: 0 1rem 3rem rgba(30, 41, 59, 0.12);
 }
 
 .consortium-assessment-sheet {
@@ -71,13 +162,15 @@
   .consortium-receipt-page nav,
   .consortium-account-page nav,
   .consortium-assessment-page nav,
+  .consortium-economic-page nav,
   footer.site-footer {
     display: none !important;
   }
 
   .consortium-receipt-page,
   .consortium-account-page,
-  .consortium-assessment-page {
+  .consortium-assessment-page,
+  .consortium-economic-page {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -87,7 +180,8 @@
 
   .consortium-receipt-sheet,
   .consortium-account-card,
-  .consortium-assessment-sheet {
+  .consortium-assessment-sheet,
+  .consortium-economic-sheet {
     min-height: 0;
     padding: 1cm;
     border: 0 !important;
@@ -108,7 +202,12 @@
     border-radius: 0;
   }
 
-  .consortium-assessment-table tr {
+  .consortium-economic-sheet {
+    border-radius: 0;
+  }
+
+  .consortium-assessment-table tr,
+  .consortium-economic-sheet tr {
     break-inside: avoid;
     page-break-inside: avoid;
   }

@@ -42,6 +42,11 @@ const STATIC_ROUTES = [
         priority: "0.8",
     },
     {
+        path: "/sobre-onoprop",
+        changefreq: "monthly",
+        priority: "0.7",
+    },
+    {
         path: "/privacidad",
         changefreq: "yearly",
         priority: "0.3",

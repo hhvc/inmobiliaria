@@ -179,6 +179,8 @@ export {
 export { rentalGenerateMonthlyObligations } from "./rentals.js";
 
 export {
+  consortiumGetManagedMessages,
+  consortiumGetMyUnits,
   consortiumSaveNotificationSettings,
   consortiumSendCommunications,
   consortiumSendOnObligationCreated,
@@ -188,3 +190,15 @@ export {
   consortiumProcessReminders,
   consortiumSyncMailStatus,
 } from "./consortium.js";
+
+export {
+  portalSaveSearchAlert,
+  portalSearchAlertConfirm,
+  portalSearchAlertUnsubscribe,
+  portalProcessSearchAlerts,
+} from "./portalDemand.js";
+
+export {
+  portalRecordPerformanceEvent,
+  portalGetPerformanceDashboard,
+} from "./portalPerformance.js";

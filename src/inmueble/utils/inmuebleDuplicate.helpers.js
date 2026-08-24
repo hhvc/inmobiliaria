@@ -77,6 +77,8 @@ export const buildInmuebleDuplicateValues = ({
 
     inmobiliariaId: resolvedInmobiliariaId,
     ownerInmobiliariaId: resolvedInmobiliariaId,
+    publisherMode: "agency",
+    publisherUserId: "",
     sharedWith: {},
     deleted: false,
 

@@ -18,6 +18,7 @@ import {
   getEmprendimientoTypeLabel,
 } from "../../emprendimiento/utils/emprendimientoSchema";
 import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
+import PortalFavoriteButton from "../../inmueble/components/PortalFavoriteButton";
 import { getAgencySlugFromDomain } from "../utils/domainRouting";
 import { useDomainAgency } from "../context/useDomainAgency";
 import { buildWhatsappRedirectUrl } from "../../utils/whatsappRedirect";
@@ -527,7 +528,7 @@ const buildInmobiliariaJsonLd = ({
   };
 };
 
-const InmueblePublicCard = ({ inmueble }) => {
+const InmueblePublicCard = ({ inmueble, presentationAgencyId = "", branchId = "" }) => {
   const coverImage = getCoverImage(inmueble);
   const detailUrl = buildInmuebleUrl(inmueble);
   const featureItems = getInmuebleFeatureBadges(inmueble);
@@ -542,7 +543,11 @@ const InmueblePublicCard = ({ inmueble }) => {
   return (
     <article className="card h-100 shadow-sm border-0 overflow-hidden portal-listing-card">
       <div className="position-relative portal-listing-image-wrap">
-        <Link to={detailUrl} className="text-decoration-none">
+        <Link
+          to={detailUrl}
+          state={{ performanceSource: inmueble.syndicated ? "friend_agency" : "agency_page" }}
+          className="text-decoration-none"
+        >
           {coverImage ? (
             <img
               src={coverImage.url}
@@ -603,11 +608,30 @@ const InmueblePublicCard = ({ inmueble }) => {
           )}
         </div>
 
-        <Link to={detailUrl} className="text-decoration-none text-dark">
-          <h3 className="h5 mb-2 portal-listing-title">
-            {inmueble.titulo || "Inmueble publicado"}
-          </h3>
-        </Link>
+        <div className="d-flex align-items-start gap-2 mb-2">
+          <Link
+            to={detailUrl}
+            state={{ performanceSource: inmueble.syndicated ? "friend_agency" : "agency_page" }}
+            className="text-decoration-none text-dark flex-grow-1"
+          >
+            <h3 className="h5 mb-0 portal-listing-title">
+              {inmueble.titulo || "Inmueble publicado"}
+            </h3>
+          </Link>
+          <PortalFavoriteButton
+            item={{
+              ...inmueble,
+              sourceType: "inmobiliaria",
+              publicPath: detailUrl,
+              locationLabel: address,
+              priceLabel: formatPrice(inmueble),
+            }}
+            compact
+            performanceSource={inmueble.syndicated ? "friend_agency" : "agency_page"}
+            presentationAgencyId={presentationAgencyId}
+            presentationBranchId={branchId}
+          />
+        </div>
 
         {address && <p className="text-muted small mb-2">📍 {address}</p>}
 
@@ -654,7 +678,11 @@ const InmueblePublicCard = ({ inmueble }) => {
         )}
 
         <div className="mt-auto d-grid">
-          <Link to={detailUrl} className="btn btn-primary">
+          <Link
+            to={detailUrl}
+            state={{ performanceSource: inmueble.syndicated ? "friend_agency" : "agency_page" }}
+            className="btn btn-primary"
+          >
             {hasVideos ? "Ver video y detalle" : "Ver inmueble"}
           </Link>
         </div>
@@ -1217,7 +1245,11 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
             <div className="row g-4">
               {featuredInmuebles.map((inmueble) => (
                 <div className="col-12 col-md-6 col-xl-4" key={`${inmueble.sourceInmobiliariaId || inmobiliaria.id}_${inmueble.id}`}>
-                  <InmueblePublicCard inmueble={inmueble} />
+                  <InmueblePublicCard
+                    inmueble={inmueble}
+                    presentationAgencyId={inmobiliaria.id}
+                    branchId={branch?.id || ""}
+                  />
                 </div>
               ))}
             </div>
@@ -1570,7 +1602,11 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
             <div className="row g-4">
               {filteredInmuebles.map((inmueble) => (
                 <div className="col-12 col-md-6 col-xl-4" key={`${inmueble.sourceInmobiliariaId || inmobiliaria.id}_${inmueble.id}`}>
-                  <InmueblePublicCard inmueble={inmueble} />
+                  <InmueblePublicCard
+                    inmueble={inmueble}
+                    presentationAgencyId={inmobiliaria.id}
+                    branchId={branch?.id || ""}
+                  />
                 </div>
               ))}
             </div>
@@ -1637,6 +1673,27 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                   <h2 className="h4 mb-3">Información de la inmobiliaria</h2>
 
                   <div className="vstack gap-3">
+                    {inmobiliaria.publicProfile?.headline && (
+                      <div className="lead fs-6 mb-0">
+                        {inmobiliaria.publicProfile.headline}
+                      </div>
+                    )}
+
+                    {inmobiliaria.publicProfile?.bio && (
+                      <p
+                        className="text-muted mb-0"
+                        style={{ whiteSpace: "pre-line" }}
+                      >
+                        {inmobiliaria.publicProfile.bio}
+                      </p>
+                    )}
+
+                    {inmobiliaria.publicProfile?.location && (
+                      <div className="small text-muted">
+                        📍 {inmobiliaria.publicProfile.location}
+                      </div>
+                    )}
+
                     <div>
                       <div className="small text-muted">Nombre comercial</div>
                       <div className="fw-semibold">{publicName}</div>

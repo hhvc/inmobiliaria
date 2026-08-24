@@ -26,6 +26,7 @@ import {
   getInmobiliariaPublisherSnapshot,
 } from "../../inmobiliaria/services/inmobiliaria.service";
 import { getActiveInmobiliariaId } from "../../inmobiliaria/helpers/activeInmobiliaria.helper";
+import { getPublicProfileById } from "../../profile/services/publicProfile.service";
 
 /* =========================================================
    Defaults Red de colegas
@@ -264,9 +265,60 @@ const resolvePublicListArgs = (
   };
 };
 
-const buildInmueblePublisherSnapshot = async (inmobiliariaId) => {
+const buildInmueblePublisherSnapshot = async (inmobiliariaId, data = {}) => {
   try {
-    return await getInmobiliariaPublisherSnapshot(inmobiliariaId);
+    const agencySnapshot = await getInmobiliariaPublisherSnapshot(inmobiliariaId);
+    const requestedMode = data.publisherMode === "agency"
+      ? "agency"
+      : data.publisherMode === "user" || data.publisher?.type === "user"
+        ? "user"
+        : "agency";
+
+    if (requestedMode !== "user") {
+      return {
+        ...agencySnapshot,
+        publisherMode: "agency",
+        publisherUserId: "",
+      };
+    }
+
+    const publisherUserId =
+      data.publisherUserId ||
+      data.publisher?.id ||
+      data.createdBy ||
+      auth.currentUser?.uid ||
+      "";
+    const publicProfile = await getPublicProfileById(publisherUserId);
+
+    if (!publicProfile?.isPublic || !publicProfile.displayName) {
+      console.warn(
+        "El perfil personal elegido no está habilitado; se usará la inmobiliaria.",
+        publisherUserId,
+      );
+      return {
+        ...agencySnapshot,
+        publisherMode: "agency",
+        publisherUserId: "",
+      };
+    }
+
+    return {
+      ...agencySnapshot,
+      publisherMode: "user",
+      publisherUserId,
+      publisher: {
+        type: "user",
+        id: publisherUserId,
+        name: publicProfile.displayName,
+        photoURL: publicProfile.photoURL || "",
+        logoUrl: publicProfile.photoURL || "",
+        headline: publicProfile.headline || "",
+        verified: false,
+        profilePath: "",
+      },
+      sourceLabel: publicProfile.displayName,
+      sourceLogoUrl: publicProfile.photoURL || "",
+    };
   } catch (error) {
     console.warn(
       "No se pudo generar snapshot de publisher para el inmueble:",
@@ -298,6 +350,8 @@ const buildInmueblePublisherSnapshot = async (inmobiliariaId) => {
       sourceLogoUrl: "",
       sourceTypeLabel: "Inmobiliaria",
       sourceBadgeClass: "text-bg-primary",
+      publisherMode: "agency",
+      publisherUserId: "",
     };
   }
 };
@@ -449,7 +503,10 @@ export const createInmueble = async (
   try {
     await assertInmobiliariaActiva(inmobiliariaId);
 
-    const publisherSnapshot = await buildInmueblePublisherSnapshot(inmobiliariaId);
+    const publisherSnapshot = await buildInmueblePublisherSnapshot(
+      inmobiliariaId,
+      data,
+    );
 
     const currentUser = auth.currentUser;
 
@@ -682,6 +739,7 @@ export const getInmueblesByInmobiliaria = async (
   return {
     data,
     lastDoc: snap.docs[snap.docs.length - 1] || null,
+    hasMore: snap.docs.length === pageSize,
   };
 };
 
@@ -793,6 +851,7 @@ export const getPublicInmuebles = async (
   return {
     data,
     lastDoc: snap.docs[snap.docs.length - 1] || null,
+    hasMore: snap.docs.length === pageSize,
   };
 };
 
@@ -899,7 +958,10 @@ export const updateInmueble = async (
   try {
     await assertInmobiliariaActiva(inmobiliariaId);
 
-    const publisherSnapshot = await buildInmueblePublisherSnapshot(inmobiliariaId);
+    const publisherSnapshot = await buildInmueblePublisherSnapshot(
+      inmobiliariaId,
+      data,
+    );
 
     const payload = sanitizeUpdatePayload(data);
     const sharing = normalizeSharing(payload.sharing || {});

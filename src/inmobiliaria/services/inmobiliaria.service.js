@@ -477,6 +477,7 @@ export async function getPublicInmobiliariaById(id) {
     razonSocial: data.razonSocial || "",
     cuit: data.cuit || "",
     branding: data.branding || {},
+    publicProfile: data.publicProfile || {},
     verificacion: data.verificacion || buildDefaultVerificationData(data),
     configuracion: {
       ...data.configuracion,
@@ -552,6 +553,8 @@ export async function getInmobiliariaPublisherSnapshot(inmobiliariaId) {
       name,
       slug,
       logoUrl,
+      photoURL: inmobiliaria.publicProfile?.photoURL || logoUrl,
+      headline: inmobiliaria.publicProfile?.headline || "",
       verified,
       profilePath,
       contact: {

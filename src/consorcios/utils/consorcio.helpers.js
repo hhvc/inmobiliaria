@@ -268,6 +268,586 @@ export const getConsortiumObligationStatusLabel = (status = "pending") => ({
   voided: { label: "Anulada", badge: "text-bg-dark" },
 }[status] || { label: status, badge: "text-bg-light" });
 
+export const getConsortiumSupplierObligationStatus = (
+  obligation = {},
+  dateKey = new Date().toISOString().slice(0, 10),
+) => {
+  if (obligation.voided === true || obligation.status === "voided") return "voided";
+  if (Number(obligation.balanceMinor || 0) <= 0) return "paid";
+  if (obligation.dueDate && obligation.dueDate < dateKey) {
+    return Number(obligation.paidAmountMinor || 0) > 0 ? "partial_overdue" : "overdue";
+  }
+  if (Number(obligation.paidAmountMinor || 0) > 0) return "partial";
+  return "pending";
+};
+
+const normalizeConsortiumSearchText = (value = "") => value
+  .toString()
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase()
+  .trim();
+
+export const filterConsortiumSupplierObligations = (
+  obligations = [],
+  { status = "open", search = "", dateKey = new Date().toISOString().slice(0, 10) } = {},
+) => {
+  const normalizedSearch = normalizeConsortiumSearchText(search);
+  const matchesStatus = (obligation) => {
+    const derivedStatus = getConsortiumSupplierObligationStatus(obligation, dateKey);
+    if (status === "all") return true;
+    if (status === "open") return ["pending", "partial", "overdue", "partial_overdue"]
+      .includes(derivedStatus);
+    if (status === "overdue") return ["overdue", "partial_overdue"].includes(derivedStatus);
+    if (status === "partial") return ["partial", "partial_overdue"].includes(derivedStatus);
+    return derivedStatus === status;
+  };
+  const matchesSearch = (obligation) => {
+    if (!normalizedSearch) return true;
+    const supplier = obligation.supplierSnapshot || {};
+    return normalizeConsortiumSearchText([
+      supplier.name,
+      supplier.legalName,
+      supplier.taxId,
+      obligation.concept,
+      obligation.voucherNumber,
+      obligation.periodKey,
+    ].filter(Boolean).join(" ")).includes(normalizedSearch);
+  };
+  return obligations
+    .filter((obligation) => matchesStatus(obligation) && matchesSearch(obligation))
+    .sort((first, second) => (first.dueDate || "9999-12-31")
+      .localeCompare(second.dueDate || "9999-12-31")
+      || (first.supplierSnapshot?.name || "").localeCompare(
+        second.supplierSnapshot?.name || "",
+        "es",
+      ));
+};
+
+const protectConsortiumCsvValue = (value = "") => {
+  const normalized = value?.toString?.() || "";
+  return /^[=+\-@]/.test(normalized.trimStart()) ? `'${normalized}` : normalized;
+};
+
+const consortiumCsvCell = (value = "") => (
+  `"${protectConsortiumCsvValue(value).replace(/"/g, '""')}"`
+);
+
+const consortiumCsvMoney = (minor = 0) => (
+  (Math.round(Number(minor) || 0) / 100).toFixed(2).replace(".", ",")
+);
+
+export const buildConsortiumSupplierObligationsCsv = (
+  obligations = [],
+  dateKey = new Date().toISOString().slice(0, 10),
+) => {
+  const statusLabels = {
+    pending: "Pendiente",
+    overdue: "Vencida",
+    partial: "Pago parcial",
+    partial_overdue: "Vencida con pago parcial",
+    paid: "Pagada",
+    voided: "Anulada",
+  };
+  const rows = obligations.map((obligation) => {
+    const supplier = obligation.supplierSnapshot || {};
+    const status = getConsortiumSupplierObligationStatus(obligation, dateKey);
+    return [
+      supplier.name || "Proveedor",
+      supplier.legalName || "",
+      supplier.taxId || "",
+      obligation.concept || "",
+      obligation.voucherType || "",
+      obligation.voucherNumber || "",
+      obligation.issueDate || "",
+      obligation.dueDate || "",
+      obligation.periodKey || "",
+      consortiumCsvMoney(obligation.amountMinor),
+      consortiumCsvMoney(obligation.paidAmountMinor),
+      consortiumCsvMoney(obligation.balanceMinor),
+      obligation.currency || "ARS",
+      statusLabels[status] || status,
+      obligation.periodId && obligation.expenseId ? "Sí" : "No",
+    ];
+  });
+  const headers = [
+    "Proveedor",
+    "Razón social",
+    "CUIT / documento",
+    "Concepto",
+    "Tipo de comprobante",
+    "Número",
+    "Fecha",
+    "Vencimiento",
+    "Liquidación",
+    "Total",
+    "Pagado",
+    "Saldo",
+    "Moneda",
+    "Estado",
+    "Vinculada a gasto",
+  ];
+  return `\uFEFF${[headers, ...rows]
+    .map((row) => row.map(consortiumCsvCell).join(";"))
+    .join("\n")}`;
+};
+
+export const getConsortiumTreasurySummary = ({ accounts = [], movements = [] } = {}) => {
+  const activeAccounts = accounts.filter((item) => item.active !== false && item.deleted !== true);
+  const availableMinor = activeAccounts.reduce(
+    (sum, item) => sum + Math.round(Number(item.currentBalanceMinor) || 0),
+    0,
+  );
+  const validMovements = movements.filter((item) => item.voided !== true);
+  const inflowMinor = validMovements
+    .filter((item) => item.direction === "inflow")
+    .reduce((sum, item) => sum + Math.max(0, Math.round(Number(item.amountMinor) || 0)), 0);
+  const outflowMinor = validMovements
+    .filter((item) => item.direction === "outflow")
+    .reduce((sum, item) => sum + Math.max(0, Math.round(Number(item.amountMinor) || 0)), 0);
+  return { availableMinor, inflowMinor, outflowMinor };
+};
+
+const consortiumMovementAmount = (movement = {}) => (
+  Math.max(0, Math.round(Number(movement.amountMinor) || 0))
+);
+
+const consortiumMovementSignedAmount = (movement = {}) => (
+  movement.direction === "outflow"
+    ? -consortiumMovementAmount(movement)
+    : consortiumMovementAmount(movement)
+);
+
+export const getConsortiumTreasuryBookBalance = ({
+  accountId = "",
+  movements = [],
+  dateKey = new Date().toISOString().slice(0, 10),
+} = {}) => movements
+  .filter((movement) => (
+    movement.voided !== true
+    && (!accountId || movement.accountId === accountId)
+    && (!dateKey || !movement.date || movement.date <= dateKey)
+  ))
+  .reduce((sum, movement) => sum + consortiumMovementSignedAmount(movement), 0);
+
+const getConsortiumPeriodBounds = (periodKey = "") => {
+  const match = /^(\d{4})-(\d{2})$/.exec(periodKey);
+  if (!match) return { startDate: "", endDate: "" };
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const end = new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+  return { startDate: `${periodKey}-01`, endDate: end };
+};
+
+const createMonthlyCloseItem = ({
+  code,
+  status = "ok",
+  title,
+  detail,
+  area = "liquidations",
+  count = 0,
+  amountMinor = 0,
+}) => ({
+  code,
+  status,
+  title,
+  detail,
+  area,
+  count: Math.max(0, Math.round(Number(count) || 0)),
+  amountMinor: Math.max(0, Math.round(Number(amountMinor) || 0)),
+});
+
+export const buildConsortiumMonthlyCloseChecklist = ({
+  period = {},
+  units = [],
+  obligations = [],
+  expenseDocuments = [],
+  paymentReports = [],
+  treasuryAccounts = [],
+  treasuryReconciliations = [],
+  supplierObligations = [],
+  financialClosures = [],
+} = {}) => {
+  const periodId = period.id || "";
+  const isMonthlyAssessment = !period.source;
+  const periodObligations = obligations.filter((item) => (
+    item.periodId === periodId && item.voided !== true
+  ));
+  const activeUnits = units.filter((item) => item.active !== false && item.deleted !== true);
+  const activeDocuments = expenseDocuments.filter((item) => (
+    item.periodId === periodId && item.voided !== true
+  ));
+  const pendingReports = paymentReports.filter((item) => (
+    item.periodId === periodId && item.status === "pending"
+  ));
+  const currentSupplierObligations = supplierObligations.filter((item) => (
+    item.periodId === periodId && item.voided !== true
+  ));
+  const currentClosures = financialClosures.filter((item) => item.periodId === periodId);
+  const expenses = Array.isArray(period.expenses) ? period.expenses : [];
+  const documentedExpenseIds = new Set(activeDocuments.map((item) => item.expenseId));
+  const linkedSupplierExpenseIds = new Set(
+    currentSupplierObligations.map((item) => item.expenseId).filter(Boolean),
+  );
+  const obligationUnitIds = new Set(periodObligations.map((item) => item.unitId));
+  const missingUnitCount = isMonthlyAssessment
+    ? activeUnits.filter((item) => !obligationUnitIds.has(item.id)).length
+    : 0;
+  const missingDocumentCount = isMonthlyAssessment
+    ? expenses.filter((item) => !documentedExpenseIds.has(item.id)).length
+    : 0;
+  const missingSupplierLinkCount = isMonthlyAssessment
+    ? expenses.filter((item) => !linkedSupplierExpenseIds.has(item.id)).length
+    : 0;
+  const unitDebtMinor = periodObligations.reduce(
+    (sum, item) => sum + Math.max(0, Math.round(Number(item.balanceMinor) || 0)),
+    0,
+  );
+  const supplierDebtMinor = currentSupplierObligations.reduce(
+    (sum, item) => sum + Math.max(0, Math.round(Number(item.balanceMinor) || 0)),
+    0,
+  );
+  const activeAccounts = treasuryAccounts.filter(
+    (item) => item.active !== false && item.deleted !== true,
+  );
+  const { endDate } = getConsortiumPeriodBounds(period.periodKey || "");
+  const validReconciliations = treasuryReconciliations.filter((item) => item.voided !== true);
+  const latestReconciliationByAccount = new Map();
+  validReconciliations.forEach((item) => {
+    const current = latestReconciliationByAccount.get(item.accountId);
+    if (!current || (item.statementDate || "") > (current.statementDate || "")) {
+      latestReconciliationByAccount.set(item.accountId, item);
+    }
+  });
+  const unreconciledAccounts = activeAccounts.filter((account) => {
+    const reconciliation = latestReconciliationByAccount.get(account.id);
+    return !reconciliation || (endDate && reconciliation.statementDate < endDate);
+  });
+  const accountsWithDifference = activeAccounts.filter((account) => {
+    const reconciliation = latestReconciliationByAccount.get(account.id);
+    return reconciliation && Number(reconciliation.differenceMinor || 0) !== 0;
+  });
+  const items = [];
+
+  if (!periodId || period.status === "draft") {
+    items.push(createMonthlyCloseItem({
+      code: "period_not_issued",
+      status: "blocker",
+      title: "Liquidación sin emitir",
+      detail: "Guardá los gastos y emití las expensas antes de iniciar el cierre mensual.",
+    }));
+  } else if (period.status === "closed") {
+    items.push(createMonthlyCloseItem({
+      code: "period_closed",
+      title: "Período ya cerrado",
+      detail: "El cierre mensual ya fue confirmado y permanece registrado en el historial.",
+    }));
+  } else {
+    items.push(createMonthlyCloseItem({
+      code: "period_issued",
+      title: "Liquidación emitida",
+      detail: "Las expensas fueron emitidas y ya no pueden alterarse como borrador.",
+    }));
+  }
+
+  if (!periodObligations.length) {
+    items.push(createMonthlyCloseItem({
+      code: "missing_obligations",
+      status: "blocker",
+      title: "No hay obligaciones emitidas",
+      detail: "El período no contiene cuentas individuales que permitan controlar saldos y cobranzas.",
+    }));
+  } else if (missingUnitCount > 0) {
+    items.push(createMonthlyCloseItem({
+      code: "units_without_assessment",
+      status: "warning",
+      title: "Unidades sin liquidación en este período",
+      detail: `${missingUnitCount} unidad(es) activa(s) no tienen una obligación vinculada. Verificá si fueron incorporadas después de la emisión.`,
+      count: missingUnitCount,
+      area: "units",
+    }));
+  } else {
+    items.push(createMonthlyCloseItem({
+      code: "assessment_coverage",
+      title: "Cobertura de unidades controlada",
+      detail: `${periodObligations.length} cuenta(s) individual(es) integran la liquidación.`,
+      count: periodObligations.length,
+    }));
+  }
+
+  items.push(createMonthlyCloseItem(pendingReports.length > 0 ? {
+    code: "pending_payment_reports",
+    status: "blocker",
+    title: "Pagos informados pendientes de revisión",
+    detail: `Revisá ${pendingReports.length} pago(s) informado(s) antes de cerrar para no omitir cobranzas.`,
+    count: pendingReports.length,
+  } : {
+    code: "payment_reports_reviewed",
+    title: "Pagos informados revisados",
+    detail: "No quedan comprobantes enviados por consorcistas pendientes de aprobación o rechazo.",
+  }));
+
+  if (isMonthlyAssessment && expenses.length > 0) {
+    items.push(createMonthlyCloseItem(missingDocumentCount > 0 ? {
+      code: "expenses_without_documents",
+      status: "warning",
+      title: "Gastos sin comprobante adjunto",
+      detail: `${missingDocumentCount} de ${expenses.length} gasto(s) no tienen respaldo documental vigente.`,
+      count: missingDocumentCount,
+    } : {
+      code: "expenses_documented",
+      title: "Comprobantes de gastos completos",
+      detail: `Los ${expenses.length} gasto(s) tienen al menos un archivo vigente.`,
+      count: expenses.length,
+    }));
+
+    items.push(createMonthlyCloseItem(missingSupplierLinkCount > 0 ? {
+      code: "expenses_without_supplier_obligation",
+      status: "warning",
+      title: "Gastos sin cuenta a pagar vinculada",
+      detail: `${missingSupplierLinkCount} gasto(s) no están asociados a una obligación de proveedor.`,
+      count: missingSupplierLinkCount,
+      area: "treasury",
+    } : {
+      code: "supplier_links_complete",
+      title: "Cuentas a pagar vinculadas",
+      detail: "Los gastos del período están relacionados con sus obligaciones de proveedor.",
+      count: expenses.length,
+      area: "treasury",
+    }));
+  }
+
+  items.push(createMonthlyCloseItem(unitDebtMinor > 0 ? {
+    code: "unit_debt_outstanding",
+    status: "warning",
+    title: "Expensas pendientes de cobro",
+    detail: "El período puede cerrarse: la deuda continuará vigente en las cuentas corrientes.",
+    count: periodObligations.filter((item) => Number(item.balanceMinor || 0) > 0).length,
+    amountMinor: unitDebtMinor,
+  } : {
+    code: "unit_debt_settled",
+    title: "Cobranzas del período completas",
+    detail: "No quedan saldos pendientes en las unidades alcanzadas por esta liquidación.",
+  }));
+
+  items.push(createMonthlyCloseItem(supplierDebtMinor > 0 ? {
+    code: "supplier_debt_outstanding",
+    status: "warning",
+    title: "Cuentas a proveedores pendientes",
+    detail: "Las obligaciones impagas seguirán disponibles en Tesorería después del cierre.",
+    count: currentSupplierObligations.filter((item) => Number(item.balanceMinor || 0) > 0).length,
+    amountMinor: supplierDebtMinor,
+    area: "treasury",
+  } : {
+    code: "supplier_debt_settled",
+    title: "Proveedores del período controlados",
+    detail: currentSupplierObligations.length
+      ? "No quedan saldos pendientes en las obligaciones vinculadas."
+      : "No se registraron obligaciones de proveedores para este período.",
+    area: "treasury",
+  }));
+
+  if (!activeAccounts.length) {
+    items.push(createMonthlyCloseItem({
+      code: "no_treasury_accounts",
+      status: "warning",
+      title: "Tesorería sin cuentas activas",
+      detail: "No hay caja, banco o billetera configurada para contrastar los fondos del consorcio.",
+      area: "treasury",
+    }));
+  } else if (unreconciledAccounts.length || accountsWithDifference.length) {
+    const details = [];
+    if (unreconciledAccounts.length) details.push(`${unreconciledAccounts.length} cuenta(s) sin conciliación al cierre del período`);
+    if (accountsWithDifference.length) details.push(`${accountsWithDifference.length} cuenta(s) con diferencias`);
+    items.push(createMonthlyCloseItem({
+      code: "treasury_reconciliation_pending",
+      status: "warning",
+      title: "Conciliación de tesorería pendiente",
+      detail: `${details.join(" y ")}.`,
+      count: new Set([...unreconciledAccounts, ...accountsWithDifference].map((item) => item.id)).size,
+      area: "treasury",
+    }));
+  } else {
+    items.push(createMonthlyCloseItem({
+      code: "treasury_reconciled",
+      title: "Tesorería conciliada",
+      detail: `${activeAccounts.length} cuenta(s) cuentan con un control sin diferencias.`,
+      count: activeAccounts.length,
+      area: "treasury",
+    }));
+  }
+
+  items.push(createMonthlyCloseItem(currentClosures.length > 0 ? {
+    code: "financial_statement_closed",
+    title: "Estado económico versionado",
+    detail: `Existe una versión financiera inalterable para este período.`,
+    count: currentClosures.length,
+    area: "economic_statement",
+  } : {
+    code: "financial_statement_pending",
+    status: "warning",
+    title: "Estado económico sin versión cerrada",
+    detail: "Podés generar y versionar el estado económico antes o después de este cierre operativo.",
+    area: "economic_statement",
+  }));
+
+  const blockers = items.filter((item) => item.status === "blocker");
+  const warnings = items.filter((item) => item.status === "warning");
+  return {
+    schemaVersion: 1,
+    periodId,
+    periodKey: period.periodKey || "",
+    periodStatus: period.status || "draft",
+    canClose: period.status === "issued" && blockers.length === 0,
+    items,
+    blockers,
+    warnings,
+    summary: {
+      blockerCount: blockers.length,
+      warningCount: warnings.length,
+      okCount: items.length - blockers.length - warnings.length,
+      unitCount: activeUnits.length,
+      obligationCount: periodObligations.length,
+      expenseCount: expenses.length,
+      expenseDocumentCount: activeDocuments.length,
+      pendingPaymentReportCount: pendingReports.length,
+      treasuryAccountCount: activeAccounts.length,
+      unreconciledAccountCount: unreconciledAccounts.length,
+      unitDebtMinor,
+      supplierDebtMinor,
+    },
+  };
+};
+
+const sumConsortiumMovements = (movements = [], predicate = () => true) => movements
+  .filter(predicate)
+  .reduce((sum, movement) => sum + consortiumMovementAmount(movement), 0);
+
+export const buildConsortiumEconomicStatement = ({
+  period = {},
+  movements = [],
+  accounts = [],
+  unitObligations = [],
+  supplierObligations = [],
+} = {}) => {
+  const periodKey = period.periodKey || "";
+  const { startDate, endDate } = getConsortiumPeriodBounds(periodKey);
+  const validMovements = movements.filter((movement) => movement.voided !== true);
+  const openingBalanceMinor = validMovements
+    .filter((movement) => startDate && movement.date < startDate)
+    .reduce((sum, movement) => sum + consortiumMovementSignedAmount(movement), 0);
+  const periodMovements = validMovements.filter((movement) => (
+    startDate && movement.date >= startDate && movement.date <= endDate
+  ));
+  const transferMovements = periodMovements.filter(
+    (movement) => movement.source === "account_transfer",
+  );
+  const collectionsMinor = sumConsortiumMovements(periodMovements, (movement) => (
+    movement.source === "consortium_collection" && movement.direction === "inflow"
+  )) - sumConsortiumMovements(periodMovements, (movement) => (
+    movement.source === "consortium_collection_reversal" && movement.direction === "outflow"
+  ));
+  const supplierPaymentsMinor = sumConsortiumMovements(periodMovements, (movement) => (
+    movement.source === "supplier_payment" && movement.direction === "outflow"
+  )) - sumConsortiumMovements(periodMovements, (movement) => (
+    movement.source === "supplier_payment_reversal" && movement.direction === "inflow"
+  ));
+  const excludedSources = new Set([
+    "account_transfer",
+    "consortium_collection",
+    "consortium_collection_reversal",
+    "supplier_payment",
+    "supplier_payment_reversal",
+  ]);
+  const otherInflowsMinor = sumConsortiumMovements(periodMovements, (movement) => (
+    movement.direction === "inflow" && !excludedSources.has(movement.source)
+  ));
+  const otherOutflowsMinor = sumConsortiumMovements(periodMovements, (movement) => (
+    movement.direction === "outflow" && !excludedSources.has(movement.source)
+  ));
+  const closingBalanceMinor = openingBalanceMinor
+    + collectionsMinor
+    + otherInflowsMinor
+    - supplierPaymentsMinor
+    - otherOutflowsMinor;
+  const selectedUnitObligations = unitObligations.filter((obligation) => (
+    obligation.voided !== true && obligation.periodKey === periodKey
+  ));
+  const selectedSupplierObligations = supplierObligations.filter((obligation) => (
+    obligation.voided !== true
+    && (obligation.periodKey === periodKey
+      || (!obligation.periodKey && obligation.issueDate?.startsWith(periodKey)))
+  ));
+  const unitDebtMinor = selectedUnitObligations.reduce(
+    (sum, obligation) => sum + Math.max(0, Number(obligation.balanceMinor) || 0),
+    0,
+  );
+  const supplierDebtMinor = selectedSupplierObligations.reduce(
+    (sum, obligation) => sum + Math.max(0, Number(obligation.balanceMinor) || 0),
+    0,
+  );
+  const reserveFundsMinor = accounts
+    .filter((account) => account.active !== false && account.type === "reserve")
+    .reduce((sum, account) => sum + Math.max(0, Number(account.currentBalanceMinor) || 0), 0);
+  return {
+    periodKey,
+    startDate,
+    endDate,
+    currency: period.currency || "ARS",
+    openingBalanceMinor,
+    collectionsMinor,
+    otherInflowsMinor,
+    supplierPaymentsMinor,
+    otherOutflowsMinor,
+    closingBalanceMinor,
+    unitDebtMinor,
+    supplierDebtMinor,
+    reserveFundsMinor,
+    assessedMinor: Math.max(0, Number(period.totalExpensesMinor) || 0),
+    transferVolumeMinor: sumConsortiumMovements(
+      transferMovements,
+      (movement) => movement.direction === "outflow",
+    ),
+    movements: periodMovements,
+  };
+};
+
+export const buildConsortiumEconomicStatementCsv = (statement = {}) => {
+  const rows = [
+    ["Período", statement.periodKey || ""],
+    ["Moneda", statement.currency || "ARS"],
+    ["Saldo inicial", consortiumCsvMoney(statement.openingBalanceMinor)],
+    ["Expensas cobradas", consortiumCsvMoney(statement.collectionsMinor)],
+    ["Otros ingresos", consortiumCsvMoney(statement.otherInflowsMinor)],
+    ["Pagos a proveedores", consortiumCsvMoney(statement.supplierPaymentsMinor)],
+    ["Otros egresos", consortiumCsvMoney(statement.otherOutflowsMinor)],
+    ["Saldo final", consortiumCsvMoney(statement.closingBalanceMinor)],
+    ["Deuda actual de unidades", consortiumCsvMoney(statement.unitDebtMinor)],
+    ["Deuda actual con proveedores", consortiumCsvMoney(statement.supplierDebtMinor)],
+    ["Fondos de reserva actuales", consortiumCsvMoney(statement.reserveFundsMinor)],
+  ];
+  return `\uFEFF${rows
+    .map((row) => row.map(consortiumCsvCell).join(";"))
+    .join("\n")}`;
+};
+
+export const getConsortiumClaimReference = (claim = {}) => {
+  const date = (claim.createdDate || claim.createdAtIso || "")
+    .toString()
+    .replace(/\D/g, "")
+    .slice(0, 8) || "SFECHA";
+  const suffix = (claim.id || "")
+    .toString()
+    .replace(/[^a-z0-9]/gi, "")
+    .slice(-6)
+    .toUpperCase() || "NUEVO";
+  return `MSG-${date}-${suffix}`;
+};
+
+export const isConsortiumClaimOpen = (claim = {}) => ![
+  "resolved", "closed", "rejected",
+].includes(claim.status);
+
 export const getConsortiumExpenseCategoryLabel = (category = "ordinary") => (
   category === "penalty"
     ? "Multa / penalidad"

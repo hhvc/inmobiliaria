@@ -5,6 +5,8 @@ import SEO from "../../components/SEO";
 import InmuebleVideoSection from "../../inmueble/components/InmuebleVideoSection";
 import { getVisibleInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import { getParticularPublicationById } from "../services/particularPublicationListing.service";
+import PublicProfileModal from "../../profile/components/PublicProfileModal";
+import PortalFavoriteButton from "../../inmueble/components/PortalFavoriteButton";
 
 const PUBLIC_STATUS_LABELS = {
     active: "Activa",
@@ -89,6 +91,7 @@ const ParticularPublicationPublicPage = () => {
     const [publication, setPublication] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [selectedPublisher, setSelectedPublisher] = useState(null);
 
     const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
 
@@ -115,6 +118,13 @@ const ParticularPublicationPublicPage = () => {
         email,
         title: publication?.titulo,
     });
+    const publisherDescriptor = useMemo(() => ({
+        type: "user",
+        id: publication?.ownerUserId || "",
+        name: "Dueño particular",
+        photoURL: "",
+        profilePath: "",
+    }), [publication?.ownerUserId]);
 
     const operationLabel =
         OPERATION_LABELS[publication?.operacion] || publication?.operacion || "";
@@ -282,6 +292,16 @@ const ParticularPublicationPublicPage = () => {
                             )}
 
                             <div className="d-flex flex-wrap gap-2 mb-4">
+                                <PortalFavoriteButton
+                                    item={{
+                                        ...publication,
+                                        sourceType: "particular",
+                                        publicPath: `/particulares/${publication.id}`,
+                                        locationLabel: publication.ubicacion,
+                                        priceLabel: publication.precioEstimado || "Consultar precio",
+                                    }}
+                                    className="btn btn-outline-danger portal-favorite-button"
+                                />
                                 {hasVideos && (
                                     <a href="#videos" className="btn btn-outline-primary">
                                         Ver videos
@@ -462,6 +482,14 @@ const ParticularPublicationPublicPage = () => {
                                         y aprobada por ONO Prop.
                                     </div>
 
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline-secondary w-100 mb-3"
+                                        onClick={() => setSelectedPublisher(publisherDescriptor)}
+                                    >
+                                        Información sobre quien publica
+                                    </button>
+
                                     {contactName && (
                                         <div className="mb-3">
                                             <small className="text-muted d-block">Nombre</small>
@@ -527,6 +555,10 @@ const ParticularPublicationPublicPage = () => {
                     </div>
                 </div>
             </section>
+            <PublicProfileModal
+                publisher={selectedPublisher}
+                onClose={() => setSelectedPublisher(null)}
+            />
         </main>
     );
 };

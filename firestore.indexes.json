@@ -149,6 +149,16 @@
       ]
     },
     {
+      "collectionGroup": "condominium_portal_resources",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "consortiumId", "order": "ASCENDING" },
+        { "fieldPath": "section", "order": "ASCENDING" },
+        { "fieldPath": "published", "order": "ASCENDING" },
+        { "fieldPath": "archived", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "particular_publications",
       "queryScope": "COLLECTION",
       "fields": [
@@ -168,6 +178,14 @@
     }
   ],
   "fieldOverrides": [
+    {
+      "collectionGroup": "condominium_units",
+      "fieldPath": "portalEmails",
+      "indexes": [
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION" },
+        { "arrayConfig": "CONTAINS", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
     {
       "collectionGroup": "instagram_data_deletion_requests",
       "fieldPath": "expiresAt",

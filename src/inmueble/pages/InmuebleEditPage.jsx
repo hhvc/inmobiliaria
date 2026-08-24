@@ -108,6 +108,8 @@ const EMPTY_VALUES = {
   ownerInmobiliariaId: "",
   sucursalId: "",
   ownerId: "",
+  publisherMode: "agency",
+  publisherUserId: "",
 
   sharedWith: {},
   deleted: false,
@@ -357,6 +359,17 @@ const InmuebleEditPage = () => {
             data.ownerInmobiliariaId || resolvedInmobiliariaId,
 
           ownerId: data.ownerId || "",
+          publisherMode:
+            data.publisherMode === "agency"
+              ? "agency"
+              : data.publisherMode === "user" || data.publisher?.type === "user"
+              ? "user"
+              : "agency",
+          publisherUserId:
+            data.publisherUserId ||
+            (data.publisher?.type === "user" ? data.publisher.id : "") ||
+            "",
+          publisher: data.publisher || null,
 
           sharedWith:
             data.sharedWith && typeof data.sharedWith === "object"

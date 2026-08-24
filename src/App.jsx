@@ -5,6 +5,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 
 // Páginas públicas generales
 import PublicHomeRoute from "./pages/PublicHomeRoute";
+import HomePage from "./pages/HomePage";
 import ReservationPage from "./pages/ReservationPage";
 import UserProfilePage from "./pages/UserProfilePage";
 import LoginPage from "./pages/LoginPage";
@@ -13,6 +14,7 @@ import PrivacyPolicyPage from "./legal/PrivacyPolicyPage";
 import TermsPage from "./legal/TermsPage";
 import DataDeletionPage from "./legal/DataDeletionPage";
 import ArcaDelegationGuidePage from "./guides/ArcaDelegationGuidePage";
+import ConsortiumAdministrationGuidePage from "./guides/ConsortiumAdministrationGuidePage";
 
 // Páginas para usuarios registrados particulares
 import ParticularPublicationRequestPage from "./particular/pages/ParticularPublicationRequestPage";
@@ -77,6 +79,8 @@ import InmuebleCreatePage from "./inmueble/pages/InmuebleCreatePage";
 import InmuebleEditPage from "./inmueble/pages/InmuebleEditPage";
 import InmueblePublicPage from "./inmueble/pages/InmueblePublicPage";
 import InmueblePortalPage from "./inmueble/pages/InmueblePortalPage";
+import PortalFavoritesPage from "./inmueble/pages/PortalFavoritesPage";
+import PortalPerformanceDashboardPage from "./inmueble/pages/PortalPerformanceDashboardPage";
 import InmueblePreviewPage from "./inmueble/pages/InmueblePreviewPage";
 import InmuebleConsultasPage from "./inmueble/pages/InmuebleConsultasPage";
 import InmuebleMarketingKitPage from "./inmueble/pages/InmuebleMarketingKitPage";
@@ -131,6 +135,7 @@ import ConsortiumUnitAccountPage from "./consorcios/pages/ConsortiumUnitAccountP
 import ConsortiumReceiptPage from "./consorcios/pages/ConsortiumReceiptPage";
 import ConsortiumResidentPortalPage from "./consorcios/pages/ConsortiumResidentPortalPage";
 import ConsortiumAssessmentPage from "./consorcios/pages/ConsortiumAssessmentPage";
+import ConsortiumEconomicStatementPage from "./consorcios/pages/ConsortiumEconomicStatementPage";
 
 // Control tributario inmobiliario
 import TaxManagementPage from "./tributos/pages/TaxManagementPage";
@@ -152,6 +157,7 @@ function App() {
                  ========================= */}
 
                 <Route path="/" element={<PublicHomeRoute />} />
+                <Route path="/sobre-onoprop" element={<HomePage />} />
                 <Route path="/access-denied" element={<AccessDenied />} />
                 <Route path="/galeria" element={<DynamicGallery />} />
                 <Route path="/contacto" element={<Contact />} />
@@ -173,6 +179,10 @@ function App() {
                   path="/guias/delegacion-arca"
                   element={<ArcaDelegationGuidePage />}
                 />
+                <Route
+                  path="/guias/administracion-consorcios"
+                  element={<ConsortiumAdministrationGuidePage />}
+                />
 
                 {/* =========================
                   Portal público inmobiliario
@@ -188,6 +198,7 @@ function App() {
                   element={<InmobiliariaLinkRequestPage />}
                 />
                 <Route path="/inmuebles" element={<InmueblePortalPage />} />
+                <Route path="/favoritos" element={<PortalFavoritesPage />} />
                 <Route path="/mapa" element={<MapaPortalPage />} />
                 <Route path="/inmueble/:slug" element={<InmueblePublicPage />} />
                 <Route path="/emprendimientos" element={<EmprendimientoPortalPage />} />
@@ -659,6 +670,19 @@ function App() {
                 />
 
                 <Route
+                  path="/admin/consorcios/:id/estado-economico"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="consorcios">
+                        <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
+                          <ConsortiumEconomicStatementPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
                   path="/admin/consorcios/:id/recibos/:paymentId"
                   element={
                     <ProtectedRoute role="admin">
@@ -836,6 +860,19 @@ function App() {
                     <ProtectedRoute role="admin">
                       <InmobiliariaModuleGuard moduleId="inmuebles">
                         <InmuebleListPage />
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/rendimiento"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="inmuebles">
+                        <InmobiliariaInternalPermissionGuard permission="canViewInmuebles">
+                          <PortalPerformanceDashboardPage />
+                        </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>
                   }

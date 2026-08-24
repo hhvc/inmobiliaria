@@ -8,6 +8,10 @@ import ConsortiumExpenseDocumentsPanel from "../components/ConsortiumExpenseDocu
 import ConsortiumCommunicationsPanel from "../components/ConsortiumCommunicationsPanel";
 import ConsortiumPaymentReportsPanel from "../components/ConsortiumPaymentReportsPanel";
 import ConsortiumPenaltiesPanel from "../components/ConsortiumPenaltiesPanel";
+import ConsortiumTreasuryPanel from "../components/ConsortiumTreasuryPanel";
+import ConsortiumClaimsPanel from "../components/ConsortiumClaimsPanel";
+import ConsortiumPortalInformationPanel from "../components/ConsortiumPortalInformationPanel";
+import ConsortiumMonthlyCloseAssistant from "../components/ConsortiumMonthlyCloseAssistant";
 import {
   getInternalPermissions,
   getInternalRoleForInmobiliaria,
@@ -23,6 +27,7 @@ import {
   createConsortiumUnit,
   getConsortiumById,
   getConsortiumExpenseDocuments,
+  getConsortiumMonthlyCloseChecklist,
   getConsortiumObligations,
   getConsortiumPaymentReports,
   getConsortiumPeriods,
@@ -98,11 +103,22 @@ const ConsortiumDetailPage = () => {
   const [obligations, setObligations] = useState([]);
   const [expenseDocuments, setExpenseDocuments] = useState([]);
   const [paymentReports, setPaymentReports] = useState([]);
+  const [treasuryAccounts, setTreasuryAccounts] = useState([]);
+  const [consortiumSuppliers, setConsortiumSuppliers] = useState([]);
+  const [treasuryRefreshKey, setTreasuryRefreshKey] = useState(0);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [periodExpenses, setPeriodExpenses] = useState([]);
   const [unitForm, setUnitForm] = useState(createEmptyConsortiumUnit);
   const [editingUnitId, setEditingUnitId] = useState("");
   const [unitChangeForm, setUnitChangeForm] = useState(emptyUnitChangeForm);
+  const [activeWorkspace, setActiveWorkspace] = useState("liquidations");
+  const [showUnitForm, setShowUnitForm] = useState(false);
+  const [showOpeningBalanceForm, setShowOpeningBalanceForm] = useState(false);
+  const [showCloseAssistant, setShowCloseAssistant] = useState(false);
+  const [closeAssistantLoading, setCloseAssistantLoading] = useState(false);
+  const [closeChecklist, setCloseChecklist] = useState(null);
+  const [closeAcknowledged, setCloseAcknowledged] = useState(false);
+  const [closeNote, setCloseNote] = useState("");
   const [expenseForm, setExpenseForm] = useState(() => ({
     ...createEmptyConsortiumExpense(),
     amountMajor: "",
@@ -116,6 +132,7 @@ const ConsortiumDetailPage = () => {
     method: "transfer",
     reference: "",
     notes: "",
+    treasuryAccountId: "",
   });
   const [openingBalanceForm, setOpeningBalanceForm] = useState(emptyOpeningBalanceForm);
   const [adjustmentForm, setAdjustmentForm] = useState(emptyAdjustmentForm);
@@ -197,6 +214,10 @@ const ConsortiumDetailPage = () => {
     setPeriodExpenses(Array.isArray(selectedPeriod?.expenses) ? selectedPeriod.expenses : []);
     setPaymentForm((current) => ({ ...current, obligationId: "", amountMajor: "" }));
     setAdjustmentForm(emptyAdjustmentForm());
+    setShowCloseAssistant(false);
+    setCloseChecklist(null);
+    setCloseAcknowledged(false);
+    setCloseNote("");
   }, [selectedPeriod]);
 
   const selectedObligations = useMemo(
@@ -248,6 +269,21 @@ const ConsortiumDetailPage = () => {
     setUnitChangeForm(emptyUnitChangeForm());
   };
 
+  const openNewUnitForm = () => {
+    resetMessages();
+    resetUnitForm();
+    setActiveWorkspace("units");
+    setShowUnitForm(true);
+    setTimeout(() => {
+      document.getElementById("consortium-unit-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const closeUnitForm = () => {
+    resetUnitForm();
+    setShowUnitForm(false);
+  };
+
   const submitUnit = async (event) => {
     event.preventDefault();
     try {
@@ -265,6 +301,7 @@ const ConsortiumDetailPage = () => {
         setSuccess("Unidad creada.");
       }
       resetUnitForm();
+      setShowUnitForm(false);
       await load();
     } catch (saveError) {
       setError(saveError.message || "No se pudo guardar la unidad.");
@@ -283,12 +320,23 @@ const ConsortiumDetailPage = () => {
       ...unit,
       ownerEmail: unit.ownerEmail || unit.email || "",
       email: unit.ownerEmail ? unit.email || "" : "",
+      manualOwnerPortalEmails: Array.isArray(unit.manualOwnerPortalEmails)
+        ? unit.manualOwnerPortalEmails
+        : [],
       manualPortalEmails: Array.isArray(unit.manualPortalEmails)
         ? unit.manualPortalEmails
-        : (unit.portalEmails || []).filter((email) => !notificationEmails.has(email)),
+        : (unit.portalEmails || []).filter((email) => (
+          !notificationEmails.has(email)
+          && email !== unit.ownerEmail
+          && email !== unit.occupantEmail
+        )),
     });
     setUnitChangeForm(emptyUnitChangeForm());
-    document.getElementById("consortium-unit-form")?.scrollIntoView({ behavior: "smooth" });
+    setActiveWorkspace("units");
+    setShowUnitForm(true);
+    setTimeout(() => {
+      document.getElementById("consortium-unit-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const removeUnit = async (unit) => {
@@ -399,6 +447,9 @@ const ConsortiumDetailPage = () => {
       method: "transfer",
       reference: "",
       notes: "",
+      treasuryAccountId: treasuryAccounts.find((item) => (
+        item.active !== false && item.currency === obligation.currency
+      ))?.id || "",
     });
     document.getElementById("consortium-payment-form")?.scrollIntoView({ behavior: "smooth" });
   };
@@ -416,10 +467,12 @@ const ConsortiumDetailPage = () => {
         method: paymentForm.method,
         reference: paymentForm.reference,
         notes: paymentForm.notes,
+        treasuryAccountId: paymentForm.treasuryAccountId,
       });
       setLastPaymentId(paymentId);
       setSuccess("Cobro registrado. Ya podés abrir el recibo.");
-      setPaymentForm((current) => ({ ...current, obligationId: "", amountMajor: "", reference: "", notes: "" }));
+      setPaymentForm((current) => ({ ...current, obligationId: "", amountMajor: "", reference: "", notes: "", treasuryAccountId: "" }));
+      setTreasuryRefreshKey((current) => current + 1);
       await load();
     } catch (paymentError) {
       setError(paymentError.message || "No se pudo registrar el cobro.");
@@ -451,6 +504,7 @@ const ConsortiumDetailPage = () => {
         ...emptyOpeningBalanceForm(),
         dueDate: getDefaultConsortiumDueDate(currentPeriodKey(), consortium.dueDay),
       });
+      setShowOpeningBalanceForm(false);
       await load();
       if (result.periodId) setSelectedPeriodId(result.periodId);
     } catch (openingError) {
@@ -498,6 +552,7 @@ const ConsortiumDetailPage = () => {
   };
 
   const openPenaltyForUnit = (unitId) => {
+    setActiveWorkspace("penalties");
     setPenaltyRequest({ unitId, nonce: Date.now() });
   };
 
@@ -540,12 +595,59 @@ const ConsortiumDetailPage = () => {
     }
   };
 
+  const refreshCloseChecklist = async () => {
+    if (!selectedPeriod) return;
+    try {
+      setCloseAssistantLoading(true);
+      setError("");
+      const checklist = await getConsortiumMonthlyCloseChecklist({
+        inmobiliariaId: activeInmobiliariaId,
+        consortiumId,
+        periodId: selectedPeriod.id,
+      });
+      setCloseChecklist(checklist);
+      setCloseAcknowledged(false);
+    } catch (checkError) {
+      setCloseChecklist(null);
+      setError(checkError.message || "No se pudo controlar el cierre mensual.");
+    } finally {
+      setCloseAssistantLoading(false);
+    }
+  };
+
+  const openCloseAssistant = async () => {
+    resetMessages();
+    setShowCloseAssistant(true);
+    setCloseNote("");
+    setCloseAcknowledged(false);
+    await refreshCloseChecklist();
+    setTimeout(() => {
+      document.getElementById("consortium-monthly-close")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const navigateFromCloseAssistant = (area) => {
+    setShowCloseAssistant(false);
+    setActiveWorkspace(area);
+  };
+
   const closePeriod = async () => {
     try {
       resetMessages();
       setOperation("close-period");
-      await closeConsortiumPeriod({ inmobiliariaId: activeInmobiliariaId, periodId: selectedPeriod.id });
-      setSuccess("Período cerrado sin saldos pendientes.");
+      await closeConsortiumPeriod({
+        inmobiliariaId: activeInmobiliariaId,
+        consortiumId,
+        periodId: selectedPeriod.id,
+        acknowledgeWarnings: closeAcknowledged,
+        reviewedWarningSignatures: closeChecklist?.warnings?.map(
+          (item) => `${item.code}:${item.count}:${item.amountMinor}`,
+        ) || [],
+        note: closeNote,
+      });
+      setShowCloseAssistant(false);
+      setCloseChecklist(null);
+      setSuccess("Cierre mensual confirmado. Las deudas y obligaciones pendientes continúan en sus cuentas corrientes.");
       await load();
     } catch (closeError) {
       setError(closeError.message || "No se pudo cerrar el período.");
@@ -572,6 +674,14 @@ const ConsortiumDetailPage = () => {
 
   const periodState = getConsortiumPeriodStatus(selectedPeriod?.status);
   const draftTotal = periodExpenses.reduce((sum, item) => sum + Number(item.amountMinor || 0), 0);
+  const workspaceItems = [
+    { id: "liquidations", label: "Liquidaciones", hint: "Expensas, cobros y comprobantes" },
+    { id: "treasury", label: "Tesorería", hint: "Cuentas, proveedores y conciliación" },
+    { id: "messages", label: "Mensajes", hint: "Consultas, avisos y reclamos" },
+    { id: "penalties", label: "Multas", hint: "Débitos y seguimiento" },
+    { id: "information", label: "Edificio", hint: "Información para consorcistas" },
+    { id: "units", label: "Unidades", hint: "Padrón y configuración inicial" },
+  ];
 
   return (
     <main className="container py-4 consortium-workspace">
@@ -583,6 +693,7 @@ const ConsortiumDetailPage = () => {
           <p className="text-muted mb-0">{consortium.address}{consortium.city ? ` · ${consortium.city}` : ""}</p>
         </div>
         <div className="d-flex flex-wrap gap-2">
+          <Link className="btn btn-outline-primary" to="/guias/administracion-consorcios">Manual</Link>
           {canManage && <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/editar`}>Editar consorcio</Link>}
           {canManage && consortium.status !== "archived" && (
             <button className="btn btn-outline-danger" type="button" disabled={Boolean(operation)} onClick={handleArchiveConsortium}>Archivar</button>
@@ -608,13 +719,36 @@ const ConsortiumDetailPage = () => {
         <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><span className="small text-muted text-uppercase">Vencidas</span><strong className="fs-4 d-block">{periodSummary.overdue}</strong></div></div></div>
       </section>
 
-      <section className="card border-0 shadow-sm mb-4 consortium-section-anchor" id="unidades">
+      <nav className="consortium-workspace-nav card border-0 shadow-sm mb-4" aria-label="Áreas de administración del consorcio">
+        <div className="card-body p-2">
+          <div className="nav nav-pills nav-fill gap-2" role="tablist">
+            {workspaceItems.map((item) => (
+              <button
+                aria-selected={activeWorkspace === item.id}
+                className={`nav-link text-start ${activeWorkspace === item.id ? "active" : ""}`}
+                key={item.id}
+                onClick={() => setActiveWorkspace(item.id)}
+                role="tab"
+                type="button"
+              >
+                <strong className="d-block">{item.label}</strong>
+                <small className="d-block">{item.hint}</small>
+              </button>
+            ))}
+          </div>
+        </div>
+      </nav>
+
+      {activeWorkspace === "units" && <section className="card border-0 shadow-sm mb-4 consortium-section-anchor" id="unidades">
         <div className="card-body p-4">
           <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-            <div><h2 className="h5 mb-1">Unidades funcionales</h2><p className="text-muted small mb-0">El coeficiente se usa como peso relativo y no necesita sumar exactamente 100.</p></div>
-            <span className="badge text-bg-light border">{activeUnits.length} activas</span>
+            <div><h2 className="h5 mb-1">Padrón de unidades</h2><p className="text-muted small mb-0">Consultá cuentas y contactos. El alta y la edición se abren únicamente cuando las necesitás.</p></div>
+            <div className="d-flex align-items-center gap-2">
+              <span className="badge text-bg-light border">{activeUnits.length} activas</span>
+              {canManage && <button className="btn btn-sm btn-primary" type="button" onClick={openNewUnitForm}>Agregar unidad</button>}
+            </div>
           </div>
-          <div className="table-responsive mb-4">
+          <div className={`table-responsive ${showUnitForm ? "mb-4" : ""}`}>
             <table className="table table-hover consortium-unit-table">
               <thead><tr><th>Unidad</th><th>Tipo</th><th>Coeficiente</th><th>Titular / ocupante</th><th>Contacto</th><th>Saldo a favor</th><th className="text-end">Acciones</th></tr></thead>
               <tbody>
@@ -636,13 +770,13 @@ const ConsortiumDetailPage = () => {
                     </td>
                   </tr>
                 ))}
-                {!activeUnits.length && <tr><td className="text-center text-muted py-4" colSpan="7">Cargá la primera unidad funcional.</td></tr>}
+                {!activeUnits.length && <tr><td className="text-center text-muted py-4" colSpan="7">Todavía no hay unidades cargadas.{canManage && <button className="btn btn-sm btn-link" type="button" onClick={openNewUnitForm}>Cargar la primera</button>}</td></tr>}
               </tbody>
             </table>
           </div>
 
-          {canManage && <form id="consortium-unit-form" className="rounded border bg-light p-3" onSubmit={submitUnit}>
-            <div className="d-flex justify-content-between align-items-center mb-3"><h3 className="h6 mb-0">{editingUnitId ? "Editar unidad" : "Agregar unidad"}</h3>{editingUnitId && <button className="btn btn-sm btn-link" type="button" onClick={resetUnitForm}>Cancelar edición</button>}</div>
+          {canManage && showUnitForm && <form id="consortium-unit-form" className="rounded border bg-light p-3 consortium-section-anchor" onSubmit={submitUnit}>
+            <div className="d-flex justify-content-between align-items-center mb-3"><div><h3 className="h6 mb-1">{editingUnitId ? "Editar unidad" : "Agregar unidad"}</h3><small className="text-muted">Configuración administrativa, contactos y accesos al portal.</small></div><button className="btn btn-sm btn-outline-secondary" type="button" onClick={closeUnitForm}>Cerrar</button></div>
             <div className="row g-3">
               <div className="col-md-3"><label className="form-label">Identificador *</label><input className="form-control" placeholder="Ej. 2 B" value={unitForm.code} onChange={(e) => setUnitForm((c) => ({ ...c, code: e.target.value }))} required /></div>
               <div className="col-md-2"><label className="form-label">Piso</label><input className="form-control" value={unitForm.floor} onChange={(e) => setUnitForm((c) => ({ ...c, floor: e.target.value }))} /></div>
@@ -663,22 +797,44 @@ const ConsortiumDetailPage = () => {
               <div className="col-md-4"><label className="form-label">Automatización de esta unidad</label><select className="form-select" value={unitForm.notificationAutomationMode || "inherit"} onChange={(e) => setUnitForm((c) => ({ ...c, notificationAutomationMode: e.target.value }))}><option value="inherit">Heredar del consorcio</option><option value="custom">Configuración personalizada</option><option value="disabled">Excluir de automatizaciones</option></select><small className="text-muted">Nunca puede activarse si el consorcio no está autorizado.</small></div>
               {unitForm.notificationAutomationMode === "custom" && <><div className="col-md-4"><div className="form-check mt-md-4 pt-md-2"><input className="form-check-input" id="unit-send-on-issue" type="checkbox" checked={unitForm.notificationSendOnIssue === true} onChange={(e) => setUnitForm((c) => ({ ...c, notificationSendOnIssue: e.target.checked }))} /><label className="form-check-label" htmlFor="unit-send-on-issue">Enviar al emitir</label></div></div><div className="col-md-4"><label className="form-label">Avisos previos</label><input className="form-control" value={reminderDaysInput(unitForm.notificationPreDueDays)} onChange={(e) => setUnitForm((c) => ({ ...c, notificationPreDueDays: e.target.value }))} placeholder="3" /><small className="text-muted">Días antes; vacío desactiva.</small></div><div className="col-md-4"><label className="form-label">Avisos de mora</label><input className="form-control" value={reminderDaysInput(unitForm.notificationOverdueDays)} onChange={(e) => setUnitForm((c) => ({ ...c, notificationOverdueDays: e.target.value }))} placeholder="1, 7, 15" /><small className="text-muted">Días después; vacío desactiva.</small></div></>}
               <div className="col-md-4"><label className="form-label">Teléfono</label><input className="form-control" value={unitForm.phone} onChange={(e) => setUnitForm((c) => ({ ...c, phone: e.target.value }))} /></div>
-              <div className="col-md-8"><label className="form-label">Accesos adicionales a Mi consorcio</label><textarea className="form-control" rows="2" placeholder="Un email por línea" value={(unitForm.manualPortalEmails || []).join("\n")} onChange={(e) => setUnitForm((c) => ({ ...c, manualPortalEmails: e.target.value.split(/[\n,;]+/) }))} /><small className="text-muted">Los destinatarios elegidos arriba se habilitan automáticamente. Agregá aquí otros usuarios autorizados.</small></div>
+              <div className="col-md-6"><label className="form-label">Accesos adicionales como propietario</label><textarea className="form-control" rows="2" placeholder="Un email por línea" value={(unitForm.manualOwnerPortalEmails || []).join("\n")} onChange={(e) => setUnitForm((c) => ({ ...c, manualOwnerPortalEmails: e.target.value.split(/[\n,;]+/) }))} /><small className="text-muted">Podrán ver pólizas, actas, reglamento de copropiedad y demás contenido reservado.</small></div>
+              <div className="col-md-6"><label className="form-label">Accesos adicionales como ocupante</label><textarea className="form-control" rows="2" placeholder="Un email por línea" value={(unitForm.manualPortalEmails || []).join("\n")} onChange={(e) => setUnitForm((c) => ({ ...c, manualPortalEmails: e.target.value.split(/[\n,;]+/) }))} /><small className="text-muted">Verán únicamente los bloques habilitados para propietarios y ocupantes.</small></div>
               {editingUnitId && <div className="col-md-8"><label className="form-label">Motivo de la edición *</label><textarea className="form-control" rows="2" placeholder="Ej. Cambio de titular informado mediante escritura del 05/08/2026" value={unitChangeForm.reason} onChange={(e) => setUnitChangeForm((c) => ({ ...c, reason: e.target.value }))} required /><small className="text-muted">Se incorporará al historial permanente de la unidad.</small></div>}
               <div className="col-md-4 d-flex align-items-end justify-content-end"><button className="btn btn-primary" disabled={operation === "unit"} type="submit">{operation === "unit" ? "Guardando..." : editingUnitId ? "Guardar cambios" : "Agregar unidad"}</button></div>
             </div>
           </form>}
         </div>
-      </section>
+      </section>}
 
-      {canManage && (
+      <div hidden={activeWorkspace !== "information"}>
+        <ConsortiumPortalInformationPanel
+          inmobiliariaId={activeInmobiliariaId}
+          consortiumId={consortiumId}
+          canManage={canManage}
+        />
+      </div>
+
+      <div hidden={activeWorkspace !== "messages"}>
+        <ConsortiumClaimsPanel
+          inmobiliariaId={activeInmobiliariaId}
+          consortium={{ id: consortiumId, ...consortium }}
+          units={activeUnits}
+          suppliers={consortiumSuppliers}
+          canManage={canManage}
+        />
+      </div>
+
+      {activeWorkspace === "units" && canManage && (
         <section className="card border-0 shadow-sm mb-4 consortium-section-anchor" id="saldos-iniciales">
           <div className="card-body p-4">
-            <div className="mb-3">
-              <h2 className="h5 mb-1">Saldos iniciales</h2>
-              <p className="text-muted small mb-0">Usalos al incorporar una administración con deuda o crédito previo. Cada alta queda registrada como movimiento independiente.</p>
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-3">
+              <div>
+                <div className="d-flex flex-wrap align-items-center gap-2 mb-1"><h2 className="h5 mb-0">Migración y saldos iniciales</h2><span className="badge text-bg-light border">Configuración inicial</span></div>
+                <p className="text-muted small mb-0">Solo se usa al incorporar deuda o crédito proveniente de una administración anterior.</p>
+              </div>
+              <button className="btn btn-sm btn-outline-primary" type="button" onClick={() => setShowOpeningBalanceForm((current) => !current)}>{showOpeningBalanceForm ? "Cerrar formulario" : "Registrar saldo anterior"}</button>
             </div>
-            <form onSubmit={submitOpeningBalance}>
+            {showOpeningBalanceForm && <form className="border-top mt-4 pt-4" onSubmit={submitOpeningBalance}>
               <div className="row g-3">
                 <div className="col-md-3"><label className="form-label">Unidad *</label><select className="form-select" value={openingBalanceForm.unitId} onChange={(e) => setOpeningBalanceForm((c) => ({ ...c, unitId: e.target.value }))} required><option value="">Seleccionar...</option>{activeUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.code}</option>)}</select></div>
                 <div className="col-md-3"><label className="form-label">Tipo *</label><select className="form-select" value={openingBalanceForm.type} onChange={(e) => setOpeningBalanceForm((c) => ({ ...c, type: e.target.value }))}><option value="debit">Deuda anterior</option><option value="credit">Saldo a favor anterior</option></select></div>
@@ -688,22 +844,37 @@ const ConsortiumDetailPage = () => {
                 <div className={openingBalanceForm.type === "debit" ? "col-md-6" : "col-md-12"}><label className="form-label">Origen / motivo *</label><input className="form-control" placeholder="Ej. Migración de cuenta corriente anterior" value={openingBalanceForm.reason} onChange={(e) => setOpeningBalanceForm((c) => ({ ...c, reason: e.target.value }))} required /></div>
                 <div className="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2"><small className="text-muted">El saldo a favor se exhibe por separado y no se imputa automáticamente hasta confirmar su aplicación.</small><button className="btn btn-outline-primary" disabled={operation === "opening-balance" || !activeUnits.length} type="submit">{operation === "opening-balance" ? "Registrando..." : "Registrar saldo inicial"}</button></div>
               </div>
-            </form>
+            </form>}
           </div>
         </section>
       )}
 
-      <ConsortiumPenaltiesPanel
-        inmobiliariaId={activeInmobiliariaId}
-        consortium={{ id: consortiumId, ...consortium }}
-        units={activeUnits}
-        obligations={obligations}
-        canManage={canManage}
-        requestedUnitId={penaltyRequest.unitId}
-        requestNonce={penaltyRequest.nonce}
-        onChanged={load}
-      />
+      <div hidden={activeWorkspace !== "penalties"}>
+        <ConsortiumPenaltiesPanel
+          inmobiliariaId={activeInmobiliariaId}
+          consortium={{ id: consortiumId, ...consortium }}
+          units={activeUnits}
+          obligations={obligations}
+          canManage={canManage}
+          requestedUnitId={penaltyRequest.unitId}
+          requestNonce={penaltyRequest.nonce}
+          onChanged={load}
+        />
+      </div>
 
+      <div hidden={activeWorkspace !== "treasury"}>
+        <ConsortiumTreasuryPanel
+          inmobiliariaId={activeInmobiliariaId}
+          consortium={{ id: consortiumId, ...consortium }}
+          periods={periods}
+          canManage={canManage}
+          refreshKey={treasuryRefreshKey}
+          onAccountsChanged={setTreasuryAccounts}
+          onSuppliersChanged={setConsortiumSuppliers}
+        />
+      </div>
+
+      {activeWorkspace === "liquidations" && <>
       <section className="card border-0 shadow-sm mb-4 consortium-section-anchor" id="liquidaciones">
         <div className="card-body p-4">
           <h2 className="h5">Liquidaciones mensuales</h2>
@@ -778,7 +949,22 @@ const ConsortiumDetailPage = () => {
       {selectedPeriod && selectedPeriod.status !== "draft" && (
         <section className="card border-0 shadow-sm mb-4">
           <div className="card-body p-4">
-            <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h2 className="h5 mb-1">{selectedPeriod.source === "penalty" ? "Débito por multa" : "Expensas emitidas"} · {getConsortiumAccountingPeriodLabel(selectedPeriod)}</h2><p className="text-muted small mb-0">Total {formatConsortiumMoney(periodSummary.total, selectedPeriod.currency)} · cobrado {formatConsortiumMoney(periodSummary.paid, selectedPeriod.currency)} · saldo {formatConsortiumMoney(periodSummary.balance, selectedPeriod.currency)}</p></div>{canManage && selectedPeriod.status === "issued" && periodSummary.balance <= 0 && <button className="btn btn-outline-success" disabled={operation === "close-period"} type="button" onClick={closePeriod}>Cerrar período</button>}</div>
+            <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h2 className="h5 mb-1">{selectedPeriod.source === "penalty" ? "Débito por multa" : "Expensas emitidas"} · {getConsortiumAccountingPeriodLabel(selectedPeriod)}</h2><p className="text-muted small mb-0">Total {formatConsortiumMoney(periodSummary.total, selectedPeriod.currency)} · cobrado {formatConsortiumMoney(periodSummary.paid, selectedPeriod.currency)} · saldo {formatConsortiumMoney(periodSummary.balance, selectedPeriod.currency)}</p>{selectedPeriod.status === "closed" && <small className="text-success d-block mt-1">Cierre mensual confirmado{selectedPeriod.closeReview?.summary ? ` · ${selectedPeriod.closeReview.summary.warningCount || 0} advertencia(s) registradas` : ""}.</small>}</div>{canManage && selectedPeriod.status === "issued" && <button className="btn btn-outline-success" disabled={closeAssistantLoading || operation === "close-period"} type="button" onClick={openCloseAssistant}>{closeAssistantLoading ? "Controlando..." : "Revisar cierre mensual"}</button>}</div>
+            {showCloseAssistant && <div id="consortium-monthly-close"><ConsortiumMonthlyCloseAssistant
+              acknowledged={closeAcknowledged}
+              checklist={closeChecklist}
+              consortiumId={consortiumId}
+              currency={selectedPeriod.currency || consortium.currency}
+              loading={closeAssistantLoading}
+              note={closeNote}
+              operation={operation}
+              onAcknowledgedChange={setCloseAcknowledged}
+              onClose={() => setShowCloseAssistant(false)}
+              onConfirm={closePeriod}
+              onNavigate={navigateFromCloseAssistant}
+              onNoteChange={setCloseNote}
+              onRefresh={refreshCloseChecklist}
+            /></div>}
             <ConsortiumPaymentReportsPanel
               reports={paymentReports}
               periodId={selectedPeriod.id}
@@ -817,12 +1003,21 @@ const ConsortiumDetailPage = () => {
             {canManage && paymentForm.obligationId && (
               <form id="consortium-payment-form" className="rounded border bg-light p-3 mt-4" onSubmit={submitPayment}>
                 <div className="d-flex justify-content-between align-items-center mb-3"><h3 className="h6 mb-0">Registrar cobro</h3><button className="btn btn-sm btn-link" type="button" onClick={() => setPaymentForm((c) => ({ ...c, obligationId: "" }))}>Cancelar</button></div>
-                <div className="row g-3"><div className="col-md-3"><label className="form-label">Importe</label><input className="form-control" inputMode="decimal" value={paymentForm.amountMajor} onChange={(e) => setPaymentForm((c) => ({ ...c, amountMajor: e.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Fecha</label><input className="form-control" type="date" value={paymentForm.date} onChange={(e) => setPaymentForm((c) => ({ ...c, date: e.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Medio</label><select className="form-select" value={paymentForm.method} onChange={(e) => setPaymentForm((c) => ({ ...c, method: e.target.value }))}>{CONSORTIUM_PAYMENT_METHODS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div><div className="col-md-3"><label className="form-label">Referencia</label><input className="form-control" value={paymentForm.reference} onChange={(e) => setPaymentForm((c) => ({ ...c, reference: e.target.value }))} /></div><div className="col-12"><label className="form-label">Observaciones</label><input className="form-control" value={paymentForm.notes} onChange={(e) => setPaymentForm((c) => ({ ...c, notes: e.target.value }))} /></div><div className="col-12 text-end"><button className="btn btn-success" disabled={operation === "payment"} type="submit">Confirmar cobro</button></div></div>
+                <div className="row g-3">
+                  <div className="col-md-3"><label className="form-label">Importe</label><input className="form-control" inputMode="decimal" value={paymentForm.amountMajor} onChange={(e) => setPaymentForm((c) => ({ ...c, amountMajor: e.target.value }))} required /></div>
+                  <div className="col-md-3"><label className="form-label">Fecha</label><input className="form-control" type="date" value={paymentForm.date} onChange={(e) => setPaymentForm((c) => ({ ...c, date: e.target.value }))} required /></div>
+                  <div className="col-md-3"><label className="form-label">Medio</label><select className="form-select" value={paymentForm.method} onChange={(e) => setPaymentForm((c) => ({ ...c, method: e.target.value }))}>{CONSORTIUM_PAYMENT_METHODS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
+                  <div className="col-md-3"><label className="form-label">Referencia</label><input className="form-control" value={paymentForm.reference} onChange={(e) => setPaymentForm((c) => ({ ...c, reference: e.target.value }))} /></div>
+                  <div className="col-md-5"><label className="form-label">Ingresar fondos en</label><select className="form-select" value={paymentForm.treasuryAccountId} onChange={(e) => setPaymentForm((c) => ({ ...c, treasuryAccountId: e.target.value }))}><option value="">No afectar tesorería</option>{treasuryAccounts.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name} · {formatConsortiumMoney(item.currentBalanceMinor, item.currency)}</option>)}</select><small className="text-muted">Si elegís una cuenta, el cobro generará el ingreso automáticamente.</small></div>
+                  <div className="col-md-7"><label className="form-label">Observaciones</label><input className="form-control" value={paymentForm.notes} onChange={(e) => setPaymentForm((c) => ({ ...c, notes: e.target.value }))} /></div>
+                  <div className="col-12 text-end"><button className="btn btn-success" disabled={operation === "payment"} type="submit">Confirmar cobro</button></div>
+                </div>
               </form>
             )}
           </div>
         </section>
       )}
+      </>}
     </main>
   );
 };

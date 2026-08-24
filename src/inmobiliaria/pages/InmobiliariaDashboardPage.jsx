@@ -10,65 +10,72 @@ import {
 
 const DEFAULT_MODULES = ["inmuebles", "consultas"];
 
+const DASHBOARD_SECTIONS = [
+    {
+        id: "daily",
+        eyebrow: "Trabajo diario",
+        title: "Operación de la inmobiliaria",
+        description: "Las herramientas que más vas a usar para gestionar el negocio.",
+    },
+    {
+        id: "network",
+        eyebrow: "Colaboración",
+        title: "Red y publicaciones compartidas",
+        description: "Intercambiá oportunidades y administrá qué avisos muestra tu inmobiliaria.",
+    },
+    {
+        id: "settings",
+        eyebrow: "Administración",
+        title: "Configuración y servicios",
+        description: "Identidad, equipo, sucursales, dominios y relación comercial con ONO Prop.",
+    },
+];
+
 const MODULE_CARDS = [
     {
-        id: "branches",
-        title: "Sucursales",
-        description: "Crear páginas de sucursal, asignar responsables y administrar sus datos de contacto.",
-        route: "/admin/inmobiliaria/sucursales",
-        cta: "Administrar sucursales",
-        icon: "🏢",
-        alwaysAvailable: true,
-    },
-    {
-        id: "friends",
-        title: "Inmobiliarias amigas",
-        description: "Crear grupos privados, enviar invitaciones y definir con quién compartir avisos.",
-        route: "/admin/inmobiliaria/amigas",
-        cta: "Administrar red privada",
-        icon: "🤝",
-        alwaysAvailable: true,
-    },
-    {
-        id: "shared-catalog",
-        title: "Catálogo compartido",
-        description: "Mostrar, ocultar, asignar a sucursales o destacar avisos de inmobiliarias amigas.",
-        route: "/admin/inmobiliaria/catalogo-compartido",
-        cta: "Abrir catálogo compartido",
-        icon: "🔁",
-        alwaysAvailable: true,
-    },
-    {
-        id: "billing",
-        title: "Cuenta corriente y servicios",
-        description:
-            "Contratar servicios, informar pagos, consultar saldos y usar créditos de destacados.",
-        routeFactory: (inmobiliariaId) => (
-            `/admin/inmobiliaria/cuenta-corriente?inmobiliariaId=${inmobiliariaId}`
-        ),
-        cta: "Abrir cuenta corriente",
-        icon: "💳",
-        alwaysAvailable: true,
-    },
-    {
         id: "inmuebles",
+        section: "daily",
         title: "Inmuebles",
-        description: "Crear, editar, publicar y administrar propiedades.",
+        description:
+            "Crear, editar, publicar, compartir y difundir propiedades en el portal y las integraciones.",
         route: "/admin/inmuebles/listado",
         cta: "Administrar inmuebles",
+        secondaryRoute: "/admin/inmuebles/nuevo",
+        secondaryCta: "Cargar nuevo",
         icon: "🏠",
     },
     {
-        id: "emprendimientos",
-        title: "Emprendimientos",
-        description: "Administrar edificios, loteos, desarrollos y sus unidades.",
-        route: "/admin/emprendimientos",
-        cta: "Administrar emprendimientos",
-        icon: "🏗️",
+        id: "consultas",
+        section: "daily",
+        title: "Consultas y leads",
+        description: "Responder las consultas recibidas desde las fichas públicas.",
+        route: "/admin/inmuebles/consultas",
+        cta: "Ver consultas",
+        icon: "📩",
+    },
+    {
+        id: "solicitudes-particulares",
+        section: "daily",
+        title: "Solicitudes particulares",
+        description: "Revisar pedidos de propietarios que eligieron esta inmobiliaria.",
+        route: "/admin/inmobiliaria/solicitudes-particulares",
+        cta: "Ver solicitudes",
+        icon: "🙋",
+        requiredModules: ["consultas"],
+    },
+    {
+        id: "performance",
+        section: "daily",
+        title: "Rendimiento de publicaciones",
+        description: "Comparar visitas, favoritos, contactos y resultados de los avisos destacados.",
+        route: "/admin/rendimiento",
+        cta: "Ver rendimiento",
+        icon: "📊",
         requiredModules: ["inmuebles"],
     },
     {
         id: "alquileres",
+        section: "daily",
         title: "Administración de alquileres",
         description: "Gestionar contratos, vencimientos, cobros, gastos y liquidaciones.",
         route: "/admin/alquileres",
@@ -77,97 +84,148 @@ const MODULE_CARDS = [
     },
     {
         id: "consorcios",
+        section: "daily",
         title: "Administración de consorcios",
-        description: "Gestionar unidades funcionales, liquidaciones, expensas, cobros y cuentas corrientes.",
+        description: "Gestionar unidades, expensas, cobros y cuentas corrientes.",
         route: "/admin/consorcios",
         cta: "Administrar consorcios",
-        icon: "🏢",
+        icon: "🏙️",
+    },
+    {
+        id: "tasaciones",
+        section: "daily",
+        title: "Tasaciones",
+        description: "Crear expedientes, aplicar métodos de valuación y preparar informes.",
+        route: "/admin/tasaciones",
+        cta: "Administrar tasaciones",
+        icon: "📐",
     },
     {
         id: "tributos",
+        section: "daily",
         title: "Control tributario",
-        description:
-            "Vincular inmuebles, controlar vencimientos y documentar pagos provinciales y municipales.",
+        description: "Controlar vencimientos y documentar pagos provinciales y municipales.",
         route: "/admin/tributos",
         cta: "Administrar tributos",
         icon: "🧾",
     },
     {
-        id: "tasaciones",
-        title: "Tasaciones",
-        description: "Crear expedientes, aplicar métodos de valuación y preparar informes.",
-        route: "/admin/tasaciones",
-        cta: "Administrar tasaciones",
-        icon: "📏",
+        id: "emprendimientos",
+        section: "daily",
+        title: "Emprendimientos",
+        description: "Administrar edificios, loteos, desarrollos y sus unidades.",
+        route: "/admin/emprendimientos",
+        cta: "Administrar emprendimientos",
+        icon: "🏗️",
+        requiredModules: ["inmuebles"],
     },
     {
         id: "parcelas",
+        section: "daily",
         title: "Parcelas y normativa urbana",
-        description:
-            "Consultar nomenclatura, superficies, valuación fiscal, FOS, FOT y usos del suelo.",
+        description: "Consultar superficies, valuación fiscal, FOS, FOT y usos del suelo.",
         route: "/admin/inmobiliaria/parcelas",
         cta: "Consultar parcelas",
         icon: "🗺️",
     },
     {
-        id: "consultas",
-        title: "Consultas",
-        description: "Gestionar leads recibidos desde fichas públicas.",
-        route: "/admin/inmuebles/consultas",
-        cta: "Ver consultas",
-        icon: "📩",
+        id: "network-properties",
+        section: "network",
+        title: "Red de colegas",
+        description: "Consultar inmuebles compartidos por otras inmobiliarias de ONO Prop.",
+        route: "/admin/red/inmuebles-compartidos",
+        cta: "Explorar la red",
+        icon: "🏘️",
+        requiredModules: ["inmuebles"],
     },
     {
-        id: "solicitudes-particulares",
-        title: "Solicitudes particulares",
-        description:
-            "Revisar pedidos enviados por propietarios particulares a esta inmobiliaria.",
-        route: "/admin/inmobiliaria/solicitudes-particulares",
+        id: "network-requests",
+        section: "network",
+        title: "Solicitudes de colaboración",
+        description: "Gestionar pedidos relacionados con inmuebles compartidos en la red.",
+        route: "/admin/red/solicitudes",
         cta: "Ver solicitudes",
-        icon: "🧾",
-        requiredModules: ["consultas"],
+        icon: "🔔",
+        requiredModules: ["inmuebles"],
     },
     {
-        id: "dominios",
-        title: "Dominios propios",
-        description: "Configurar dominios públicos asociados a la inmobiliaria.",
-        route: "/admin/inmobiliaria/dominios",
-        cta: "Configurar dominios",
-        icon: "🌐",
+        id: "friends",
+        section: "network",
+        title: "Inmobiliarias amigas",
+        description: "Crear grupos privados y definir con quién compartir avisos.",
+        route: "/admin/inmobiliaria/amigas",
+        cta: "Administrar grupos",
+        icon: "🤝",
+        alwaysAvailable: true,
+    },
+    {
+        id: "shared-catalog",
+        section: "network",
+        title: "Catálogo de amigas",
+        description: "Mostrar, ocultar, asignar o destacar avisos compartidos por amigas.",
+        route: "/admin/inmobiliaria/catalogo-compartido",
+        cta: "Abrir catálogo",
+        icon: "🔁",
+        alwaysAvailable: true,
     },
     {
         id: "branding",
-        title: "Branding",
+        section: "settings",
+        title: "Marca y página pública",
         description: "Actualizar logo, portada, contacto y datos comerciales.",
         route: "/admin/inmobiliaria/branding",
         cta: "Editar marca",
         icon: "🎨",
     },
     {
+        id: "branches",
+        section: "settings",
+        title: "Sucursales",
+        description: "Crear páginas de sucursal, asignar responsables y administrar sus datos.",
+        route: "/admin/inmobiliaria/sucursales",
+        cta: "Administrar sucursales",
+        icon: "🏢",
+        alwaysAvailable: true,
+    },
+    {
         id: "usuarios",
-        title: "Usuarios",
-        description: "Administrar usuarios vinculados a la inmobiliaria.",
+        section: "settings",
+        title: "Usuarios y permisos",
+        description: "Administrar usuarios vinculados, responsabilidades y accesos internos.",
         route: "/admin/inmobiliaria/usuarios",
         cta: "Gestionar usuarios",
         icon: "👥",
     },
     {
-        id: "reportes",
-        title: "Reportes",
-        description: "Métricas de publicaciones, consultas y rendimiento.",
-        route: null,
-        cta: "Próximamente",
-        icon: "📊",
-        comingSoon: true,
+        id: "dominios",
+        section: "settings",
+        title: "Dominios propios",
+        description: "Configurar los dominios públicos asociados a la inmobiliaria.",
+        route: "/admin/inmobiliaria/dominios",
+        cta: "Configurar dominios",
+        icon: "🌐",
     },
     {
-        id: "instagram",
-        title: "Instagram propio",
-        description:
-            "Conectar la cuenta profesional y publicar inmuebles desde Difusión.",
-        route: "/admin/inmuebles/listado",
-        cta: "Elegir inmueble",
-        icon: "📸",
+        id: "link-requests",
+        section: "settings",
+        title: "Solicitudes de vinculación",
+        description: "Revisar usuarios que solicitaron vincularse con la inmobiliaria.",
+        route: "/admin/inmobiliaria/vinculaciones",
+        cta: "Revisar solicitudes",
+        icon: "🔗",
+        alwaysAvailable: true,
+    },
+    {
+        id: "billing",
+        section: "settings",
+        title: "Cuenta corriente y servicios",
+        description: "Contratar servicios, informar pagos, consultar saldos y créditos.",
+        routeFactory: (inmobiliariaId) => (
+            `/admin/inmobiliaria/cuenta-corriente?inmobiliariaId=${inmobiliariaId}`
+        ),
+        cta: "Abrir cuenta corriente",
+        icon: "💳",
+        alwaysAvailable: true,
     },
 ];
 
@@ -202,40 +260,28 @@ const VERIFICATION_CONFIG = {
 const getRoleFlags = (user) => {
     const roles = user?.roles || [];
     const primaryRole = user?.primaryRole || user?.role || "";
-
     return {
-        isRoot:
-            primaryRole === "root" || user?.role === "root" || roles.includes("root"),
-        isAdmin:
-            primaryRole === "admin" ||
-            user?.role === "admin" ||
-            roles.includes("admin"),
+        isRoot: primaryRole === "root" || user?.role === "root" || roles.includes("root"),
+        isAdmin: primaryRole === "admin" || user?.role === "admin" || roles.includes("admin"),
     };
 };
 
 const getStoredActiveInmobiliariaId = () => {
     if (typeof window === "undefined") return null;
-
-    return (
-        window.localStorage.getItem("activeInmobiliariaId") ||
+    return window.localStorage.getItem("activeInmobiliariaId") ||
         window.localStorage.getItem("inmobiliariaActivaId") ||
         window.localStorage.getItem("activeInmobiliaria") ||
-        null
-    );
+        null;
 };
 
 const getInitialInmobiliariaId = ({ user, inmobiliarias, isRoot }) => {
     const storedId = getStoredActiveInmobiliariaId();
-
-    if (storedId && inmobiliarias.some((inmo) => inmo.id === storedId)) {
-        return storedId;
-    }
+    if (storedId && inmobiliarias.some((item) => item.id === storedId)) return storedId;
 
     if (!isRoot && Array.isArray(user?.inmobiliarias)) {
-        const firstAllowed = user.inmobiliarias.find((id) =>
-            inmobiliarias.some((inmo) => inmo.id === id),
-        );
-
+        const firstAllowed = user.inmobiliarias.find((id) => (
+            inmobiliarias.some((item) => item.id === id)
+        ));
         if (firstAllowed) return firstAllowed;
     }
 
@@ -243,123 +289,77 @@ const getInitialInmobiliariaId = ({ user, inmobiliarias, isRoot }) => {
 };
 
 const moduleIsAvailable = ({ module, subscribedModules, isRoot }) => {
-    if (isRoot) return true;
-    if (module.alwaysAvailable) return true;
-
+    if (isRoot || module.alwaysAvailable) return true;
     if (Array.isArray(module.requiredModules) && module.requiredModules.length) {
-        return module.requiredModules.some((moduleId) =>
-            subscribedModules.includes(moduleId),
-        );
+        return module.requiredModules.some((moduleId) => subscribedModules.includes(moduleId));
     }
-
     return subscribedModules.includes(module.id);
 };
 
-const getModuleRoute = (module, inmobiliariaId, isRoot) => {
-    if (module.rootOnlyRoute && !isRoot) return null;
-
-    if (module.routeFactory) {
-        return module.routeFactory(inmobiliariaId);
-    }
-
-    return module.route;
-};
+const getModuleRoute = (module, inmobiliariaId) => (
+    module.routeFactory ? module.routeFactory(inmobiliariaId) : module.route
+);
 
 const getVerificationStatus = (inmobiliaria) => {
-    const estado =
-        inmobiliaria?.verificacion?.estado || "pendiente_documentacion";
-
+    const estado = inmobiliaria?.verificacion?.estado || "pendiente_documentacion";
+    const fallback = VERIFICATION_CONFIG.pendiente_documentacion;
+    const config = VERIFICATION_CONFIG[estado] || fallback;
     return {
         estado,
-        ...(VERIFICATION_CONFIG[estado] ||
-            VERIFICATION_CONFIG.pendiente_documentacion),
-        label:
-            inmobiliaria?.verificacion?.estadoLabel ||
-            VERIFICATION_CONFIG[estado]?.label ||
-            VERIFICATION_CONFIG.pendiente_documentacion.label,
+        ...config,
+        label: inmobiliaria?.verificacion?.estadoLabel || config.label,
     };
 };
 
-const hasBranding = (inmobiliaria) => {
-    return Boolean(
-        inmobiliaria?.branding?.logo?.url ||
-        inmobiliaria?.branding?.backgrounds?.hero?.url ||
-        inmobiliaria?.branding?.backgrounds?.principal?.url ||
-        inmobiliaria?.branding?.backgrounds?.primary?.url,
-    );
-};
+const hasBranding = (inmobiliaria) => Boolean(
+    inmobiliaria?.branding?.logo?.url ||
+    inmobiliaria?.branding?.backgrounds?.hero?.url ||
+    inmobiliaria?.branding?.backgrounds?.principal?.url ||
+    inmobiliaria?.branding?.backgrounds?.primary?.url,
+);
 
 const hasContact = (inmobiliaria) => {
-    const contacto = inmobiliaria?.configuracion?.contacto || {};
-
-    return Boolean(contacto.email || contacto.telefono || contacto.whatsapp);
+    const contact = inmobiliaria?.configuracion?.contacto || {};
+    return Boolean(contact.email || contact.telefono || contact.whatsapp);
 };
 
-const hasPublicDomain = (inmobiliaria) => {
-    return (
-        Array.isArray(inmobiliaria?.dominiosPublicos) &&
-        inmobiliaria.dominiosPublicos.length > 0
-    );
-};
+const hasPublicDomain = (inmobiliaria) => (
+    Array.isArray(inmobiliaria?.dominiosPublicos) && inmobiliaria.dominiosPublicos.length > 0
+);
 
 const getOnboardingItems = (inmobiliaria) => {
-    const verificationStatus = getVerificationStatus(inmobiliaria);
-    const publicUrl = inmobiliaria?.slug
-        ? `/inmobiliaria/${inmobiliaria.slug}`
-        : "";
-
+    const verification = getVerificationStatus(inmobiliaria);
+    const publicUrl = inmobiliaria?.slug ? `/inmobiliaria/${inmobiliaria.slug}` : "";
     return [
         {
             id: "created",
-            title: "Inmobiliaria creada",
-            description: "El perfil de la inmobiliaria ya existe en ONO Prop.",
+            title: "Página pública creada",
+            description: "La inmobiliaria ya tiene su espacio público en ONO Prop.",
             done: Boolean(inmobiliaria?.id),
             route: publicUrl,
-            cta: "Ver página pública",
+            cta: "Ver página",
         },
         {
             id: "verification",
             title: "Documentación de validación",
-            description: verificationStatus.help,
-            done: verificationStatus.estado === "verificada",
-            warning: verificationStatus.estado !== "verificada",
+            description: verification.help,
+            done: verification.estado === "verificada",
+            warning: verification.estado !== "verificada",
             route: "/admin/inmobiliaria/documentacion",
-            cta:
-                verificationStatus.estado === "verificada"
-                    ? "Ver documentación"
-                    : "Completar documentación",
+            cta: verification.estado === "verificada" ? "Ver documentación" : "Completar",
         },
         {
             id: "branding",
-            title: "Branding y datos comerciales",
-            description: "Logo, portada y datos de contacto públicos.",
+            title: "Marca y datos comerciales",
+            description: "Logo, portada y medios de contacto públicos.",
             done: hasBranding(inmobiliaria) && hasContact(inmobiliaria),
             route: "/admin/inmobiliaria/branding",
-            cta: "Editar branding",
-        },
-        {
-            id: "first-property",
-            title: "Primer inmueble",
-            description: "Cargá una propiedad para empezar a publicar en el portal.",
-            done: false,
-            route: "/admin/inmuebles/nuevo",
-            cta: "Cargar inmueble",
-            optional: true,
-        },
-        {
-            id: "particular-requests",
-            title: "Solicitudes de particulares",
-            description:
-                "Revisá pedidos enviados por propietarios que eligieron esta inmobiliaria.",
-            done: false,
-            route: "/admin/inmobiliaria/solicitudes-particulares",
-            cta: "Ver solicitudes",
-            optional: true,
+            cta: "Editar marca",
         },
         {
             id: "domain",
             title: "Dominio propio",
-            description: "Opcional: conectá un dominio propio para tu inmobiliaria.",
+            description: "Conectá el dominio de la inmobiliaria cuando lo necesites.",
             done: hasPublicDomain(inmobiliaria),
             route: "/admin/inmobiliaria/dominios",
             cta: "Configurar dominio",
@@ -369,90 +369,101 @@ const getOnboardingItems = (inmobiliaria) => {
 };
 
 const getOnboardingProgress = (items = []) => {
-    const requiredItems = items.filter((item) => !item.optional);
-
-    if (requiredItems.length === 0) return 0;
-
-    const completed = requiredItems.filter((item) => item.done).length;
-
-    return Math.round((completed / requiredItems.length) * 100);
+    const required = items.filter((item) => !item.optional);
+    if (required.length === 0) return 0;
+    return Math.round((required.filter((item) => item.done).length / required.length) * 100);
 };
 
-const OnboardingStatusIcon = ({ item }) => {
-    if (item.done) {
-        return <span className="badge text-bg-success">Listo</span>;
-    }
-
-    if (item.warning) {
-        return <span className="badge text-bg-warning">Pendiente</span>;
-    }
-
-    if (item.optional) {
-        return <span className="badge text-bg-light border">Opcional</span>;
-    }
-
+const OnboardingStatus = ({ item }) => {
+    if (item.done) return <span className="badge text-bg-success">Listo</span>;
+    if (item.warning) return <span className="badge text-bg-warning">Pendiente</span>;
+    if (item.optional) return <span className="badge text-bg-light border">Opcional</span>;
     return <span className="badge text-bg-secondary">Pendiente</span>;
+};
+
+const ModuleCard = ({ module, inmobiliariaId, isRoot, subscribedModules }) => {
+    const route = getModuleRoute(module, inmobiliariaId);
+    const isIncluded = module.alwaysAvailable ||
+        subscribedModules.includes(module.id) ||
+        module.requiredModules?.some((id) => subscribedModules.includes(id));
+
+    return (
+        <article className="col-12 col-md-6 col-xl-4">
+            <div className="card h-100 border-0 shadow-sm agency-dashboard-module-card">
+                <div className="card-body p-4 d-flex flex-column">
+                    <div className="d-flex align-items-start justify-content-between gap-3 mb-3">
+                        <div className="agency-dashboard-module-icon" aria-hidden="true">
+                            {module.icon}
+                        </div>
+                        {isRoot && !isIncluded && (
+                            <span className="badge text-bg-light border">No suscripto</span>
+                        )}
+                    </div>
+
+                    <h3 className="h5 mb-2">{module.title}</h3>
+                    <p className="text-muted small mb-4">{module.description}</p>
+
+                    <div className="mt-auto d-flex flex-wrap gap-2">
+                        <Link to={route} className="btn btn-primary flex-grow-1">
+                            {module.cta}
+                        </Link>
+                        {module.secondaryRoute && (
+                            <Link to={module.secondaryRoute} className="btn btn-outline-primary">
+                                {module.secondaryCta}
+                            </Link>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </article>
+    );
 };
 
 const InmobiliariaDashboardPage = () => {
     const { user } = useAuth();
-
     const [inmobiliarias, setInmobiliarias] = useState([]);
     const [activeInmobiliariaId, setActiveInmobiliariaId] = useState("");
-
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-
     const { isRoot, isAdmin } = getRoleFlags(user);
+    const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
 
-    const siteUrl =
-        import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
-
-    const activeInmobiliaria = useMemo(() => {
-        return (
-            inmobiliarias.find((inmo) => inmo.id === activeInmobiliariaId) || null
-        );
-    }, [activeInmobiliariaId, inmobiliarias]);
+    const activeInmobiliaria = useMemo(() => (
+        inmobiliarias.find((item) => item.id === activeInmobiliariaId) || null
+    ), [activeInmobiliariaId, inmobiliarias]);
 
     const subscribedModules = useMemo(() => {
         if (!activeInmobiliaria) return DEFAULT_MODULES;
-
         return Array.isArray(activeInmobiliaria.modulosSuscriptos)
             ? activeInmobiliaria.modulosSuscriptos
             : DEFAULT_MODULES;
     }, [activeInmobiliaria]);
 
-    const canUseInmuebles = useMemo(() => {
-        return isRoot || subscribedModules.includes("inmuebles");
+    const sections = useMemo(() => {
+        const visibleModules = MODULE_CARDS.filter((module) => moduleIsAvailable({
+            module,
+            subscribedModules,
+            isRoot,
+        }));
+        return DASHBOARD_SECTIONS.map((section) => ({
+            ...section,
+            modules: visibleModules.filter((module) => module.section === section.id),
+        })).filter((section) => section.modules.length > 0);
     }, [isRoot, subscribedModules]);
 
-    const canUseConsultas = useMemo(() => {
-        return isRoot || subscribedModules.includes("consultas");
-    }, [isRoot, subscribedModules]);
-
-    const visibleModules = useMemo(() => {
-        return MODULE_CARDS.filter((module) =>
-            moduleIsAvailable({
-                module,
-                subscribedModules,
-                isRoot,
-            }),
-        );
-    }, [isRoot, subscribedModules]);
-
-    const verificationStatus = useMemo(() => {
-        return getVerificationStatus(activeInmobiliaria);
-    }, [activeInmobiliaria]);
-
-    const onboardingItems = useMemo(() => {
-        return getOnboardingItems(activeInmobiliaria);
-    }, [activeInmobiliaria]);
-
-    const onboardingProgress = useMemo(() => {
-        return getOnboardingProgress(onboardingItems);
-    }, [onboardingItems]);
-
-    const publicInmobiliariaUrl = activeInmobiliaria?.slug
+    const verification = useMemo(
+        () => getVerificationStatus(activeInmobiliaria),
+        [activeInmobiliaria],
+    );
+    const onboardingItems = useMemo(
+        () => getOnboardingItems(activeInmobiliaria),
+        [activeInmobiliaria],
+    );
+    const onboardingProgress = useMemo(
+        () => getOnboardingProgress(onboardingItems),
+        [onboardingItems],
+    );
+    const publicUrl = activeInmobiliaria?.slug
         ? `/inmobiliaria/${activeInmobiliaria.slug}`
         : "";
 
@@ -461,7 +472,6 @@ const InmobiliariaDashboardPage = () => {
             try {
                 setLoading(true);
                 setError(null);
-
                 if (!user?.uid) {
                     setInmobiliarias([]);
                     return;
@@ -470,16 +480,12 @@ const InmobiliariaDashboardPage = () => {
                 const data = isRoot
                     ? await getAllInmobiliarias()
                     : await getInmobiliariasByRole(user);
-
                 setInmobiliarias(data);
-
-                const initialId = getInitialInmobiliariaId({
+                setActiveInmobiliariaId(getInitialInmobiliariaId({
                     user,
                     inmobiliarias: data,
                     isRoot,
-                });
-
-                setActiveInmobiliariaId(initialId);
+                }));
             } catch (err) {
                 console.error("Error cargando dashboard de inmobiliaria:", err);
                 setError("No se pudo cargar el panel de inmobiliaria.");
@@ -488,20 +494,18 @@ const InmobiliariaDashboardPage = () => {
             }
         };
 
-        if (isRoot || isAdmin) {
-            loadInmobiliarias();
-        } else {
-            setLoading(false);
-        }
+        if (isRoot || isAdmin) loadInmobiliarias();
+        else setLoading(false);
     }, [isAdmin, isRoot, user]);
 
-    const handleActiveInmobiliariaChange = (e) => {
-        const nextId = e.target.value;
-
+    const handleActiveInmobiliariaChange = (event) => {
+        const nextId = event.target.value;
         setActiveInmobiliariaId(nextId);
-
         if (typeof window !== "undefined") {
             window.localStorage.setItem("activeInmobiliariaId", nextId);
+            window.dispatchEvent(new CustomEvent("onoprop:activeInmobiliariaChanged", {
+                detail: { inmobiliariaId: nextId },
+            }));
         }
     };
 
@@ -510,13 +514,12 @@ const InmobiliariaDashboardPage = () => {
             <main className="container py-5">
                 <SEO
                     title="Acceso restringido | ONO Prop"
-                    description="Sección disponible para usuarios administradores de inmobiliarias."
+                    description="Sección disponible para administradores de inmobiliarias."
                     url={`${siteUrl}/admin/inmobiliaria`}
                     type="website"
                     siteName="ONO Prop"
                     noIndex
                 />
-
                 <div className="alert alert-warning">
                     Esta sección está disponible para usuarios administradores.
                 </div>
@@ -535,385 +538,192 @@ const InmobiliariaDashboardPage = () => {
                     siteName="ONO Prop"
                     noIndex
                 />
-
-                <div className="spinner-border" />
+                <div className="spinner-border text-primary" />
                 <p className="text-muted mt-3">Cargando panel de inmobiliaria...</p>
             </main>
         );
     }
 
     return (
-        <main className="container py-4">
+        <main className="agency-dashboard py-4 py-lg-5">
             <SEO
                 title="Panel de inmobiliaria | ONO Prop"
-                description="Panel de administración de inmobiliarias, inmuebles, consultas, solicitudes particulares y configuración comercial."
+                description="Herramientas de operación, colaboración y configuración de la inmobiliaria."
                 url={`${siteUrl}/admin/inmobiliaria`}
                 type="website"
                 siteName="ONO Prop"
                 noIndex
             />
 
-            <header className="mb-4">
-                <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
-                    <div>
-                        <p className="text-uppercase text-muted small mb-1">
-                            Panel de inmobiliaria
-                        </p>
-
-                        <h1 className="h3 mb-1">
-                            {activeInmobiliaria?.nombre || "Administración inmobiliaria"}
-                        </h1>
-
-                        <p className="text-muted mb-0">
-                            Accedé a las funcionalidades habilitadas para esta inmobiliaria.
-                        </p>
+            <div className="container">
+                <header className="agency-dashboard-hero mb-4">
+                    <div className="d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-4">
+                        <div>
+                            <p className="agency-dashboard-eyebrow mb-2">Panel de inmobiliaria</p>
+                            <h1 className="display-6 fw-bold mb-2">
+                                {activeInmobiliaria?.nombre || "Administración inmobiliaria"}
+                            </h1>
+                            <p className="mb-0 text-white-50">
+                                Todo lo necesario para operar y hacer crecer la inmobiliaria.
+                            </p>
+                        </div>
+                        <div className="d-flex flex-wrap align-items-center gap-2">
+                            {activeInmobiliaria && (
+                                <span className={`badge ${verification.badge}`}>
+                                    {verification.label}
+                                </span>
+                            )}
+                            {isRoot && <span className="badge text-bg-light">ROOT</span>}
+                            {publicUrl && (
+                                <Link to={publicUrl} className="btn btn-light btn-sm">
+                                    Ver página pública
+                                </Link>
+                            )}
+                        </div>
                     </div>
+                </header>
 
-                    <div className="d-flex flex-wrap gap-2">
-                        {activeInmobiliaria && (
-                            <span className={`badge ${verificationStatus.badge}`}>
-                                {verificationStatus.label}
-                            </span>
-                        )}
+                {error && <div className="alert alert-danger">{error}</div>}
+                {inmobiliarias.length === 0 && (
+                    <div className="alert alert-info">No hay inmobiliarias disponibles para este usuario.</div>
+                )}
 
-                        {isRoot && <span className="badge text-bg-dark">ROOT</span>}
-                    </div>
-                </div>
-            </header>
-
-            {error && <div className="alert alert-danger">{error}</div>}
-
-            {inmobiliarias.length === 0 && (
-                <div className="alert alert-info">
-                    No hay inmobiliarias disponibles para este usuario.
-                </div>
-            )}
-
-            {inmobiliarias.length > 0 && (
-                <>
-                    <section className="card border-0 shadow-sm mb-4">
-                        <div className="card-body p-4">
-                            <div className="row g-3 align-items-end">
-                                <div className="col-md-7">
-                                    <label className="form-label">Inmobiliaria activa</label>
-
-                                    <select
-                                        className="form-select form-select-lg"
-                                        value={activeInmobiliariaId}
-                                        onChange={handleActiveInmobiliariaChange}
-                                    >
-                                        {inmobiliarias.map((inmobiliaria) => (
-                                            <option key={inmobiliaria.id} value={inmobiliaria.id}>
-                                                {inmobiliaria.nombre}
-                                                {inmobiliaria.slug ? ` /${inmobiliaria.slug}` : ""}
-                                            </option>
-                                        ))}
-                                    </select>
-
-                                    {!isRoot && (
-                                        <div className="form-text">
-                                            Solo ves inmobiliarias asignadas a tu usuario.
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="col-md-5">
-                                    <div className="border rounded-3 p-3 bg-light">
-                                        <div className="small text-muted mb-1">
-                                            Módulos habilitados
-                                        </div>
-
-                                        <div className="d-flex flex-wrap gap-2">
-                                            {subscribedModules.map((moduleId) => (
-                                                <span key={moduleId} className="badge text-bg-primary">
-                                                    {moduleId}
-                                                </span>
+                {inmobiliarias.length > 0 && (
+                    <>
+                        <section className="card border-0 shadow-sm agency-dashboard-selector mb-5">
+                            <div className="card-body p-3 p-lg-4">
+                                <div className="row g-3 align-items-center">
+                                    <div className="col-lg-7">
+                                        <label className="form-label fw-semibold" htmlFor="active-agency">
+                                            Inmobiliaria activa
+                                        </label>
+                                        <select
+                                            id="active-agency"
+                                            className="form-select form-select-lg"
+                                            value={activeInmobiliariaId}
+                                            onChange={handleActiveInmobiliariaChange}
+                                        >
+                                            {inmobiliarias.map((item) => (
+                                                <option key={item.id} value={item.id}>
+                                                    {item.nombre}{item.slug ? ` /${item.slug}` : ""}
+                                                </option>
                                             ))}
-
-                                            {subscribedModules.length === 0 && (
-                                                <span className="text-muted">
-                                                    Sin módulos habilitados.
+                                        </select>
+                                    </div>
+                                    <div className="col-lg-5">
+                                        <div className="agency-dashboard-module-summary">
+                                            <span className="small text-muted d-block">Servicios habilitados</span>
+                                            <strong>{subscribedModules.length} módulos activos</strong>
+                                            {!isRoot && (
+                                                <span className="small text-muted d-block mt-1">
+                                                    Solo ves inmobiliarias asignadas a tu usuario.
                                                 </span>
                                             )}
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </section>
+                        </section>
 
-                    {activeInmobiliaria && (
-                        <section className="row g-4 mb-4">
-                            <div className="col-lg-7">
-                                <div className="card h-100 border-0 shadow-sm">
-                                    <div className="card-body p-4">
-                                        <div className="d-flex flex-wrap justify-content-between gap-3 mb-3">
-                                            <div>
-                                                <p className="text-uppercase text-muted small mb-1">
-                                                    Puesta en marcha
-                                                </p>
+                        {sections.map((section) => (
+                            <section className="agency-dashboard-section mb-5" key={section.id}>
+                                <div className="mb-3 mb-lg-4">
+                                    <p className="agency-dashboard-section-eyebrow mb-1">{section.eyebrow}</p>
+                                    <h2 className="h3 mb-1">{section.title}</h2>
+                                    <p className="text-muted mb-0">{section.description}</p>
+                                </div>
+                                <div className="row g-4">
+                                    {section.modules.map((module) => (
+                                        <ModuleCard
+                                            key={module.id}
+                                            module={module}
+                                            inmobiliariaId={activeInmobiliariaId}
+                                            isRoot={isRoot}
+                                            subscribedModules={subscribedModules}
+                                        />
+                                    ))}
+                                </div>
+                            </section>
+                        ))}
 
-                                                <h2 className="h5 mb-1">
-                                                    Checklist de tu inmobiliaria
-                                                </h2>
-
-                                                <p className="text-muted mb-0">
-                                                    Estos pasos ayudan a que tu inmobiliaria quede lista
-                                                    para operar mejor dentro de ONO Prop.
-                                                </p>
-                                            </div>
-
-                                            <div className="text-end">
-                                                <div className="h4 mb-0">{onboardingProgress}%</div>
-                                                <div className="small text-muted">avance básico</div>
-                                            </div>
+                        {isRoot && (
+                            <section className="card border-0 shadow-sm agency-dashboard-root-card mb-5">
+                                <div className="card-body p-4">
+                                    <div className="row align-items-center g-4">
+                                        <div className="col-lg-7">
+                                            <p className="agency-dashboard-section-eyebrow mb-1">Administración ROOT</p>
+                                            <h2 className="h4 mb-2">Control general de ONO Prop</h2>
+                                            <p className="text-muted mb-0">
+                                                Revisión y administración global, separada de la operación de esta inmobiliaria.
+                                            </p>
                                         </div>
-
-                                        <div
-                                            className="progress mb-4"
-                                            role="progressbar"
-                                            aria-valuenow={onboardingProgress}
-                                            aria-valuemin="0"
-                                            aria-valuemax="100"
-                                        >
-                                            <div
-                                                className="progress-bar"
-                                                style={{ width: `${onboardingProgress}%` }}
-                                            />
+                                        <div className="col-lg-5 d-grid d-sm-flex justify-content-lg-end gap-2">
+                                            <Link to="/admin/publicaciones/particulares" className="btn btn-primary">
+                                                Solicitudes globales
+                                            </Link>
+                                            <Link to="/admin/inmobiliarias/verificacion" className="btn btn-outline-primary">
+                                                Verificaciones
+                                            </Link>
+                                            <Link to="/admin/inmobiliarias" className="btn btn-outline-secondary">
+                                                Inmobiliarias
+                                            </Link>
                                         </div>
+                                    </div>
+                                </div>
+                            </section>
+                        )}
 
-                                        <div className="d-flex flex-column gap-3">
-                                            {onboardingItems.map((item) => (
-                                                <div
-                                                    key={item.id}
-                                                    className="border rounded-3 p-3 d-flex flex-column flex-md-row justify-content-between gap-3"
-                                                >
-                                                    <div>
-                                                        <div className="d-flex flex-wrap align-items-center gap-2 mb-1">
-                                                            <h3 className="h6 mb-0">{item.title}</h3>
-                                                            <OnboardingStatusIcon item={item} />
-                                                        </div>
+                        {activeInmobiliaria && (
+                            <section className="card border-0 shadow-sm agency-dashboard-onboarding">
+                                <div className="card-body p-4 p-lg-5">
+                                    <div className="d-flex flex-column flex-lg-row justify-content-between gap-3 mb-3">
+                                        <div>
+                                            <p className="agency-dashboard-section-eyebrow mb-1">Puesta en marcha</p>
+                                            <h2 className="h4 mb-2">Configuración inicial</h2>
+                                            <p className="text-muted mb-0">
+                                                Una guía de referencia para completar la presencia de la inmobiliaria.
+                                            </p>
+                                        </div>
+                                        <div className="agency-dashboard-progress text-lg-end">
+                                            <strong>{onboardingProgress}%</strong>
+                                            <span>completado</span>
+                                        </div>
+                                    </div>
 
-                                                        <p className="text-muted small mb-0">
-                                                            {item.description}
-                                                        </p>
+                                    <div
+                                        className="progress mb-4"
+                                        role="progressbar"
+                                        aria-valuenow={onboardingProgress}
+                                        aria-valuemin="0"
+                                        aria-valuemax="100"
+                                    >
+                                        <div className="progress-bar" style={{ width: `${onboardingProgress}%` }} />
+                                    </div>
+
+                                    <div className="row g-3">
+                                        {onboardingItems.map((item) => (
+                                            <div className="col-12 col-lg-6" key={item.id}>
+                                                <div className="agency-dashboard-onboarding-item h-100">
+                                                    <div className="d-flex align-items-center gap-2 mb-2">
+                                                        <h3 className="h6 mb-0">{item.title}</h3>
+                                                        <OnboardingStatus item={item} />
                                                     </div>
-
+                                                    <p className="text-muted small mb-3">{item.description}</p>
                                                     {item.route && (
-                                                        <div className="align-self-md-center">
-                                                            <Link
-                                                                to={item.route}
-                                                                className={
-                                                                    item.done
-                                                                        ? "btn btn-outline-primary btn-sm"
-                                                                        : "btn btn-primary btn-sm"
-                                                                }
-                                                            >
-                                                                {item.cta}
-                                                            </Link>
-                                                        </div>
+                                                        <Link to={item.route} className="btn btn-sm btn-outline-primary">
+                                                            {item.cta}
+                                                        </Link>
                                                     )}
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="col-lg-5">
-                                <div className="card h-100 border-0 shadow-sm">
-                                    <div className="card-body p-4">
-                                        <p className="text-uppercase text-muted small mb-1">
-                                            Accesos rápidos
-                                        </p>
-
-                                        <h2 className="h5 mb-3">Operación diaria</h2>
-
-                                        <div className="d-grid gap-2">
-                                            {canUseInmuebles && (
-                                                <>
-                                                    <Link
-                                                        to="/admin/inmuebles/nuevo"
-                                                        className="btn btn-primary"
-                                                    >
-                                                        Cargar inmueble
-                                                    </Link>
-
-                                                    <Link
-                                                        to="/admin/inmuebles/listado"
-                                                        className="btn btn-outline-primary"
-                                                    >
-                                                        Ver mis inmuebles
-                                                    </Link>
-                                                </>
-                                            )}
-
-                                            {canUseConsultas && (
-                                                <>
-                                                    <Link
-                                                        to="/admin/inmuebles/consultas"
-                                                        className="btn btn-outline-primary"
-                                                    >
-                                                        Ver consultas
-                                                    </Link>
-
-                                                    <Link
-                                                        to="/admin/inmobiliaria/solicitudes-particulares"
-                                                        className="btn btn-outline-primary"
-                                                    >
-                                                        Solicitudes particulares
-                                                    </Link>
-                                                </>
-                                            )}
-
-                                            {canUseInmuebles && (
-                                                <>
-                                                    <Link
-                                                        to="/admin/red/inmuebles-compartidos"
-                                                        className="btn btn-outline-secondary"
-                                                    >
-                                                        Red de colegas
-                                                    </Link>
-
-                                                    <Link
-                                                        to="/admin/red/solicitudes"
-                                                        className="btn btn-outline-secondary"
-                                                    >
-                                                        Solicitudes de colaboración
-                                                    </Link>
-                                                </>
-                                            )}
-
-                                            <Link
-                                                to="/admin/inmobiliaria/vinculaciones"
-                                                className="btn btn-outline-secondary"
-                                            >
-                                                Solicitudes de vinculación
-                                            </Link>
-
-                                            {publicInmobiliariaUrl && (
-                                                <Link to={publicInmobiliariaUrl} className="btn btn-light">
-                                                    Ver página pública
-                                                </Link>
-                                            )}
-                                        </div>
-
-                                        {verificationStatus.estado !== "verificada" && (
-                                            <div className="alert alert-warning small mt-4 mb-0">
-                                                <strong>{verificationStatus.label}.</strong>{" "}
-                                                {verificationStatus.help}
                                             </div>
-                                        )}
+                                        ))}
                                     </div>
                                 </div>
-                            </div>
-                        </section>
-                    )}
-
-                    {isRoot && (
-                        <section className="card border-0 shadow-sm mb-4">
-                            <div className="card-body p-4">
-                                <div className="row align-items-center g-3">
-                                    <div className="col-lg-8">
-                                        <p className="text-uppercase text-muted small mb-1">
-                                            Administración root
-                                        </p>
-
-                                        <h2 className="h5 mb-1">
-                                            Control general de la plataforma
-                                        </h2>
-
-                                        <p className="text-muted mb-0">
-                                            Accesos de revisión, alta y administración general de
-                                            inmobiliarias y solicitudes particulares.
-                                        </p>
-                                    </div>
-
-                                    <div className="col-lg-4 d-grid gap-2">
-                                        <Link
-                                            to="/admin/publicaciones/particulares"
-                                            className="btn btn-primary"
-                                        >
-                                            Solicitudes particulares globales
-                                        </Link>
-
-                                        <Link
-                                            to="/admin/inmobiliarias/verificacion"
-                                            className="btn btn-outline-primary"
-                                        >
-                                            Revisar verificaciones
-                                        </Link>
-
-                                        <Link
-                                            to="/admin/inmobiliarias"
-                                            className="btn btn-outline-secondary"
-                                        >
-                                            Administrar inmobiliarias
-                                        </Link>
-                                    </div>
-                                </div>
-                            </div>
-                        </section>
-                    )}
-
-                    <section className="row g-4">
-                        {visibleModules.map((module) => {
-                            const route = getModuleRoute(module, activeInmobiliariaId, isRoot);
-                            const disabled = module.comingSoon || !route;
-
-                            return (
-                                <article className="col-12 col-md-6 col-xl-4" key={module.id}>
-                                    <div className="card h-100 border-0 shadow-sm">
-                                        <div className="card-body p-4 d-flex flex-column">
-                                            <div className="display-6 mb-3">{module.icon}</div>
-
-                                            <h2 className="h5 mb-2">{module.title}</h2>
-
-                                            <p className="text-muted">{module.description}</p>
-
-                                            {isRoot &&
-                                                !module.alwaysAvailable &&
-                                                !subscribedModules.includes(module.id) &&
-                                                !module.requiredModules?.some((moduleId) =>
-                                                    subscribedModules.includes(moduleId),
-                                                ) && (
-                                                    <div className="alert alert-light border small py-2">
-                                                        No suscripto para esta inmobiliaria. Root puede
-                                                        acceder igual.
-                                                    </div>
-                                                )}
-
-                                            <div className="mt-auto d-grid">
-                                                {disabled ? (
-                                                    <button
-                                                        type="button"
-                                                        className="btn btn-outline-secondary"
-                                                        disabled
-                                                    >
-                                                        {module.cta}
-                                                    </button>
-                                                ) : (
-                                                    <Link to={route} className="btn btn-primary">
-                                                        {module.cta}
-                                                    </Link>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </article>
-                            );
-                        })}
-
-                        {visibleModules.length === 0 && (
-                            <div className="col-12">
-                                <div className="alert alert-info">
-                                    Esta inmobiliaria no tiene módulos habilitados.
-                                </div>
-                            </div>
+                            </section>
                         )}
-                    </section>
-                </>
-            )}
+                    </>
+                )}
+            </div>
         </main>
     );
 };

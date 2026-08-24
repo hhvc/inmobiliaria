@@ -147,6 +147,10 @@ const Navbar = () => {
           hash: "#inmuebles-publicados",
         },
         {
+          label: "Favoritos",
+          to: "/favoritos",
+        },
+        {
           label: "Emprendimientos",
           to: `${agencyBasePath}#emprendimientos-publicados`,
           hash: "#emprendimientos-publicados",
@@ -167,6 +171,10 @@ const Navbar = () => {
       {
         label: "Inmuebles",
         to: "/inmuebles",
+      },
+      {
+        label: "Favoritos",
+        to: "/favoritos",
       },
       {
         label: "Mapa",
@@ -414,6 +422,18 @@ const Navbar = () => {
                               Cuenta corriente y servicios
                             </Link>
                           </li>
+
+                          {canCreateInmuebles && (
+                            <li>
+                              <Link
+                                className="dropdown-item"
+                                to="/admin/rendimiento"
+                                onClick={closeMenus}
+                              >
+                                Rendimiento de publicaciones
+                              </Link>
+                            </li>
+                          )}
 
                           {canCreateInmuebles && (
                             <>

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
-import { getPublicInmobiliariaById } from "../../inmobiliaria/services/inmobiliaria.service";
 import { getActiveParticularPublications } from "../../particular/services/particularPublicationListing.service";
 import { getPublicInmuebles } from "../services/inmueble.service";
 import {
@@ -22,27 +21,20 @@ import {
     getPaidPromotionScore,
     sortPortalItemsByRelevance,
 } from "../utils/portalRanking.helpers";
+import PublicProfileModal from "../../profile/components/PublicProfileModal";
+import PortalFavoriteButton from "../components/PortalFavoriteButton";
+import PortalSearchAlertModal from "../components/PortalSearchAlertModal";
+import { buildInmueblePublisherDescriptor } from "../../profile/utils/publicProfile.helpers";
+import { getPublicProfileById } from "../../profile/services/publicProfile.service";
+import {
+    PORTAL_INITIAL_FILTERS as INITIAL_FILTERS,
+    getPortalFiltersFromSearchParams,
+    getPortalSearchParamsFromFilters,
+    hasAdvancedPortalFilters,
+    mergePortalItems,
+} from "../utils/portalSearch.helpers";
 
-const INITIAL_FILTERS = {
-    search: "",
-    sourceType: "",
-    operacion: "",
-    tipo: "",
-    ciudad: "",
-    barrio: "",
-    dormitoriosMin: "",
-    banosMin: "",
-    cocherasMin: "",
-    superficieMin: "",
-    precioMin: "",
-    precioMax: "",
-    piscina: "",
-    patio: "",
-    jardin: "",
-    aptoCredito: "",
-    video: "",
-    sortBy: "destacados",
-};
+const PAGE_SIZE_PER_SOURCE = 12;
 
 const SOURCE_TYPES = [
     { value: "inmobiliaria", label: "Inmobiliarias" },
@@ -285,46 +277,6 @@ const getActiveFilterBadges = (filters) => {
     }
 
     return badges;
-};
-
-const getFiltersFromSearchParams = (searchParams) => {
-    return {
-        ...INITIAL_FILTERS,
-        search: searchParams.get("search") || "",
-        sourceType: searchParams.get("sourceType") || "",
-        operacion: searchParams.get("operacion") || "",
-        tipo: searchParams.get("tipo") || "",
-        ciudad: searchParams.get("ciudad") || "",
-        barrio: searchParams.get("barrio") || "",
-        dormitoriosMin: searchParams.get("dormitoriosMin") || "",
-        banosMin: searchParams.get("banosMin") || "",
-        cocherasMin: searchParams.get("cocherasMin") || "",
-        superficieMin: searchParams.get("superficieMin") || "",
-        precioMin: searchParams.get("precioMin") || "",
-        precioMax: searchParams.get("precioMax") || "",
-        piscina: searchParams.get("piscina") || "",
-        patio: searchParams.get("patio") || "",
-        jardin: searchParams.get("jardin") || "",
-        aptoCredito: searchParams.get("aptoCredito") || "",
-        video: searchParams.get("video") || "",
-        sortBy: searchParams.get("sortBy") || INITIAL_FILTERS.sortBy,
-    };
-};
-
-const getSearchParamsFromFilters = (filters) => {
-    const params = new URLSearchParams();
-
-    Object.entries(filters).forEach(([key, value]) => {
-        if (!value) return;
-
-        if (key === "sortBy" && value === INITIAL_FILTERS.sortBy) {
-            return;
-        }
-
-        params.set(key, value);
-    });
-
-    return params;
 };
 
 const matchesTextSearch = (inmueble, search) => {
@@ -743,51 +695,16 @@ const getInmobiliariaLogoUrl = (inmobiliaria = {}) => {
     );
 };
 
-const buildInmobiliariasById = async (inmuebles = []) => {
-    const uniqueIds = Array.from(
-        new Set(
-            inmuebles
-                .map((inmueble) => getInmuebleInmobiliariaId(inmueble))
-                .filter(Boolean),
-        ),
-    );
-
-    const entries = await Promise.all(
-        uniqueIds.map(async (inmobiliariaId) => {
-            try {
-                const inmobiliaria = await getPublicInmobiliariaById(inmobiliariaId);
-
-                if (!inmobiliaria) {
-                    return null;
-                }
-
-                return [inmobiliariaId, inmobiliaria];
-            } catch (err) {
-                console.warn(
-                    "No se pudo cargar la inmobiliaria pública:",
-                    inmobiliariaId,
-                    err,
-                );
-
-                return null;
-            }
-        }),
-    );
-
-    return entries
-        .filter(Boolean)
-        .reduce((acc, [inmobiliariaId, inmobiliaria]) => {
-            acc[inmobiliariaId] = inmobiliaria;
-            return acc;
-        }, {});
-};
-
 const mapInmuebleToPortalItem = (inmueble, inmobiliariasById = {}) => {
     const slugOrId = inmueble.slug || inmueble.id;
     const inmobiliariaId = getInmuebleInmobiliariaId(inmueble);
     const inmobiliaria = inmobiliariasById[inmobiliariaId] || null;
 
+    const personalPublisher = inmueble.publisher?.type === "user"
+        ? inmueble.publisher
+        : null;
     const sourceLabel =
+        personalPublisher?.name ||
         inmueble.inmobiliariaNombre ||
         inmueble.inmobiliariaDisplayName ||
         inmueble.agenciaNombre ||
@@ -804,6 +721,8 @@ const mapInmuebleToPortalItem = (inmueble, inmobiliariasById = {}) => {
         "";
 
     const sourceLogoUrl =
+        personalPublisher?.photoURL ||
+        personalPublisher?.logoUrl ||
         inmueble.inmobiliariaLogoUrl ||
         inmueble.agenciaLogoUrl ||
         inmueble.inmobiliaria?.branding?.logo?.url ||
@@ -818,6 +737,10 @@ const mapInmuebleToPortalItem = (inmueble, inmobiliariasById = {}) => {
         sourceTypeLabel: "Inmobiliaria",
         sourceBadgeClass: "text-bg-primary",
         sourceLogoUrl,
+        inmobiliariaNombre:
+            inmueble.inmobiliariaNombre || inmobiliaria?.nombre || sourceLabel,
+        inmobiliariaLogoUrl:
+            inmueble.inmobiliariaLogoUrl || getInmobiliariaLogoUrl(inmobiliaria),
         inmobiliariaId,
         inmobiliariaSlug,
         publicPath: slugOrId ? `/inmueble/${slugOrId}` : "",
@@ -928,6 +851,16 @@ const mapParticularPublicationToPortalItem = (publication) => {
         publicStatus: publication.publicStatus || "active",
         moderationStatus: publication.moderationStatus || "approved",
 
+        publisher: {
+            type: "user",
+            id: publication.ownerUserId || "",
+            name: "Dueño particular",
+            photoURL: "",
+            profilePath: "",
+        },
+        publisherMode: "user",
+        publisherUserId: publication.ownerUserId || "",
+
         raw: publication,
     };
 };
@@ -952,6 +885,95 @@ const getSourceTypeLabel = (inmueble) => {
     }
 
     return "Inmobiliaria";
+};
+
+const hydratePublicPublisherProfiles = async (items = []) => {
+    const userIds = Array.from(new Set(
+        items
+            .filter((item) => item.publisher?.type === "user")
+            .map((item) => item.publisherUserId || item.publisher?.id)
+            .filter(Boolean),
+    ));
+
+    if (userIds.length === 0) return items;
+
+    const profileEntries = await Promise.all(
+        userIds.map(async (userId) => [userId, await getPublicProfileById(userId)]),
+    );
+    const profilesById = Object.fromEntries(profileEntries);
+
+    return items.map((item) => {
+        if (item.publisher?.type !== "user") return item;
+
+        const userId = item.publisherUserId || item.publisher?.id || "";
+        const profile = profilesById[userId];
+
+        if (profile?.isPublic && profile.displayName) {
+            return {
+                ...item,
+                publisherMode: "user",
+                publisherUserId: userId,
+                publisher: {
+                    ...item.publisher,
+                    type: "user",
+                    id: userId,
+                    name: profile.displayName,
+                    photoURL: profile.photoURL || "",
+                    logoUrl: profile.photoURL || "",
+                    headline: profile.headline || "",
+                },
+                sourceLabel: profile.displayName,
+                sourceLogoUrl: profile.photoURL || "",
+            };
+        }
+
+        if (item.sourceType === "inmobiliaria") {
+            return {
+                ...item,
+                publisherMode: "agency",
+                publisherUserId: "",
+                publisher: {
+                    type: "inmobiliaria",
+                    id: item.inmobiliariaId || "",
+                    name: item.inmobiliariaNombre || "Inmobiliaria adherida",
+                    logoUrl: item.inmobiliariaLogoUrl || "",
+                    photoURL: item.inmobiliariaLogoUrl || "",
+                    slug: item.inmobiliariaSlug || "",
+                    profilePath: item.inmobiliariaSlug
+                        ? `/inmobiliaria/${item.inmobiliariaSlug}`
+                        : "",
+                },
+                sourceLabel: item.inmobiliariaNombre || "Inmobiliaria adherida",
+                sourceLogoUrl: item.inmobiliariaLogoUrl || "",
+            };
+        }
+
+        return {
+            ...item,
+            publisher: {
+                ...item.publisher,
+                name: "Dueño particular",
+                photoURL: "",
+                logoUrl: "",
+            },
+            sourceLabel: "Dueño particular",
+            sourceLogoUrl: "",
+        };
+    });
+};
+
+const getPortalPublisherDescriptor = (inmueble = {}) => {
+    if (inmueble.sourceType === "particular") {
+        return {
+            type: "user",
+            id: inmueble.publisherUserId || inmueble.ownerUserId || inmueble.publisher?.id || "",
+            name: "Dueño particular",
+            photoURL: "",
+            profilePath: "",
+        };
+    }
+
+    return buildInmueblePublisherDescriptor({ inmueble });
 };
 
 const getSourceBadgeClass = (inmueble) => {
@@ -1005,26 +1027,93 @@ const getShortDescription = (description = "", maxLength = 115) => {
     return `${cleanDescription.slice(0, maxLength).trim()}...`;
 };
 
+const loadPortalBatch = async ({
+    includeAgency = true,
+    includeParticular = true,
+    agencyLastDoc = null,
+    particularLastDoc = null,
+} = {}) => {
+    const emptyResult = {
+        data: [],
+        lastDoc: null,
+        hasMore: false,
+    };
+
+    const [agencyResult, particularResult] = await Promise.all([
+        includeAgency
+            ? getPublicInmuebles({
+                pageSize: PAGE_SIZE_PER_SOURCE,
+                lastDoc: agencyLastDoc,
+            })
+            : Promise.resolve(emptyResult),
+        includeParticular
+            ? getActiveParticularPublications({
+                pageSize: PAGE_SIZE_PER_SOURCE,
+                lastDoc: particularLastDoc,
+            })
+            : Promise.resolve(emptyResult),
+    ]);
+
+    const agencyItems = (agencyResult?.data || []).map((inmueble) =>
+        mapInmuebleToPortalItem(inmueble),
+    );
+
+    const particularItems = (particularResult?.data || []).map(
+        mapParticularPublicationToPortalItem,
+    );
+
+    const items = await hydratePublicPublisherProfiles([
+        ...agencyItems,
+        ...particularItems,
+    ]);
+
+    return {
+        items,
+        cursors: {
+            agency: agencyResult?.lastDoc || agencyLastDoc || null,
+            particular: particularResult?.lastDoc || particularLastDoc || null,
+        },
+        hasMore: {
+            agency: includeAgency && agencyResult?.hasMore === true,
+            particular: includeParticular && particularResult?.hasMore === true,
+        },
+    };
+};
+
 const InmueblePortalPage = () => {
     const [searchParams, setSearchParams] = useSearchParams();
 
     const [inmuebles, setInmuebles] = useState([]);
     const [filters, setFilters] = useState(() =>
-        getFiltersFromSearchParams(searchParams),
+        getPortalFiltersFromSearchParams(searchParams),
+    );
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(() =>
+        hasAdvancedPortalFilters(getPortalFiltersFromSearchParams(searchParams)),
     );
     const [copySuccess, setCopySuccess] = useState(false);
+    const [showSearchAlert, setShowSearchAlert] = useState(false);
+    const [selectedPublisher, setSelectedPublisher] = useState(null);
+    const [cursors, setCursors] = useState({ agency: null, particular: null });
+    const [hasMore, setHasMore] = useState({ agency: false, particular: false });
 
     const [rankingConfig, setRankingConfig] = useState(
         DEFAULT_PORTAL_RANKING_CONFIG,
     );
 
     const [loading, setLoading] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
     const [error, setError] = useState(null);
+    const [loadMoreError, setLoadMoreError] = useState(null);
 
-    const searchParamsString = searchParams.toString();
+    const alertStatus = searchParams.get("alerta") || "";
 
     useEffect(() => {
-        setFilters(getFiltersFromSearchParams(searchParams));
+        const nextFilters = getPortalFiltersFromSearchParams(searchParams);
+        setFilters(nextFilters);
+
+        if (hasAdvancedPortalFilters(nextFilters)) {
+            setShowAdvancedFilters(true);
+        }
     }, [searchParams]);
 
     const ciudades = useMemo(() => {
@@ -1071,25 +1160,9 @@ const InmueblePortalPage = () => {
         return getActiveFilterBadges(filters);
     }, [filters]);
 
-    const destacadosCount = useMemo(() => {
-        return inmuebles.filter((inmueble) =>
-            isPortalItemPromoted(inmueble, rankingConfig),
-        ).length;
-    }, [inmuebles, rankingConfig]);
-
-    const inmobiliariasCount = useMemo(() => {
-        return inmuebles.filter((inmueble) => inmueble.sourceType === "inmobiliaria")
-            .length;
-    }, [inmuebles]);
-
-    const particularesCount = useMemo(() => {
-        return inmuebles.filter((inmueble) => inmueble.sourceType === "particular")
-            .length;
-    }, [inmuebles]);
-
     const seoUrl = useMemo(() => {
-        return buildPortalUrl(searchParamsString);
-    }, [searchParamsString]);
+        return buildPortalUrl(getPortalSearchParamsFromFilters(filters).toString());
+    }, [filters]);
 
     const seoTitle = useMemo(() => {
         return buildSeoTitle(filters);
@@ -1118,45 +1191,44 @@ const InmueblePortalPage = () => {
     }, [filteredInmuebles, seoUrl]);
 
     useEffect(() => {
-        const fetchInmuebles = async () => {
+        let active = true;
+
+        getPortalRankingConfig()
+            .then((config) => {
+                if (active) setRankingConfig(config);
+            })
+            .catch((err) => {
+                console.warn("No se pudo cargar la configuración del ranking:", err);
+            });
+
+        return () => {
+            active = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+
+        const fetchFirstPage = async () => {
             try {
                 setLoading(true);
                 setError(null);
+                setLoadMoreError(null);
+                setInmuebles([]);
 
-                const [
-                    inmueblesResult,
-                    particularPublicationsResult,
-                    portalRankingConfigResult,
-                ] = await Promise.all([
-                    getPublicInmuebles({
-                        pageSize: 100,
-                    }),
-                    getActiveParticularPublications({
-                        pageSize: 100,
-                    }),
-                    getPortalRankingConfig(),
-                ]);
+                const batch = await loadPortalBatch({
+                    includeAgency: filters.sourceType !== "particular",
+                    includeParticular: filters.sourceType !== "inmobiliaria",
+                });
 
-                setRankingConfig(portalRankingConfigResult);
+                if (!active) return;
 
-                const rawInmuebles = inmueblesResult?.data || [];
-
-                const inmobiliariasById = await buildInmobiliariasById(rawInmuebles);
-
-                const inmobiliariaItems = rawInmuebles.map((inmueble) =>
-                    mapInmuebleToPortalItem(inmueble, inmobiliariasById),
-                );
-
-                const particularPublications = Array.isArray(particularPublicationsResult)
-                    ? particularPublicationsResult
-                    : particularPublicationsResult?.data || [];
-
-                const particularItems = particularPublications.map(
-                    mapParticularPublicationToPortalItem,
-                );
-
-                setInmuebles([...inmobiliariaItems, ...particularItems]);
+                setInmuebles(batch.items);
+                setCursors(batch.cursors);
+                setHasMore(batch.hasMore);
             } catch (err) {
+                if (!active) return;
+
                 console.error("Error cargando portal público de inmuebles:", err);
 
                 if (err.code === "permission-denied") {
@@ -1165,16 +1237,20 @@ const InmueblePortalPage = () => {
                     setError(err.message || "No se pudieron cargar los inmuebles.");
                 }
             } finally {
-                setLoading(false);
+                if (active) setLoading(false);
             }
         };
 
-        fetchInmuebles();
-    }, []);
+        fetchFirstPage();
+
+        return () => {
+            active = false;
+        };
+    }, [filters.sourceType]);
 
     const updateFilters = (nextFilters, options = {}) => {
         setFilters(nextFilters);
-        setSearchParams(getSearchParamsFromFilters(nextFilters), {
+        setSearchParams(getPortalSearchParamsFromFilters(nextFilters), {
             replace: options.replace ?? true,
         });
         setCopySuccess(false);
@@ -1204,6 +1280,49 @@ const InmueblePortalPage = () => {
 
     const handleClearFilters = () => {
         updateFilters(INITIAL_FILTERS);
+        setShowAdvancedFilters(false);
+    };
+
+    const canLoadMore = hasMore.agency || hasMore.particular;
+
+    const handleLoadMore = async () => {
+        if (loadingMore || !canLoadMore) return;
+
+        try {
+            setLoadingMore(true);
+            setLoadMoreError(null);
+
+            const batch = await loadPortalBatch({
+                includeAgency:
+                    filters.sourceType !== "particular" && hasMore.agency,
+                includeParticular:
+                    filters.sourceType !== "inmobiliaria" && hasMore.particular,
+                agencyLastDoc: cursors.agency,
+                particularLastDoc: cursors.particular,
+            });
+
+            setInmuebles((currentItems) =>
+                mergePortalItems(currentItems, batch.items),
+            );
+            setCursors(batch.cursors);
+            setHasMore(batch.hasMore);
+        } catch (err) {
+            console.error("Error cargando más inmuebles:", err);
+            setLoadMoreError(err.message || "No se pudieron cargar más inmuebles.");
+        } finally {
+            setLoadingMore(false);
+        }
+    };
+
+    const handleSearchSubmit = (event) => {
+        event.preventDefault();
+
+        if (typeof document === "undefined") return;
+
+        document.getElementById("portal-results")?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+        });
     };
 
     const handleRemoveFilter = (key) => {
@@ -1221,8 +1340,9 @@ const InmueblePortalPage = () => {
 
     const handleCopySearch = async () => {
         try {
-            const currentUrl =
-                typeof window !== "undefined" ? window.location.href : "";
+            const currentUrl = buildPortalUrl(
+                getPortalSearchParamsFromFilters(filters).toString(),
+            );
 
             if (!currentUrl) {
                 throw new Error("No se pudo obtener la URL actual");
@@ -1244,8 +1364,9 @@ const InmueblePortalPage = () => {
 
     const handleShareSearchByWhatsapp = () => {
         try {
-            const currentUrl =
-                typeof window !== "undefined" ? window.location.href : "";
+            const currentUrl = buildPortalUrl(
+                getPortalSearchParamsFromFilters(filters).toString(),
+            );
 
             if (!currentUrl) {
                 throw new Error("No se pudo obtener la URL actual");
@@ -1268,7 +1389,10 @@ const InmueblePortalPage = () => {
     const saveCurrentSearchUrl = () => {
         if (typeof window === "undefined") return;
 
-        window.sessionStorage.setItem("lastInmuebleSearchUrl", window.location.href);
+        window.sessionStorage.setItem(
+            "lastInmuebleSearchUrl",
+            buildPortalUrl(getPortalSearchParamsFromFilters(filters).toString()),
+        );
     };
 
     return (
@@ -1285,64 +1409,56 @@ const InmueblePortalPage = () => {
 
             <section className="py-5">
                 <div className="container">
+                    {alertStatus === "confirmada" && (
+                        <div className="alert alert-success mb-4">
+                            <strong>Búsqueda activada.</strong> Te avisaremos cuando aparezcan
+                            nuevas publicaciones que coincidan con tus filtros.
+                        </div>
+                    )}
+                    {alertStatus === "cancelada" && (
+                        <div className="alert alert-info mb-4">
+                            La alerta fue cancelada y no enviaremos nuevos avisos.
+                        </div>
+                    )}
+                    {["invalida", "vencida", "baja-invalida"].includes(alertStatus) && (
+                        <div className="alert alert-warning mb-4">
+                            El enlace de la alerta no es válido o ya venció. Podés guardar
+                            nuevamente la búsqueda actual.
+                        </div>
+                    )}
                     <div className="row align-items-end g-4 mb-4">
-                        <div className="col-lg-8">
+                        <div className="col-lg-7">
                             <div className="portal-eyebrow">Buscador inmobiliario</div>
 
                             <h1 className="portal-section-title mb-3">
-                                Inmuebles publicados
+                                Encontrá tu próximo inmueble
                             </h1>
 
                             <p className="lead text-muted mb-0">
-                                Filtrá propiedades por operación, tipo, ciudad, barrio,
-                                dormitorios, baños, cocheras, superficie, precio, amenities y
-                                origen. Encontrá publicaciones de inmobiliarias adheridas y
-                                propietarios particulares.
+                                Buscá publicaciones de inmobiliarias adheridas y propietarios
+                                particulares. Podés precisar la búsqueda cuando lo necesites.
                             </p>
                         </div>
 
-                        <div className="col-lg-4">
-                            <div className="row g-2">
-                                <div className="col-6">
-                                    <div className="portal-stat">
-                                        <div className="portal-stat-number">{inmuebles.length}</div>
-                                        <div className="small text-muted">Publicadas</div>
-                                    </div>
-                                </div>
-
-                                <div className="col-6">
-                                    <div className="portal-stat">
-                                        <div className="portal-stat-number">
-                                            {inmobiliariasCount}
-                                        </div>
-                                        <div className="small text-muted">Inmobiliarias</div>
-                                    </div>
-                                </div>
-
-                                <div className="col-6">
-                                    <div className="portal-stat">
-                                        <div className="portal-stat-number">
-                                            {particularesCount}
-                                        </div>
-                                        <div className="small text-muted">Particulares</div>
-                                    </div>
-                                </div>
-
-                                <div className="col-6">
-                                    <div className="portal-stat">
-                                        <div className="portal-stat-number">
-                                            {destacadosCount}
-                                        </div>
-                                        <div className="small text-muted">Destacadas</div>
-                                    </div>
-                                </div>
+                        <div className="col-lg-5">
+                            <div className="d-flex flex-wrap gap-2 justify-content-lg-end">
+                                <Link to="/publicar" className="btn btn-primary">
+                                    Publicar como particular
+                                </Link>
+                                <Link to="/inmobiliarias" className="btn btn-outline-primary">
+                                    Publicar como inmobiliaria
+                                </Link>
                             </div>
                         </div>
                     </div>
 
-                    <section className="portal-search-card card mb-4">
+                    <form
+                        className="portal-search-card card mb-4"
+                        onSubmit={handleSearchSubmit}
+                        role="search"
+                    >
                         <div className="card-body p-3 p-lg-4">
-                            <div className="row g-3">
+                            <div className="row g-3 align-items-end">
                                 <div className="col-12 col-xl-4">
                                     <label className="form-label">Buscar</label>
                                     <input
@@ -1356,27 +1472,10 @@ const InmueblePortalPage = () => {
                                 </div>
 
                                 <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Origen</label>
-                                    <select
-                                        name="sourceType"
-                                        className="form-select"
-                                        value={filters.sourceType}
-                                        onChange={handleFilterChange}
-                                    >
-                                        <option value="">Todos</option>
-                                        {SOURCE_TYPES.map((sourceType) => (
-                                            <option key={sourceType.value} value={sourceType.value}>
-                                                {sourceType.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
                                     <label className="form-label">Operación</label>
                                     <select
                                         name="operacion"
-                                        className="form-select"
+                                        className="form-select form-select-lg"
                                         value={filters.operacion}
                                         onChange={handleFilterChange}
                                     >
@@ -1393,7 +1492,7 @@ const InmueblePortalPage = () => {
                                     <label className="form-label">Tipo</label>
                                     <select
                                         name="tipo"
-                                        className="form-select"
+                                        className="form-select form-select-lg"
                                         value={filters.tipo}
                                         onChange={handleFilterChange}
                                     >
@@ -1406,211 +1505,267 @@ const InmueblePortalPage = () => {
                                     </select>
                                 </div>
 
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Ciudad</label>
-                                    <select
-                                        name="ciudad"
-                                        className="form-select"
-                                        value={filters.ciudad}
-                                        onChange={handleFilterChange}
-                                    >
-                                        <option value="">Todas</option>
-                                        {ciudades.map((ciudad) => (
-                                            <option key={ciudad} value={ciudad}>
-                                                {ciudad}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Barrio</label>
-                                    <select
-                                        name="barrio"
-                                        className="form-select"
-                                        value={filters.barrio}
-                                        onChange={handleFilterChange}
-                                        disabled={barrios.length === 0}
-                                    >
-                                        <option value="">Todos</option>
-                                        {barrios.map((barrio) => (
-                                            <option key={barrio} value={barrio}>
-                                                {barrio}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Dormitorios</label>
-                                    <select
-                                        name="dormitoriosMin"
-                                        className="form-select"
-                                        value={filters.dormitoriosMin}
-                                        onChange={handleFilterChange}
-                                    >
-                                        <option value="">Cualquiera</option>
-                                        <option value="1">1+</option>
-                                        <option value="2">2+</option>
-                                        <option value="3">3+</option>
-                                        <option value="4">4+</option>
-                                        <option value="5">5+</option>
-                                    </select>
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Baños</label>
-                                    <select
-                                        name="banosMin"
-                                        className="form-select"
-                                        value={filters.banosMin}
-                                        onChange={handleFilterChange}
-                                    >
-                                        <option value="">Cualquiera</option>
-                                        <option value="1">1+</option>
-                                        <option value="2">2+</option>
-                                        <option value="3">3+</option>
-                                        <option value="4">4+</option>
-                                    </select>
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Cocheras</label>
-                                    <select
-                                        name="cocherasMin"
-                                        className="form-select"
-                                        value={filters.cocherasMin}
-                                        onChange={handleFilterChange}
-                                    >
-                                        <option value="">Cualquiera</option>
-                                        <option value="1">1+</option>
-                                        <option value="2">2+</option>
-                                        <option value="3">3+</option>
-                                        <option value="4">4+</option>
-                                    </select>
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Superficie mín.</label>
-                                    <input
-                                        type="number"
-                                        name="superficieMin"
-                                        className="form-control"
-                                        min="0"
-                                        placeholder="100"
-                                        value={filters.superficieMin}
-                                        onChange={handleFilterChange}
-                                    />
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Precio mín.</label>
-                                    <input
-                                        type="number"
-                                        name="precioMin"
-                                        className="form-control"
-                                        min="0"
-                                        placeholder="50000"
-                                        value={filters.precioMin}
-                                        onChange={handleFilterChange}
-                                    />
-                                </div>
-
-                                <div className="col-6 col-lg-3 col-xl-2">
-                                    <label className="form-label">Precio máx.</label>
-                                    <input
-                                        type="number"
-                                        name="precioMax"
-                                        className="form-control"
-                                        min="0"
-                                        placeholder="150000"
-                                        value={filters.precioMax}
-                                        onChange={handleFilterChange}
-                                    />
-                                </div>
-
-                                <div className="col-12 col-lg-3 col-xl-3">
-                                    <label className="form-label">Ordenar por</label>
-                                    <select
-                                        name="sortBy"
-                                        className="form-select"
-                                        value={filters.sortBy}
-                                        onChange={handleFilterChange}
-                                    >
-                                        {SORT_OPTIONS.map((option) => (
-                                            <option key={option.value} value={option.value}>
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="col-12">
-                                    <label className="form-label">Diferenciales</label>
-
-                                    <div className="d-flex flex-wrap gap-3">
-                                        {AMENITY_FILTERS.map((amenityFilter) => (
-                                            <div className="form-check" key={amenityFilter.key}>
-                                                <input
-                                                    id={`portal-filter-${amenityFilter.key}`}
-                                                    className="form-check-input"
-                                                    type="checkbox"
-                                                    checked={filters[amenityFilter.key] === "true"}
-                                                    onChange={(e) =>
-                                                        handleAmenityFilterChange(
-                                                            amenityFilter.key,
-                                                            e.target.checked,
-                                                        )
-                                                    }
-                                                />
-
-                                                <label
-                                                    className="form-check-label"
-                                                    htmlFor={`portal-filter-${amenityFilter.key}`}
-                                                >
-                                                    {amenityFilter.label}
-                                                </label>
-                                            </div>
-                                        ))}
-
-                                        <div className="form-check">
-                                            <input
-                                                id="portal-filter-video"
-                                                className="form-check-input"
-                                                type="checkbox"
-                                                checked={filters.video === "true"}
-                                                onChange={(e) =>
-                                                    handleAmenityFilterChange("video", e.target.checked)
-                                                }
-                                            />
-
-                                            <label className="form-check-label" htmlFor="portal-filter-video">
-                                                Con video
-                                            </label>
-                                        </div>
-
-                                    </div>
-                                </div>
-
-                                <div className="col-12 col-lg-3 col-xl-3 d-grid">
-                                    <label className="form-label d-none d-lg-block">&nbsp;</label>
-                                    <button
-                                        type="button"
-                                        className="btn btn-outline-secondary"
-                                        onClick={handleClearFilters}
-                                        disabled={activeFiltersCount === 0}
-                                    >
-                                        Limpiar filtros
+                                <div className="col-6 col-xl-2 d-grid">
+                                    <button type="submit" className="btn btn-primary btn-lg">
+                                        Buscar
                                     </button>
                                 </div>
+
+                                <div className="col-6 col-xl-2 d-grid">
+                                    <button
+                                        type="button"
+                                        className="btn btn-outline-secondary btn-lg"
+                                        onClick={() => setShowAdvancedFilters((current) => !current)}
+                                        aria-expanded={showAdvancedFilters}
+                                        aria-controls="portal-advanced-filters"
+                                    >
+                                        {showAdvancedFilters ? "Menos filtros" : "Más filtros"}
+                                        {!showAdvancedFilters && hasAdvancedPortalFilters(filters)
+                                            ? " •"
+                                            : ""}
+                                    </button>
+                                </div>
+
+                                {showAdvancedFilters && (
+                                    <div className="col-12" id="portal-advanced-filters">
+                                        <div className="row g-3 pt-3 mt-1 border-top">
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Origen</label>
+                                                <select
+                                                    name="sourceType"
+                                                    className="form-select"
+                                                    value={filters.sourceType}
+                                                    onChange={handleFilterChange}
+                                                >
+                                                    <option value="">Todos</option>
+                                                    {SOURCE_TYPES.map((sourceType) => (
+                                                        <option
+                                                            key={sourceType.value}
+                                                            value={sourceType.value}
+                                                        >
+                                                            {sourceType.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Ciudad</label>
+                                                <input
+                                                    type="text"
+                                                    name="ciudad"
+                                                    list="portal-ciudades"
+                                                    className="form-control"
+                                                    placeholder="Ej: Córdoba"
+                                                    value={filters.ciudad}
+                                                    onChange={handleFilterChange}
+                                                />
+                                                <datalist id="portal-ciudades">
+                                                    {ciudades.map((ciudad) => (
+                                                        <option key={ciudad} value={ciudad} />
+                                                    ))}
+                                                </datalist>
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Barrio</label>
+                                                <input
+                                                    type="text"
+                                                    name="barrio"
+                                                    list="portal-barrios"
+                                                    className="form-control"
+                                                    placeholder="Ej: Nueva Córdoba"
+                                                    value={filters.barrio}
+                                                    onChange={handleFilterChange}
+                                                />
+                                                <datalist id="portal-barrios">
+                                                    {barrios.map((barrio) => (
+                                                        <option key={barrio} value={barrio} />
+                                                    ))}
+                                                </datalist>
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Dormitorios</label>
+                                                <select
+                                                    name="dormitoriosMin"
+                                                    className="form-select"
+                                                    value={filters.dormitoriosMin}
+                                                    onChange={handleFilterChange}
+                                                >
+                                                    <option value="">Cualquiera</option>
+                                                    <option value="1">1+</option>
+                                                    <option value="2">2+</option>
+                                                    <option value="3">3+</option>
+                                                    <option value="4">4+</option>
+                                                    <option value="5">5+</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Baños</label>
+                                                <select
+                                                    name="banosMin"
+                                                    className="form-select"
+                                                    value={filters.banosMin}
+                                                    onChange={handleFilterChange}
+                                                >
+                                                    <option value="">Cualquiera</option>
+                                                    <option value="1">1+</option>
+                                                    <option value="2">2+</option>
+                                                    <option value="3">3+</option>
+                                                    <option value="4">4+</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Cocheras</label>
+                                                <select
+                                                    name="cocherasMin"
+                                                    className="form-select"
+                                                    value={filters.cocherasMin}
+                                                    onChange={handleFilterChange}
+                                                >
+                                                    <option value="">Cualquiera</option>
+                                                    <option value="1">1+</option>
+                                                    <option value="2">2+</option>
+                                                    <option value="3">3+</option>
+                                                    <option value="4">4+</option>
+                                                </select>
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Superficie mín.</label>
+                                                <input
+                                                    type="number"
+                                                    name="superficieMin"
+                                                    className="form-control"
+                                                    min="0"
+                                                    placeholder="100"
+                                                    value={filters.superficieMin}
+                                                    onChange={handleFilterChange}
+                                                />
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Precio mín.</label>
+                                                <input
+                                                    type="number"
+                                                    name="precioMin"
+                                                    className="form-control"
+                                                    min="0"
+                                                    placeholder="50000"
+                                                    value={filters.precioMin}
+                                                    onChange={handleFilterChange}
+                                                />
+                                            </div>
+
+                                            <div className="col-6 col-lg-3 col-xl-2">
+                                                <label className="form-label">Precio máx.</label>
+                                                <input
+                                                    type="number"
+                                                    name="precioMax"
+                                                    className="form-control"
+                                                    min="0"
+                                                    placeholder="150000"
+                                                    value={filters.precioMax}
+                                                    onChange={handleFilterChange}
+                                                />
+                                            </div>
+
+                                            <div className="col-12 col-lg-3 col-xl-3">
+                                                <label className="form-label">Ordenar por</label>
+                                                <select
+                                                    name="sortBy"
+                                                    className="form-select"
+                                                    value={filters.sortBy}
+                                                    onChange={handleFilterChange}
+                                                >
+                                                    {SORT_OPTIONS.map((option) => (
+                                                        <option key={option.value} value={option.value}>
+                                                            {option.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            <div className="col-12">
+                                                <label className="form-label">Diferenciales</label>
+
+                                                <div className="d-flex flex-wrap gap-3">
+                                                    {AMENITY_FILTERS.map((amenityFilter) => (
+                                                        <div className="form-check" key={amenityFilter.key}>
+                                                            <input
+                                                                id={`portal-filter-${amenityFilter.key}`}
+                                                                className="form-check-input"
+                                                                type="checkbox"
+                                                                checked={filters[amenityFilter.key] === "true"}
+                                                                onChange={(e) =>
+                                                                    handleAmenityFilterChange(
+                                                                        amenityFilter.key,
+                                                                        e.target.checked,
+                                                                    )
+                                                                }
+                                                            />
+
+                                                            <label
+                                                                className="form-check-label"
+                                                                htmlFor={`portal-filter-${amenityFilter.key}`}
+                                                            >
+                                                                {amenityFilter.label}
+                                                            </label>
+                                                        </div>
+                                                    ))}
+
+                                                    <div className="form-check">
+                                                        <input
+                                                            id="portal-filter-video"
+                                                            className="form-check-input"
+                                                            type="checkbox"
+                                                            checked={filters.video === "true"}
+                                                            onChange={(e) =>
+                                                                handleAmenityFilterChange(
+                                                                    "video",
+                                                                    e.target.checked,
+                                                                )
+                                                            }
+                                                        />
+
+                                                        <label
+                                                            className="form-check-label"
+                                                            htmlFor="portal-filter-video"
+                                                        >
+                                                            Con video
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="col-12 col-lg-3 d-grid">
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-outline-secondary"
+                                                    onClick={handleClearFilters}
+                                                    disabled={activeFiltersCount === 0}
+                                                >
+                                                    Limpiar filtros
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
-                    </section>
+                    </form>
 
-                    <div className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+                    <div
+                        id="portal-results"
+                        className="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4 scroll-mt-portal"
+                    >
                         <div>
                             <div className="fw-semibold">
-                                {filteredInmuebles.length} resultado
+                                {filteredInmuebles.length} coincidencia
+                                {filteredInmuebles.length === 1 ? "" : "s"} cargada
                                 {filteredInmuebles.length === 1 ? "" : "s"}
                             </div>
 
@@ -1632,6 +1787,14 @@ const InmueblePortalPage = () => {
                         </div>
 
                         <div className="d-flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() => setShowSearchAlert(true)}
+                            >
+                                Guardar búsqueda
+                            </button>
+
                             <button
                                 type="button"
                                 className="btn btn-outline-primary btn-sm"
@@ -1660,8 +1823,14 @@ const InmueblePortalPage = () => {
 
                     {!loading && !error && filteredInmuebles.length === 0 && (
                         <div className="alert alert-info">
-                            No encontramos inmuebles con esos filtros. Probá ampliando la
-                            búsqueda.
+                            <div className="fw-semibold mb-1">
+                                No encontramos coincidencias entre las publicaciones cargadas.
+                            </div>
+                            <div className="small">
+                                {canLoadMore
+                                    ? "Podés cargar más resultados o ampliar los filtros."
+                                    : "Probá ampliando los filtros de búsqueda."}
+                            </div>
                         </div>
                     )}
 
@@ -1697,6 +1866,7 @@ const InmueblePortalPage = () => {
                                             <div className="position-relative portal-listing-image-wrap">
                                                 <Link
                                                     to={detalleUrl}
+                                                    state={{ performanceSource: "search" }}
                                                     className="text-decoration-none"
                                                     onClick={saveCurrentSearchUrl}
                                                     aria-label={`Ver ${inmueble.titulo || "publicación"}`}
@@ -1759,7 +1929,14 @@ const InmueblePortalPage = () => {
                                             </div>
 
                                             <div className="card-body d-flex flex-column p-4">
-                                                <div className="d-flex align-items-center gap-2 mb-3 pb-3 border-bottom">
+                                                <button
+                                                    type="button"
+                                                    className="publisher-profile-trigger d-flex align-items-center gap-2 mb-3 pb-3 border-bottom w-100 text-start"
+                                                    onClick={() => setSelectedPublisher(
+                                                        getPortalPublisherDescriptor(inmueble),
+                                                    )}
+                                                    aria-label={`Ver información sobre ${sourceName}`}
+                                                >
                                                     {sourceLogoUrl ? (
                                                         <img
                                                             src={sourceLogoUrl}
@@ -1781,7 +1958,7 @@ const InmueblePortalPage = () => {
                                                             {sourceName}
                                                         </div>
                                                     </div>
-                                                </div>
+                                                </button>
 
                                                 {hasVideos && (
                                                     <div className="d-flex flex-wrap gap-2 mb-2">
@@ -1789,15 +1966,23 @@ const InmueblePortalPage = () => {
                                                     </div>
                                                 )}
 
-                                                <Link
-                                                    to={detalleUrl}
-                                                    className="text-decoration-none text-dark"
-                                                    onClick={saveCurrentSearchUrl}
-                                                >
-                                                    <h2 className="h5 mb-2 portal-listing-title">
-                                                        {inmueble.titulo || "Inmueble publicado"}
-                                                    </h2>
-                                                </Link>
+                                                <div className="d-flex align-items-start gap-2 mb-2">
+                                                    <Link
+                                                        to={detalleUrl}
+                                                        state={{ performanceSource: "search" }}
+                                                        className="text-decoration-none text-dark flex-grow-1"
+                                                        onClick={saveCurrentSearchUrl}
+                                                    >
+                                                        <h2 className="h5 mb-0 portal-listing-title">
+                                                            {inmueble.titulo || "Inmueble publicado"}
+                                                        </h2>
+                                                    </Link>
+                                                    <PortalFavoriteButton
+                                                        item={inmueble}
+                                                        compact
+                                                        performanceSource="search"
+                                                    />
+                                                </div>
 
                                                 {address && (
                                                     <p className="text-muted small mb-2">📍 {address}</p>
@@ -1842,6 +2027,7 @@ const InmueblePortalPage = () => {
                                                 <div className="mt-auto d-grid gap-2">
                                                     <Link
                                                         to={detalleUrl}
+                                                        state={{ performanceSource: "search" }}
                                                         className="btn btn-primary"
                                                         onClick={saveCurrentSearchUrl}
                                                     >
@@ -1869,8 +2055,40 @@ const InmueblePortalPage = () => {
                             })}
                         </section>
                     )}
+
+                    {!loading && canLoadMore && (
+                        <div className="text-center mt-4">
+                            <button
+                                type="button"
+                                className="btn btn-outline-primary btn-lg px-5"
+                                onClick={handleLoadMore}
+                                disabled={loadingMore}
+                            >
+                                {loadingMore ? "Cargando..." : "Cargar más inmuebles"}
+                            </button>
+                            <div className="small text-muted mt-2">
+                                Solo se consultan nuevas publicaciones; las anteriores no se
+                                vuelven a descargar.
+                            </div>
+                        </div>
+                    )}
+
+                    {loadMoreError && (
+                        <div className="alert alert-warning mt-3 mb-0">
+                            {loadMoreError}
+                        </div>
+                    )}
                 </div>
             </section>
+            <PublicProfileModal
+                publisher={selectedPublisher}
+                onClose={() => setSelectedPublisher(null)}
+            />
+            <PortalSearchAlertModal
+                open={showSearchAlert}
+                filters={filters}
+                onClose={() => setShowSearchAlert(false)}
+            />
         </main>
     );
 };

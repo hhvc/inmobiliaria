@@ -5,6 +5,8 @@ import SEO from "../../components/SEO";
 import { useAuth } from "../../context/auth/useAuth";
 import ConsortiumExpenseDocumentsPanel from "../components/ConsortiumExpenseDocumentsPanel";
 import ConsortiumPrivateDocumentButton from "../components/ConsortiumPrivateDocumentButton";
+import ConsortiumClaimsPanel from "../components/ConsortiumClaimsPanel";
+import ConsortiumBuildingInformation from "../components/ConsortiumBuildingInformation";
 import {
   getConsortiumExpenseDocuments,
   getConsortiumAdjustments,
@@ -63,6 +65,7 @@ const ConsortiumResidentPortalPage = () => {
   const [reportForm, setReportForm] = useState(emptyReportForm);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [unitLoadFailed, setUnitLoadFailed] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
@@ -72,13 +75,17 @@ const ConsortiumResidentPortalPage = () => {
     try {
       setLoading(true);
       setError("");
+      setUnitLoadFailed(false);
       const data = await getMyConsortiumUnits();
       setUnits(data);
       setSelectedUnitId((current) => (
         current && data.some((item) => item.id === current) ? current : data[0]?.id || ""
       ));
     } catch (loadError) {
-      setError(loadError.message || "No se pudieron cargar tus unidades.");
+      console.error("No se pudieron verificar las unidades de Mi Consorcio", loadError);
+      setUnits([]);
+      setUnitLoadFailed(true);
+      setError("No pudimos verificar tus unidades habilitadas. Esto no significa que hayas perdido el acceso; reintentá en unos minutos o avisá a la administración.");
     } finally {
       setLoading(false);
     }
@@ -230,13 +237,25 @@ const ConsortiumResidentPortalPage = () => {
         <div className="alert alert-warning">Para proteger la información del consorcio necesitás verificar el email <strong>{user?.email}</strong>.</div>
       )}
 
-      {user?.emailVerified === true && !units.length && (
+      {user?.emailVerified === true && !unitLoadFailed && !units.length && (
         <section className="card border-0 shadow-sm"><div className="card-body p-5 text-center"><h2 className="h5">Todavía no tenés unidades habilitadas</h2><p className="text-muted mb-0">Pedile a la administración que habilite exactamente el email <strong>{user?.email}</strong> en la unidad correspondiente.</p></div></section>
+      )}
+
+      {user?.emailVerified === true && unitLoadFailed && (
+        <section className="card border-warning shadow-sm"><div className="card-body p-4"><h2 className="h5">No se pudo comprobar el acceso</h2><p className="text-muted mb-3">Tu habilitación puede seguir vigente. La consulta técnica no terminó correctamente.</p><button className="btn btn-outline-primary" type="button" onClick={loadUnits}>Reintentar</button></div></section>
       )}
 
       {selectedUnit && (
         <>
           <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><div className="row g-3 align-items-end"><div className="col-lg-6"><label className="form-label">Unidad habilitada</label><select className="form-select" value={selectedUnitId} onChange={(event) => { setSelectedUnitId(event.target.value); setSelectedPeriodId(""); setReportForm(emptyReportForm()); }}>{units.map((unit) => <option key={`${unit.inmobiliariaId}_${unit.id}`} value={unit.id}>{unit.consortiumName || "Consorcio"} · Unidad {unit.code}</option>)}</select></div><div className="col-sm-6 col-lg-3"><span className="small text-muted text-uppercase">Saldo a favor</span><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(availableCredit, selectedUnit.consortiumCurrency || "ARS")}</strong></div><div className="col-sm-6 col-lg-3"><span className="small text-muted text-uppercase">Saldo neto</span><strong className={`fs-4 d-block consortium-money ${totalBalance > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(totalBalance, selectedUnit.consortiumCurrency || "ARS")}</strong></div></div><div className="mt-3"><strong>{selectedUnit.consortiumName || "Consorcio"}</strong><div className="text-muted">{selectedUnit.consortiumAddress || "Domicilio no informado"} · Unidad {selectedUnit.code}</div>{availableCredit > 0 && <small className="text-muted">El saldo a favor se mantiene separado hasta que la administración confirme su imputación.</small>}</div></div></section>
+
+          <ConsortiumBuildingInformation selectedUnit={selectedUnit} />
+
+          <ConsortiumClaimsPanel
+            inmobiliariaId={selectedUnit.inmobiliariaId}
+            selectedUnit={selectedUnit}
+            portalMode
+          />
 
           <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Estado de cuenta</h2>{detailLoading ? <p className="text-muted">Cargando movimientos...</p> : <div className="table-responsive"><table className="table table-hover align-middle"><thead><tr><th>Período</th><th>Vencimiento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead><tbody>{obligations.map((obligation) => { const status = getConsortiumObligationStatus(obligation); const state = getConsortiumObligationStatusLabel(status); return <tr key={obligation.id}><td>{getConsortiumAccountingPeriodLabel(obligation)}</td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/mi-consorcio/${selectedUnit.inmobiliariaId}/${selectedUnit.consortiumId}/liquidaciones/${obligation.id}`}>Ver PDF</Link><button className="btn btn-outline-secondary" type="button" onClick={() => setSelectedPeriodId(obligation.periodId)}>Comprobantes</button>{Number(obligation.balanceMinor || 0) > 0 && <button className="btn btn-success" type="button" onClick={() => selectReport(obligation)}>Informar pago</button>}</div></td></tr>; })}{!obligations.length && <tr><td className="text-center text-muted py-4" colSpan="7">Todavía no hay expensas emitidas.</td></tr>}</tbody></table></div>}</div></section>
 

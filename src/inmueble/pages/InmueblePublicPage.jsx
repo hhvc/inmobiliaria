@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { getPublicInmuebleBySlug } from "../services/inmueble.service";
@@ -13,9 +13,17 @@ import {
   getPublicBranchBySlug,
 } from "../../inmobiliaria/services/agencyNetwork.service";
 import InmuebleVideoSection from "../components/InmuebleVideoSection";
+import PublicProfileModal from "../../profile/components/PublicProfileModal";
+import {
+  buildInmueblePublisherDescriptor,
+  resolveInmueblePublisherMode,
+} from "../../profile/utils/publicProfile.helpers";
+import { getPublicProfileById } from "../../profile/services/publicProfile.service";
 import InmuebleMediaGallery from "../components/InmuebleMediaGallery";
+import PortalFavoriteButton from "../components/PortalFavoriteButton";
 import { getVisibleInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 import { buildWhatsappRedirectUrl } from "../../utils/whatsappRedirect";
+import { recordPortalPerformanceEvent } from "../services/portalPerformance.service";
 
 
 const INITIAL_CONSULTA = {
@@ -315,8 +323,58 @@ const buildPropertyJsonLd = ({
   };
 };
 
+const hydratePersonalPublisher = async (inmueble = {}) => {
+  if (resolveInmueblePublisherMode(inmueble) !== "user") return inmueble;
+
+  const userId =
+    inmueble.publisherUserId ||
+    inmueble.publisher?.id ||
+    inmueble.createdBy ||
+    "";
+  const profile = await getPublicProfileById(userId);
+
+  if (profile?.isPublic && profile.displayName) {
+    return {
+      ...inmueble,
+      publisherMode: "user",
+      publisherUserId: userId,
+      publisher: {
+        ...inmueble.publisher,
+        type: "user",
+        id: userId,
+        name: profile.displayName,
+        photoURL: profile.photoURL || "",
+        logoUrl: profile.photoURL || "",
+        headline: profile.headline || "",
+      },
+      sourceLabel: profile.displayName,
+      sourceLogoUrl: profile.photoURL || "",
+    };
+  }
+
+  return {
+    ...inmueble,
+    publisherMode: "agency",
+    publisherUserId: "",
+    publisher: {
+      type: "inmobiliaria",
+      id: inmueble.inmobiliariaId || inmueble.ownerInmobiliariaId || "",
+      name: inmueble.inmobiliariaNombre || "Inmobiliaria adherida",
+      logoUrl: inmueble.inmobiliariaLogoUrl || "",
+      photoURL: inmueble.inmobiliariaLogoUrl || "",
+      slug: inmueble.inmobiliariaSlug || "",
+      profilePath: inmueble.inmobiliariaSlug
+        ? `/inmobiliaria/${inmueble.inmobiliariaSlug}`
+        : "",
+    },
+    sourceLabel: inmueble.inmobiliariaNombre || "Inmobiliaria adherida",
+    sourceLogoUrl: inmueble.inmobiliariaLogoUrl || "",
+  };
+};
+
 const InmueblePublicPage = () => {
   const { slug, agencySlug = "", branchSlug = "" } = useParams();
+  const location = useLocation();
 
   const [inmueble, setInmueble] = useState(null);
   const [inmobiliaria, setInmobiliaria] = useState(null);
@@ -335,6 +393,7 @@ const InmueblePublicPage = () => {
   const [consultaSuccess, setConsultaSuccess] = useState(false);
 
   const [copySuccess, setCopySuccess] = useState(false);
+  const [selectedPublisher, setSelectedPublisher] = useState(null);
 
   const lastSearchUrl = useMemo(() => {
     if (typeof window === "undefined") return "/inmuebles";
@@ -375,6 +434,14 @@ const InmueblePublicPage = () => {
   const presentationAgency = useMemo(() => presentationBranch
     ? { ...inmobiliaria, nombre: presentationBranch.name }
     : inmobiliaria, [inmobiliaria, presentationBranch]);
+  const effectivePublisher = useMemo(
+    () => buildInmueblePublisherDescriptor({
+      inmueble: inmueble || {},
+      agency: presentationAgency,
+      forceAgency: Boolean(agencySlug) || syndicatedPresentation,
+    }),
+    [agencySlug, inmueble, presentationAgency, syndicatedPresentation],
+  );
   const expensas = toNumber(inmueble?.expensas);
 
   const seoUrl = useMemo(() => {
@@ -433,6 +500,41 @@ const InmueblePublicPage = () => {
     });
   }, [contactoInmobiliaria.whatsapp, inmobiliaria?.slug, inmueble]);
 
+  const performanceContext = useMemo(() => {
+    const ownerAgencyId =
+      inmueble?.ownerInmobiliariaId ||
+      inmueble?.sourceInmobiliariaId ||
+      inmueble?.inmobiliariaId ||
+      "";
+    const presentationAgencyId =
+      inmobiliaria?.id || inmobiliaria?.inmobiliariaId || ownerAgencyId;
+    const requestedSource = location.state?.performanceSource;
+    const source = requestedSource || (
+      agencySlug
+        ? (presentationAgencyId !== ownerAgencyId ? "friend_agency" : "agency_page")
+        : "direct"
+    );
+
+    return {
+      source,
+      sourceType: "inmobiliaria",
+      ownerAgencyId,
+      presentationAgencyId,
+      branchId: presentationBranch?.id || inmueble?.sucursalId || "",
+      inmuebleId: inmueble?.id || "",
+    };
+  }, [agencySlug, inmueble, inmobiliaria, location.state, presentationBranch]);
+
+  const recordPerformance = useCallback((eventType) => {
+    if (!performanceContext.ownerAgencyId || !performanceContext.inmuebleId) return;
+    void recordPortalPerformanceEvent({ ...performanceContext, eventType });
+  }, [performanceContext]);
+
+  useEffect(() => {
+    if (!inmueble || loading || error) return;
+    recordPerformance("detail_view");
+  }, [error, inmueble, loading, recordPerformance]);
+
   useEffect(() => {
     setSelectedImageIndex(0);
   }, [slug]);
@@ -490,14 +592,15 @@ const InmueblePublicPage = () => {
           return;
         }
 
-        setInmueble(data);
+        const hydratedData = await hydratePersonalPublisher(data);
+        setInmueble(hydratedData);
 
-        if (data.inmobiliariaId) {
+        if (hydratedData.inmobiliariaId) {
           try {
             setContactLoading(true);
 
             const inmobiliariaData = await getPublicInmobiliariaById(
-              data.inmobiliariaId,
+              hydratedData.inmobiliariaId,
             );
 
             setInmobiliaria(inmobiliariaData);
@@ -553,6 +656,8 @@ const InmueblePublicPage = () => {
         pageUrl: typeof window !== "undefined" ? window.location.href : "",
         ...consultaValues,
       });
+
+      recordPerformance("inquiry_submitted");
 
       setConsultaValues(INITIAL_CONSULTA);
       setConsultaSuccess(true);
@@ -743,16 +848,17 @@ const InmueblePublicPage = () => {
 
                   {address && <p className="text-muted mb-3">{address}</p>}
 
-                  {presentationAgency?.nombre && (
+                  {effectivePublisher?.name && (
                     <p className="text-muted mb-4">
                       Publicado por{" "}
-                      {inmobiliaria.slug ? (
-                        <Link to={`/inmobiliaria/${inmobiliaria.slug}${presentationBranch?.slug ? `/${presentationBranch.slug}` : ""}`}>
-                          <strong>{presentationAgency.nombre}</strong>
-                        </Link>
-                      ) : (
-                        <strong>{presentationAgency.nombre}</strong>
-                      )}
+                      <button
+                        type="button"
+                        className="publisher-profile-inline"
+                        onClick={() => setSelectedPublisher(effectivePublisher)}
+                        aria-label={`Ver información sobre ${effectivePublisher.name}`}
+                      >
+                        <strong>{effectivePublisher.name}</strong>
+                      </button>
                     </p>
                   )}
 
@@ -781,12 +887,26 @@ const InmueblePublicPage = () => {
                   )}
 
                   <div className="d-grid gap-2 mt-auto">
+                    <PortalFavoriteButton
+                      item={{
+                        ...inmueble,
+                        sourceType: "inmobiliaria",
+                        publicPath: `/inmueble/${inmueble.slug || inmueble.id || slug}`,
+                        locationLabel: address,
+                        priceLabel: formatPrice(inmueble),
+                      }}
+                      className="btn btn-outline-danger btn-lg portal-favorite-button"
+                      performanceSource={performanceContext.source}
+                      presentationAgencyId={performanceContext.presentationAgencyId}
+                      presentationBranchId={performanceContext.branchId}
+                    />
                     {whatsappUrl && (
                       <a
                         href={whatsappUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="btn btn-success btn-lg"
+                        onClick={() => recordPerformance("whatsapp_click")}
                       >
                         Consultar por WhatsApp
                       </a>
@@ -906,6 +1026,7 @@ const InmueblePublicPage = () => {
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-success w-100 mb-3"
+                      onClick={() => recordPerformance("whatsapp_click")}
                     >
                       Consultar por WhatsApp
                     </a>
@@ -920,7 +1041,10 @@ const InmueblePublicPage = () => {
                   {contactoInmobiliaria.email && (
                     <div className="small text-muted mb-2">
                       Email:{" "}
-                      <a href={`mailto:${contactoInmobiliaria.email}`}>
+                      <a
+                        href={`mailto:${contactoInmobiliaria.email}`}
+                        onClick={() => recordPerformance("email_click")}
+                      >
                         {contactoInmobiliaria.email}
                       </a>
                     </div>
@@ -1041,6 +1165,7 @@ const InmueblePublicPage = () => {
               target="_blank"
               rel="noopener noreferrer"
               className="btn btn-success"
+              onClick={() => recordPerformance("whatsapp_click")}
             >
               WhatsApp
             </a>
@@ -1051,6 +1176,10 @@ const InmueblePublicPage = () => {
           )}
         </div>
       </div>
+      <PublicProfileModal
+        publisher={selectedPublisher}
+        onClose={() => setSelectedPublisher(null)}
+      />
     </main>
   );
 };

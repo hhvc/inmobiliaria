@@ -1,7 +1,7 @@
 import { useDomainAgency } from "../inmobiliaria/context/useDomainAgency";
 import InmobiliariaPublicPage from "../inmobiliaria/pages/InmobiliariaPublicPage";
 import { isPortalBaseDomain } from "../inmobiliaria/utils/domainRouting";
-import HomePage from "./HomePage";
+import PortalSearchHomePage from "./PortalSearchHomePage";
 
 const PublicHomeRoute = () => {
     const { loading, slug } = useDomainAgency();
@@ -19,7 +19,7 @@ const PublicHomeRoute = () => {
       aunque el provider todavía esté cargando o haya devuelto algo.
     */
     if (isBaseDomain) {
-        return <HomePage />;
+        return <PortalSearchHomePage />;
     }
 
     /*
@@ -47,7 +47,7 @@ const PublicHomeRoute = () => {
       Fallback: si el dominio externo no pudo resolverse
       como inmobiliaria, mostramos el portal principal.
     */
-    return <HomePage />;
+    return <PortalSearchHomePage />;
 };
 
 export default PublicHomeRoute;

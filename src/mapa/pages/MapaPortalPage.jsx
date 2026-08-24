@@ -156,6 +156,7 @@ const MapaPortalPage = () => {
                     <Link
                       className="btn btn-primary w-100"
                       to={`/inmueble/${selectedPoint.slug}`}
+                      state={{ performanceSource: "map" }}
                     >
                       Ver publicación
                     </Link>

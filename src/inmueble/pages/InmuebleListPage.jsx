@@ -883,6 +883,14 @@ const InmuebleListPage = () => {
                           </a>
                         )}
 
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary btn-sm w-100"
+                          onClick={() => navigate(`/admin/rendimiento?inmuebleId=${inmueble.id}`)}
+                        >
+                          Rendimiento
+                        </button>
+
                         <hr className="my-2" />
 
                         <button

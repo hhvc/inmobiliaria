@@ -1,6 +1,5 @@
 import {
   collection,
-  collectionGroup,
   doc,
   getDoc,
   getDocs,
@@ -18,12 +17,16 @@ import {
   ref as storageRef,
   uploadBytes,
 } from "firebase/storage";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
-import { auth, db, storage } from "../../firebase/config";
+import app, { auth, db, storage } from "../../firebase/config";
 import { assertInmobiliariaActiva } from "../../inmobiliaria/services/inmobiliaria.service";
 import {
+  buildConsortiumEconomicStatement,
+  buildConsortiumMonthlyCloseChecklist,
   calculateConsortiumAssessments,
   getConsortiumObligationStatus,
+  getConsortiumTreasuryBookBalance,
   validateConsortium,
   validateConsortiumUnit,
 } from "../utils/consorcio.helpers";
@@ -33,7 +36,6 @@ import {
   safeConsortiumFileName,
 } from "../utils/consorcioPortal.helpers";
 import {
-  getConsortiumUnitNotificationRecipients,
   normalizeConsortiumDeliveryPreference,
   normalizeConsortiumUnitAutomationMode,
   normalizeReminderDays,
@@ -51,7 +53,18 @@ const COLLECTIONS = {
   paymentReports: "condominium_payment_reports",
   adjustments: "condominium_adjustments",
   penalties: "condominium_penalties",
+  suppliers: "condominium_suppliers",
+  supplierObligations: "condominium_supplier_obligations",
+  supplierPayments: "condominium_supplier_payments",
+  treasuryAccounts: "condominium_treasury_accounts",
+  treasuryMovements: "condominium_treasury_movements",
+  treasuryReconciliations: "condominium_treasury_reconciliations",
+  financialClosures: "condominium_financial_closures",
+  claims: "condominium_claims",
+  claimEvents: "condominium_claim_events",
 };
+
+const functions = getFunctions(app, "southamerica-east1");
 
 const agencyCollection = (inmobiliariaId, key) =>
   collection(db, "inmobiliarias", inmobiliariaId, COLLECTIONS[key]);
@@ -107,7 +120,15 @@ const sanitizeUnit = (value = {}) => {
   );
   const ownerEmail = normalizeConsortiumEmails([value.ownerEmail])[0] || "";
   const occupantEmail = normalizeConsortiumEmails([value.occupantEmail])[0] || "";
-  const manualPortalEmails = normalizeConsortiumEmails(value.manualPortalEmails ?? value.portalEmails);
+  const manualOwnerPortalEmails = normalizeConsortiumEmails(value.manualOwnerPortalEmails);
+  const ownerPortalEmails = normalizeConsortiumEmails([ownerEmail, ...manualOwnerPortalEmails]);
+  const manualPortalEmails = normalizeConsortiumEmails(
+    value.manualPortalEmails ?? value.portalEmails,
+  ).filter((email) => !ownerPortalEmails.includes(email));
+  const occupantPortalEmails = normalizeConsortiumEmails([
+    occupantEmail,
+    ...manualPortalEmails,
+  ]).filter((email) => !ownerPortalEmails.includes(email));
   const unit = {
     schemaVersion: 1,
     consortiumId: cleanText(value.consortiumId, 128),
@@ -131,7 +152,10 @@ const sanitizeUnit = (value = {}) => {
       .filter((item) => item > 0),
     email: cleanText(value.email, 220),
     phone: cleanText(value.phone, 80),
+    manualOwnerPortalEmails,
     manualPortalEmails,
+    ownerPortalEmails,
+    occupantPortalEmails,
     portalEmails: [],
     creditBalanceMinor: Math.max(0, Math.round(Number(value.creditBalanceMinor) || 0)),
     notes: cleanText(value.notes, 2000),
@@ -139,8 +163,8 @@ const sanitizeUnit = (value = {}) => {
     deleted: false,
   };
   unit.portalEmails = normalizeConsortiumEmails([
-    ...manualPortalEmails,
-    ...getConsortiumUnitNotificationRecipients(unit).map((item) => item.email),
+    ...ownerPortalEmails,
+    ...occupantPortalEmails,
   ]);
   return unit;
 };
@@ -165,7 +189,10 @@ const UNIT_AUDIT_FIELDS = [
   "notificationOverdueDays",
   "email",
   "phone",
+  "manualOwnerPortalEmails",
   "manualPortalEmails",
+  "ownerPortalEmails",
+  "occupantPortalEmails",
   "portalEmails",
   "notes",
   "active",
@@ -195,14 +222,31 @@ const requireEffectiveDate = (value, label) => {
   return normalized;
 };
 
-const getAggregatedPortalEmails = (units, replacement = null) => normalizeConsortiumEmails(
+const getUnitPortalEmailsByRole = (unit = {}, field = "portalEmails") => {
+  if (Array.isArray(unit[field])) return unit[field];
+  if (field === "ownerPortalEmails") {
+    return [unit.ownerEmail, ...(unit.manualOwnerPortalEmails || [])];
+  }
+  if (field === "occupantPortalEmails") {
+    return [unit.occupantEmail, ...(unit.manualPortalEmails || [])];
+  }
+  return unit.portalEmails || [];
+};
+
+const getAggregatedPortalEmails = (
+  units,
+  replacement = null,
+  field = "portalEmails",
+) => normalizeConsortiumEmails(
   units.flatMap((unit) => {
-    if (replacement && unit.id === replacement.id) return replacement.portalEmails || [];
+    if (replacement && unit.id === replacement.id) {
+      return getUnitPortalEmailsByRole(replacement, field);
+    }
     if (unit.deleted === true || unit.active === false) return [];
-    return unit.portalEmails || [];
+    return getUnitPortalEmailsByRole(unit, field);
   }).concat(
     replacement && !units.some((unit) => unit.id === replacement.id)
-      ? replacement.portalEmails || []
+      ? getUnitPortalEmailsByRole(replacement, field)
       : [],
   ),
 );
@@ -368,6 +412,16 @@ export const createConsortiumUnit = async (inmobiliariaId, consortiumId, value) 
   batch.set(ref, unitData);
   batch.update(agencyDoc(inmobiliariaId, "consortiums", consortiumId), {
     portalEmails: getAggregatedPortalEmails(currentUnits, { id: ref.id, ...unitData }),
+    ownerPortalEmails: getAggregatedPortalEmails(
+      currentUnits,
+      { id: ref.id, ...unitData },
+      "ownerPortalEmails",
+    ),
+    occupantPortalEmails: getAggregatedPortalEmails(
+      currentUnits,
+      { id: ref.id, ...unitData },
+      "occupantPortalEmails",
+    ),
     updatedAt: serverTimestamp(),
     updatedBy: user.uid,
   });
@@ -436,6 +490,16 @@ export const updateConsortiumUnit = async (inmobiliariaId, unitId, value) => {
   batch.update(unitRef, unitData);
   batch.update(agencyDoc(inmobiliariaId, "consortiums", payload.consortiumId), {
     portalEmails: getAggregatedPortalEmails(currentUnits, { id: unitId, ...unitData }),
+    ownerPortalEmails: getAggregatedPortalEmails(
+      currentUnits,
+      { id: unitId, ...unitData },
+      "ownerPortalEmails",
+    ),
+    occupantPortalEmails: getAggregatedPortalEmails(
+      currentUnits,
+      { id: unitId, ...unitData },
+      "occupantPortalEmails",
+    ),
     updatedAt: serverTimestamp(),
     updatedBy: user.uid,
   });
@@ -481,6 +545,8 @@ export const archiveConsortiumUnit = async (inmobiliariaId, unitId) => {
     active: false,
     deleted: true,
     portalEmails: [],
+    ownerPortalEmails: [],
+    occupantPortalEmails: [],
   };
   const batch = writeBatch(db);
   batch.update(unitRef, {
@@ -493,6 +559,16 @@ export const archiveConsortiumUnit = async (inmobiliariaId, unitId) => {
   });
   batch.update(agencyDoc(inmobiliariaId, "consortiums", consortiumId), {
     portalEmails: getAggregatedPortalEmails(currentUnits, archivedUnit),
+    ownerPortalEmails: getAggregatedPortalEmails(
+      currentUnits,
+      archivedUnit,
+      "ownerPortalEmails",
+    ),
+    occupantPortalEmails: getAggregatedPortalEmails(
+      currentUnits,
+      archivedUnit,
+      "occupantPortalEmails",
+    ),
     updatedAt: serverTimestamp(),
     updatedBy: user.uid,
   });
@@ -501,7 +577,11 @@ export const archiveConsortiumUnit = async (inmobiliariaId, unitId) => {
 
 export const getConsortiumPeriods = async (inmobiliariaId, consortiumId = "") => {
   if (!inmobiliariaId) return [];
-  const snap = await getDocs(agencyCollection(inmobiliariaId, "periods"));
+  const baseCollection = agencyCollection(inmobiliariaId, "periods");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : baseCollection;
+  const snap = await getDocs(source);
   return snap.docs
     .map((item) => ({ id: item.id, ...item.data() }))
     .filter((item) => item.deleted !== true)
@@ -640,7 +720,15 @@ export const getConsortiumObligations = async (
   { consortiumId = "", periodId = "", unitId = "" } = {},
 ) => {
   if (!inmobiliariaId) return [];
-  const snap = await getDocs(agencyCollection(inmobiliariaId, "obligations"));
+  const baseCollection = agencyCollection(inmobiliariaId, "obligations");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : periodId
+      ? query(baseCollection, where("periodId", "==", periodId))
+      : unitId
+        ? query(baseCollection, where("unitId", "==", unitId))
+        : baseCollection;
+  const snap = await getDocs(source);
   return snap.docs
     .map((item) => ({ id: item.id, ...item.data() }))
     .filter((item) => !consortiumId || item.consortiumId === consortiumId)
@@ -1049,6 +1137,7 @@ export const registerConsortiumPayment = async ({
   method,
   reference = "",
   notes = "",
+  treasuryAccountId = "",
 }) => {
   await assertAgency(inmobiliariaId);
   const user = currentUserOrThrow();
@@ -1057,6 +1146,9 @@ export const registerConsortiumPayment = async ({
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) throw new Error("Ingresá la fecha del cobro.");
   const obligationRef = agencyDoc(inmobiliariaId, "obligations", obligationId);
   const paymentRef = doc(agencyCollection(inmobiliariaId, "payments"));
+  const movementRef = treasuryAccountId
+    ? doc(agencyCollection(inmobiliariaId, "treasuryMovements"))
+    : null;
   await runTransaction(db, async (transaction) => {
     const snap = await transaction.get(obligationRef);
     if (!snap.exists()) throw new Error("La expensa no existe.");
@@ -1065,6 +1157,22 @@ export const registerConsortiumPayment = async ({
     if (amount > balance) throw new Error("El cobro no puede superar el saldo de la unidad.");
     const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor) || 0) + amount;
     const balanceMinor = Math.max(0, Number(obligation.totalAmountMinor) - paidAmountMinor);
+    let treasuryAccount = null;
+    let treasuryAccountRef = null;
+    if (treasuryAccountId) {
+      treasuryAccountRef = agencyDoc(inmobiliariaId, "treasuryAccounts", treasuryAccountId);
+      const accountSnap = await transaction.get(treasuryAccountRef);
+      if (!accountSnap.exists() || accountSnap.data().active === false) {
+        throw new Error("La cuenta de tesorería no está disponible.");
+      }
+      treasuryAccount = accountSnap.data();
+      if (treasuryAccount.consortiumId !== obligation.consortiumId) {
+        throw new Error("La cuenta pertenece a otro consorcio.");
+      }
+      if ((treasuryAccount.currency || "ARS") !== (obligation.currency || "ARS")) {
+        throw new Error("La moneda de la cuenta no coincide con el cobro.");
+      }
+    }
     const payment = {
       id: paymentRef.id,
       obligationId,
@@ -1080,6 +1188,8 @@ export const registerConsortiumPayment = async ({
       method: cleanText(method, 40) || "transfer",
       reference: cleanText(reference, 220),
       notes: cleanText(notes, 1000),
+      treasuryAccountId: treasuryAccountId || "",
+      treasuryMovementId: movementRef?.id || "",
       voided: false,
       inmobiliariaId,
       ownerInmobiliariaId: inmobiliariaId,
@@ -1088,6 +1198,37 @@ export const registerConsortiumPayment = async ({
       updatedAt: serverTimestamp(),
     };
     transaction.set(paymentRef, payment);
+    if (treasuryAccount && treasuryAccountRef && movementRef) {
+      const accountSnapshot = {
+        name: treasuryAccount.name || "",
+        type: treasuryAccount.type || "bank",
+      };
+      transaction.set(movementRef, {
+        id: movementRef.id,
+        schemaVersion: 1,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        consortiumId: obligation.consortiumId,
+        accountId: treasuryAccountId,
+        accountSnapshot,
+        source: "consortium_collection",
+        sourceId: paymentRef.id,
+        direction: "inflow",
+        amountMinor: amount,
+        currency: obligation.currency || "ARS",
+        date,
+        concept: `Cobro de expensas · Unidad ${obligation.unitSnapshot?.code || obligation.unitId}`,
+        reference: cleanText(reference, 220),
+        voided: false,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      transaction.update(treasuryAccountRef, {
+        currentBalanceMinor: Math.max(0, Number(treasuryAccount.currentBalanceMinor) || 0) + amount,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    }
     transaction.update(obligationRef, {
       paidAmountMinor,
       balanceMinor,
@@ -1110,6 +1251,7 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
   const voidReason = cleanText(reason, 500);
   if (!voidReason) throw new Error("Ingresá el motivo de la anulación.");
   const paymentRef = agencyDoc(inmobiliariaId, "payments", paymentId);
+  const reversalRef = doc(agencyCollection(inmobiliariaId, "treasuryMovements"));
   await runTransaction(db, async (transaction) => {
     const paymentSnap = await transaction.get(paymentRef);
     if (!paymentSnap.exists()) throw new Error("El cobro no existe.");
@@ -1119,6 +1261,17 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
     const obligationSnap = await transaction.get(obligationRef);
     if (!obligationSnap.exists()) throw new Error("La expensa relacionada no existe.");
     const obligation = obligationSnap.data();
+    let treasuryAccount = null;
+    let treasuryAccountRef = null;
+    if (payment.treasuryAccountId) {
+      treasuryAccountRef = agencyDoc(inmobiliariaId, "treasuryAccounts", payment.treasuryAccountId);
+      const accountSnap = await transaction.get(treasuryAccountRef);
+      if (!accountSnap.exists()) throw new Error("La cuenta de tesorería asociada no existe.");
+      treasuryAccount = accountSnap.data();
+      if (Number(treasuryAccount.currentBalanceMinor || 0) < Number(payment.amountMinor || 0)) {
+        throw new Error("La cuenta no tiene saldo suficiente para revertir este cobro.");
+      }
+    }
     const paidAmountMinor = Math.max(
       0,
       Number(obligation.paidAmountMinor || 0) - Number(payment.amountMinor || 0),
@@ -1129,8 +1282,41 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
       voidReason,
       voidedAt: serverTimestamp(),
       voidedBy: user.uid,
+      treasuryReversalMovementId: treasuryAccount ? reversalRef.id : "",
       updatedAt: serverTimestamp(),
     });
+    if (treasuryAccount && treasuryAccountRef) {
+      transaction.set(reversalRef, {
+        id: reversalRef.id,
+        schemaVersion: 1,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        consortiumId: payment.consortiumId,
+        accountId: payment.treasuryAccountId,
+        accountSnapshot: {
+          name: treasuryAccount.name || "",
+          type: treasuryAccount.type || "bank",
+        },
+        source: "consortium_collection_reversal",
+        sourceId: paymentId,
+        reversesMovementId: payment.treasuryMovementId || "",
+        direction: "outflow",
+        amountMinor: Number(payment.amountMinor || 0),
+        currency: payment.currency || "ARS",
+        date: new Date().toISOString().slice(0, 10),
+        concept: `Anulación de cobro · Unidad ${payment.unitSnapshot?.code || payment.unitId}`,
+        reference: voidReason,
+        voided: false,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      transaction.update(treasuryAccountRef, {
+        currentBalanceMinor: Number(treasuryAccount.currentBalanceMinor || 0)
+          - Number(payment.amountMinor || 0),
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    }
     transaction.update(obligationRef, {
       paidAmountMinor,
       balanceMinor,
@@ -1145,21 +1331,113 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
   });
 };
 
-export const closeConsortiumPeriod = async ({ inmobiliariaId, periodId }) => {
+export const getConsortiumMonthlyCloseChecklist = async ({
+  inmobiliariaId,
+  consortiumId,
+  periodId,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const period = await getConsortiumPeriodById(inmobiliariaId, periodId);
+  if (!period || period.consortiumId !== consortiumId) {
+    throw new Error("La liquidación no existe o pertenece a otro consorcio.");
+  }
+  const [
+    units,
+    obligations,
+    expenseDocuments,
+    paymentReports,
+    treasuryAccounts,
+    treasuryReconciliations,
+    supplierObligations,
+    financialClosures,
+  ] = await Promise.all([
+    getConsortiumUnits(inmobiliariaId, consortiumId),
+    getConsortiumObligations(inmobiliariaId, { periodId }),
+    getConsortiumExpenseDocuments(inmobiliariaId, { periodId }),
+    getConsortiumPaymentReports(inmobiliariaId, { consortiumId }),
+    getConsortiumTreasuryAccounts(inmobiliariaId, consortiumId),
+    getConsortiumTreasuryReconciliations(inmobiliariaId, consortiumId),
+    getConsortiumSupplierObligations(inmobiliariaId, {
+      consortiumId,
+      includeVoided: true,
+    }),
+    getConsortiumFinancialClosures(inmobiliariaId, { consortiumId, periodId }),
+  ]);
+  return buildConsortiumMonthlyCloseChecklist({
+    period,
+    units,
+    obligations,
+    expenseDocuments,
+    paymentReports,
+    treasuryAccounts,
+    treasuryReconciliations,
+    supplierObligations,
+    financialClosures,
+  });
+};
+
+export const closeConsortiumPeriod = async ({
+  inmobiliariaId,
+  consortiumId,
+  periodId,
+  acknowledgeWarnings = false,
+  reviewedWarningSignatures = [],
+  note = "",
+}) => {
   await assertAgency(inmobiliariaId);
   const user = currentUserOrThrow();
-  const obligations = await getConsortiumObligations(inmobiliariaId, { periodId });
-  if (!obligations.length) throw new Error("La liquidación no tiene expensas emitidas.");
-  if (obligations.some((item) => Number(item.balanceMinor || 0) > 0)) {
-    throw new Error("No se puede cerrar mientras existan saldos pendientes.");
+  const checklist = await getConsortiumMonthlyCloseChecklist({
+    inmobiliariaId,
+    consortiumId,
+    periodId,
+  });
+  if (checklist.periodStatus === "closed") throw new Error("El período ya está cerrado.");
+  if (checklist.blockers.length) {
+    throw new Error(`Resolvé antes del cierre: ${checklist.blockers.map((item) => item.title).join("; ")}.`);
+  }
+  const reviewedWarningSignatureSet = new Set(
+    (Array.isArray(reviewedWarningSignatures) ? reviewedWarningSignatures : [])
+      .map((item) => cleanText(item, 180))
+      .filter(Boolean),
+  );
+  const unseenWarnings = checklist.warnings.filter(
+    (item) => !reviewedWarningSignatureSet.has(
+      `${item.code}:${item.count}:${item.amountMinor}`,
+    ),
+  );
+  if (checklist.warnings.length && acknowledgeWarnings !== true) {
+    throw new Error("Revisá y aceptá las advertencias antes de confirmar el cierre.");
+  }
+  if (unseenWarnings.length) {
+    throw new Error("Los datos cambiaron desde la última revisión. Actualizá el control antes de cerrar.");
   }
   await updateDoc(agencyDoc(inmobiliariaId, "periods", periodId), {
     status: "closed",
     closedAt: serverTimestamp(),
     closedBy: user.uid,
+    closedByEmail: cleanText(user.email || "", 220).toLowerCase(),
+    closeReview: {
+      schemaVersion: checklist.schemaVersion,
+      periodKey: checklist.periodKey,
+      summary: checklist.summary,
+      warningCodes: checklist.warnings.map((item) => item.code),
+      items: checklist.items.map((item) => ({
+        code: item.code,
+        status: item.status,
+        title: item.title,
+        detail: item.detail,
+        count: item.count,
+        amountMinor: item.amountMinor,
+      })),
+      note: cleanText(note, 2000),
+      acknowledgedWarnings: checklist.warnings.length > 0,
+      checkedAt: serverTimestamp(),
+      checkedBy: user.uid,
+    },
     updatedAt: serverTimestamp(),
     updatedBy: user.uid,
   });
+  return checklist;
 };
 
 const validateConsortiumFileOrThrow = (file) => {
@@ -1737,14 +2015,14 @@ const assertPortalUser = () => {
 
 export const getMyConsortiumUnits = async () => {
   const user = assertPortalUser();
-  const email = user.email.trim().toLowerCase();
-  const snap = await getDocs(query(
-    collectionGroup(db, COLLECTIONS.units),
-    where("portalEmails", "array-contains", email),
-  ));
-  return snap.docs
-    .map((item) => ({ id: item.id, ...item.data() }))
-    .filter((item) => item.active !== false && item.deleted !== true)
+  await user.getIdToken(true);
+  const callable = httpsCallable(functions, "consortiumGetMyUnits", {
+    timeout: 30000,
+  });
+  const result = await callable();
+  const units = Array.isArray(result.data?.units) ? result.data.units : [];
+  return units
+    .filter((item) => item?.id && item.inmobiliariaId && item.consortiumId)
     .sort((a, b) => `${a.consortiumName} ${a.code}`.localeCompare(`${b.consortiumName} ${b.code}`, "es"));
 };
 
@@ -1947,4 +2225,1509 @@ export const rejectConsortiumPaymentReport = async ({ inmobiliariaId, reportId, 
       updatedAt: serverTimestamp(),
     });
   });
+};
+
+const validDateOrThrow = (value, label) => {
+  const normalized = cleanText(value, 10);
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)
+    || Number.isNaN(parsed.getTime())
+    || parsed.toISOString().slice(0, 10) !== normalized) {
+    throw new Error(`Ingresá ${label}.`);
+  }
+  return normalized;
+};
+
+const sanitizeSupplier = (value = {}) => ({
+  schemaVersion: 1,
+  consortiumId: cleanText(value.consortiumId, 128),
+  name: cleanText(value.name, 220),
+  legalName: cleanText(value.legalName, 220),
+  taxId: cleanText(value.taxId, 32),
+  category: ["maintenance", "utilities", "professional", "insurance", "staff", "taxes", "other"]
+    .includes(value.category) ? value.category : "other",
+  email: cleanText(value.email, 220).toLowerCase(),
+  phone: cleanText(value.phone, 80),
+  address: cleanText(value.address, 300),
+  bankAccount: cleanText(value.bankAccount, 180),
+  notes: cleanText(value.notes, 2000),
+  active: value.active !== false,
+  deleted: false,
+});
+
+export const getConsortiumSuppliers = async (inmobiliariaId, consortiumId = "") => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "suppliers");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : baseCollection;
+  const snap = await getDocs(source);
+  return sortUpdatedDesc(snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId));
+};
+
+export const saveConsortiumSupplier = async ({ inmobiliariaId, supplierId = "", value }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalized = sanitizeSupplier(value);
+  if (!normalized.consortiumId) throw new Error("El proveedor debe pertenecer a un consorcio.");
+  if (!normalized.name) throw new Error("Ingresá el nombre del proveedor.");
+  const consortium = await getConsortiumById(inmobiliariaId, normalized.consortiumId);
+  if (!consortium) throw new Error("El consorcio no existe.");
+  if (supplierId) {
+    const targetRef = agencyDoc(inmobiliariaId, "suppliers", supplierId);
+    const current = await getDoc(targetRef);
+    if (!current.exists() || current.data().consortiumId !== normalized.consortiumId) {
+      throw new Error("El proveedor no existe.");
+    }
+    await updateDoc(targetRef, {
+      ...normalized,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+    return supplierId;
+  }
+  const targetRef = doc(agencyCollection(inmobiliariaId, "suppliers"));
+  await setDoc(targetRef, {
+    ...normalized,
+    id: targetRef.id,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+  return targetRef.id;
+};
+
+export const archiveConsortiumSupplier = async ({ inmobiliariaId, supplierId }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  await updateDoc(agencyDoc(inmobiliariaId, "suppliers", supplierId), {
+    active: false,
+    archivedBy: user.uid,
+    archivedAt: serverTimestamp(),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const getConsortiumTreasuryAccounts = async (inmobiliariaId, consortiumId = "") => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "treasuryAccounts");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : baseCollection;
+  const snap = await getDocs(source);
+  return sortUpdatedDesc(snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId));
+};
+
+export const createConsortiumTreasuryAccount = async ({
+  inmobiliariaId,
+  consortiumId,
+  name,
+  type = "bank",
+  currency = "ARS",
+  openingBalanceMinor = 0,
+  notes = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const accountName = cleanText(name, 180);
+  const openingBalance = Math.max(0, Math.round(Number(openingBalanceMinor) || 0));
+  if (!accountName) throw new Error("Ingresá el nombre de la caja o cuenta.");
+  const consortium = await getConsortiumById(inmobiliariaId, consortiumId);
+  if (!consortium) throw new Error("El consorcio no existe.");
+  const accountRef = doc(agencyCollection(inmobiliariaId, "treasuryAccounts"));
+  const movementRef = doc(agencyCollection(inmobiliariaId, "treasuryMovements"));
+  const now = serverTimestamp();
+  const account = {
+    id: accountRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId,
+    name: accountName,
+    type: ["bank", "cash", "wallet", "reserve", "other"].includes(type) ? type : "bank",
+    currency: cleanText(currency, 10) || consortium.currency || "ARS",
+    openingBalanceMinor: openingBalance,
+    currentBalanceMinor: openingBalance,
+    notes: cleanText(notes, 1000),
+    active: true,
+    deleted: false,
+    createdBy: user.uid,
+    createdAt: now,
+    updatedBy: user.uid,
+    updatedAt: now,
+  };
+  const batch = writeBatch(db);
+  batch.set(accountRef, account);
+  if (openingBalance > 0) {
+    batch.set(movementRef, {
+      id: movementRef.id,
+      schemaVersion: 1,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      consortiumId,
+      accountId: accountRef.id,
+      accountSnapshot: { name: account.name, type: account.type },
+      source: "opening_balance",
+      sourceId: accountRef.id,
+      direction: "inflow",
+      amountMinor: openingBalance,
+      currency: account.currency,
+      date: new Date().toISOString().slice(0, 10),
+      concept: "Saldo inicial de tesorería",
+      reference: "",
+      voided: false,
+      createdBy: user.uid,
+      createdAt: now,
+    });
+  }
+  await batch.commit();
+  return accountRef.id;
+};
+
+export const archiveConsortiumTreasuryAccount = async ({ inmobiliariaId, accountId }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const accountRef = agencyDoc(inmobiliariaId, "treasuryAccounts", accountId);
+  const account = await getDoc(accountRef);
+  if (!account.exists()) throw new Error("La cuenta no existe.");
+  if (Number(account.data().currentBalanceMinor || 0) !== 0) {
+    throw new Error("La cuenta debe quedar en cero antes de archivarla.");
+  }
+  await updateDoc(accountRef, {
+    active: false,
+    archivedBy: user.uid,
+    archivedAt: serverTimestamp(),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const getConsortiumSupplierObligations = async (
+  inmobiliariaId,
+  { consortiumId = "", supplierId = "", includeVoided = false } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "supplierObligations");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : supplierId
+      ? query(baseCollection, where("supplierId", "==", supplierId))
+      : baseCollection;
+  const snap = await getDocs(source);
+  return sortUpdatedDesc(snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => includeVoided || item.voided !== true)
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .filter((item) => !supplierId || item.supplierId === supplierId));
+};
+
+const validateSupplierObligationLink = async ({
+  inmobiliariaId,
+  consortiumId,
+  periodId,
+  expenseId,
+  ignoredObligationId = "",
+}) => {
+  if (!periodId && !expenseId) return { period: null, expense: null };
+  if (!periodId || !expenseId) throw new Error("Seleccioná un gasto completo de una liquidación.");
+  const period = await getConsortiumPeriodById(inmobiliariaId, periodId);
+  if (!period || period.consortiumId !== consortiumId) throw new Error("La liquidación vinculada no existe.");
+  const expense = (Array.isArray(period.expenses) ? period.expenses : [])
+    .find((item) => item.id === expenseId);
+  if (!expense) throw new Error("El gasto vinculado no existe.");
+  const obligations = await getConsortiumSupplierObligations(
+    inmobiliariaId,
+    { consortiumId, includeVoided: true },
+  );
+  if (obligations.some((item) => (
+    item.id !== ignoredObligationId
+    && item.voided !== true
+    && item.periodId === periodId
+    && item.expenseId === expenseId
+  ))) throw new Error("Ese gasto ya tiene una obligación a proveedor.");
+  return { period, expense };
+};
+
+export const createConsortiumSupplierObligation = async ({
+  inmobiliariaId,
+  consortiumId,
+  supplierId,
+  concept,
+  voucherType = "invoice",
+  voucherNumber = "",
+  issueDate,
+  dueDate,
+  currency = "ARS",
+  amountMinor,
+  periodId = "",
+  expenseId = "",
+  notes = "",
+  file = null,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  const normalizedConcept = cleanText(concept, 220);
+  if (!normalizedConcept) throw new Error("Ingresá el concepto de la obligación.");
+  if (!amount) throw new Error("Ingresá un importe mayor a cero.");
+  const normalizedIssueDate = validDateOrThrow(issueDate, "la fecha del comprobante");
+  const normalizedDueDate = validDateOrThrow(dueDate, "el vencimiento");
+  if (normalizedDueDate < normalizedIssueDate) {
+    throw new Error("El vencimiento no puede ser anterior a la fecha del comprobante.");
+  }
+  const supplierSnap = await getDoc(agencyDoc(inmobiliariaId, "suppliers", supplierId));
+  if (!supplierSnap.exists() || supplierSnap.data().consortiumId !== consortiumId) {
+    throw new Error("Seleccioná un proveedor válido.");
+  }
+  const { period, expense } = await validateSupplierObligationLink({
+    inmobiliariaId, consortiumId, periodId, expenseId,
+  });
+  const normalizedCurrency = cleanText(currency, 10) || "ARS";
+  if (period && normalizedCurrency !== (period.currency || "ARS")) {
+    throw new Error("La moneda de la obligación debe coincidir con la liquidación vinculada.");
+  }
+  const obligationRef = doc(agencyCollection(inmobiliariaId, "supplierObligations"));
+  let document = {};
+  if (file) {
+    validateConsortiumFileOrThrow(file);
+    const safeName = safeConsortiumFileName(file.name);
+    const path = `consorcios/${inmobiliariaId}/${consortiumId}/supplier-obligations/${obligationRef.id}/${safeName}`;
+    await uploadPrivateFile({
+      file,
+      path,
+      metadata: { inmobiliariaId, consortiumId, obligationId: obligationRef.id, uploadedBy: user.uid },
+    });
+    document = {
+      documentStoragePath: path,
+      documentFileName: safeName,
+      documentContentType: file.type,
+      documentSize: Number(file.size || 0),
+    };
+  }
+  try {
+    await setDoc(obligationRef, {
+      id: obligationRef.id,
+      schemaVersion: 1,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      consortiumId,
+      supplierId,
+      supplierSnapshot: {
+        name: supplierSnap.data().name || "",
+        legalName: supplierSnap.data().legalName || "",
+        taxId: supplierSnap.data().taxId || "",
+      },
+      concept: normalizedConcept,
+      voucherType: ["invoice", "receipt", "budget", "other", "no_data"].includes(voucherType)
+        ? voucherType : "invoice",
+      voucherNumber: cleanText(voucherNumber, 120),
+      issueDate: normalizedIssueDate,
+      dueDate: normalizedDueDate,
+      currency: normalizedCurrency,
+      amountMinor: amount,
+      paidAmountMinor: 0,
+      balanceMinor: amount,
+      periodId: periodId || "",
+      periodKey: period?.periodKey || "",
+      expenseId: expenseId || "",
+      expenseSnapshot: expense ? { concept: expense.concept || "", amountMinor: expense.amountMinor || 0 } : {},
+      notes: cleanText(notes, 2000),
+      status: "pending",
+      voided: false,
+      deleted: false,
+      ...document,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    if (document.documentStoragePath) {
+      await deleteObject(storageRef(storage, document.documentStoragePath)).catch(() => {});
+    }
+    throw error;
+  }
+  return obligationRef.id;
+};
+
+export const updateConsortiumSupplierObligation = async ({ inmobiliariaId, obligationId, value }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const targetRef = agencyDoc(inmobiliariaId, "supplierObligations", obligationId);
+  const currentSnap = await getDoc(targetRef);
+  if (!currentSnap.exists()) throw new Error("La obligación no existe.");
+  const current = currentSnap.data();
+  if (current.voided === true) throw new Error("La obligación está anulada.");
+  if (Number(current.paidAmountMinor || 0) > 0) {
+    throw new Error("Una obligación con pagos no puede editarse. Anulá el pago antes de corregirla.");
+  }
+  const amount = Math.max(0, Math.round(Number(value.amountMinor) || 0));
+  const concept = cleanText(value.concept, 220);
+  if (!concept || !amount) throw new Error("Ingresá concepto e importe mayor a cero.");
+  const supplierSnap = await getDoc(agencyDoc(inmobiliariaId, "suppliers", value.supplierId));
+  if (!supplierSnap.exists() || supplierSnap.data().consortiumId !== current.consortiumId) {
+    throw new Error("Seleccioná un proveedor válido.");
+  }
+  const { period, expense } = await validateSupplierObligationLink({
+    inmobiliariaId,
+    consortiumId: current.consortiumId,
+    periodId: value.periodId || "",
+    expenseId: value.expenseId || "",
+    ignoredObligationId: obligationId,
+  });
+  const normalizedIssueDate = validDateOrThrow(value.issueDate, "la fecha del comprobante");
+  const normalizedDueDate = validDateOrThrow(value.dueDate, "el vencimiento");
+  if (normalizedDueDate < normalizedIssueDate) {
+    throw new Error("El vencimiento no puede ser anterior a la fecha del comprobante.");
+  }
+  const normalizedCurrency = cleanText(value.currency, 10) || current.currency || "ARS";
+  if (period && normalizedCurrency !== (period.currency || "ARS")) {
+    throw new Error("La moneda de la obligación debe coincidir con la liquidación vinculada.");
+  }
+  await updateDoc(targetRef, {
+    supplierId: value.supplierId,
+    supplierSnapshot: {
+      name: supplierSnap.data().name || "",
+      legalName: supplierSnap.data().legalName || "",
+      taxId: supplierSnap.data().taxId || "",
+    },
+    concept,
+    voucherType: ["invoice", "receipt", "budget", "other", "no_data"].includes(value.voucherType)
+      ? value.voucherType : "invoice",
+    voucherNumber: cleanText(value.voucherNumber, 120),
+    issueDate: normalizedIssueDate,
+    dueDate: normalizedDueDate,
+    currency: normalizedCurrency,
+    amountMinor: amount,
+    balanceMinor: amount,
+    periodId: value.periodId || "",
+    periodKey: period?.periodKey || "",
+    expenseId: value.expenseId || "",
+    expenseSnapshot: expense ? { concept: expense.concept || "", amountMinor: expense.amountMinor || 0 } : {},
+    notes: cleanText(value.notes, 2000),
+    status: "pending",
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const voidConsortiumSupplierObligation = async ({ inmobiliariaId, obligationId, reason }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const voidReason = cleanText(reason, 500);
+  if (!voidReason) throw new Error("Ingresá el motivo de la anulación.");
+  const targetRef = agencyDoc(inmobiliariaId, "supplierObligations", obligationId);
+  const current = await getDoc(targetRef);
+  if (!current.exists()) throw new Error("La obligación no existe.");
+  if (Number(current.data().paidAmountMinor || 0) > 0) {
+    throw new Error("Anulá primero los pagos registrados para esta obligación.");
+  }
+  await updateDoc(targetRef, {
+    status: "voided",
+    voided: true,
+    voidReason,
+    voidedBy: user.uid,
+    voidedAt: serverTimestamp(),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const getConsortiumSupplierPayments = async (
+  inmobiliariaId,
+  { consortiumId = "", obligationId = "", includeVoided = true } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "supplierPayments");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : obligationId
+      ? query(baseCollection, where("obligationId", "==", obligationId))
+      : baseCollection;
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => includeVoided || item.voided !== true)
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .filter((item) => !obligationId || item.obligationId === obligationId)
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+};
+
+export const getConsortiumTreasuryMovements = async (inmobiliariaId, consortiumId = "") => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "treasuryMovements");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : baseCollection;
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+};
+
+export const registerConsortiumTreasuryMovement = async ({
+  inmobiliariaId,
+  consortiumId,
+  accountId,
+  direction = "inflow",
+  amountMinor,
+  date,
+  concept,
+  reason,
+  reference = "",
+  file = null,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  const movementDate = validDateOrThrow(date, "la fecha del movimiento");
+  const normalizedConcept = cleanText(concept, 220);
+  const normalizedReason = cleanText(reason, 1000);
+  const normalizedDirection = direction === "outflow" ? "outflow" : "inflow";
+  if (!amount) throw new Error("Ingresá un importe mayor a cero.");
+  if (!normalizedConcept) throw new Error("Ingresá el concepto del movimiento.");
+  if (!normalizedReason) throw new Error("Explicá el motivo del movimiento.");
+  if (movementDate > new Date().toISOString().slice(0, 10)) {
+    throw new Error("No se puede registrar un movimiento con fecha futura.");
+  }
+  const movementRef = doc(agencyCollection(inmobiliariaId, "treasuryMovements"));
+  let evidence = {
+    evidenceStoragePath: "",
+    evidenceFileName: "",
+    evidenceContentType: "",
+    evidenceSize: 0,
+  };
+  if (file) {
+    validateConsortiumFileOrThrow(file);
+    const safeName = safeConsortiumFileName(file.name);
+    const path = `consorcios/${inmobiliariaId}/${consortiumId}/treasury-movements/${movementRef.id}/${safeName}`;
+    await uploadPrivateFile({
+      file,
+      path,
+      metadata: { inmobiliariaId, consortiumId, movementId: movementRef.id, uploadedBy: user.uid },
+    });
+    evidence = {
+      evidenceStoragePath: path,
+      evidenceFileName: safeName,
+      evidenceContentType: file.type,
+      evidenceSize: Number(file.size || 0),
+    };
+  }
+  try {
+    await runTransaction(db, async (transaction) => {
+      const accountRef = agencyDoc(inmobiliariaId, "treasuryAccounts", accountId);
+      const accountSnapshot = await transaction.get(accountRef);
+      if (!accountSnapshot.exists() || accountSnapshot.data().active === false) {
+        throw new Error("La cuenta de tesorería no está disponible.");
+      }
+      const account = accountSnapshot.data();
+      if (account.consortiumId !== consortiumId) throw new Error("La cuenta pertenece a otro consorcio.");
+      const currentBalance = Math.max(0, Number(account.currentBalanceMinor) || 0);
+      if (normalizedDirection === "outflow" && amount > currentBalance) {
+        throw new Error("La cuenta seleccionada no tiene saldo suficiente.");
+      }
+      const nextBalance = normalizedDirection === "outflow"
+        ? currentBalance - amount
+        : currentBalance + amount;
+      transaction.set(movementRef, {
+        id: movementRef.id,
+        schemaVersion: 1,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        consortiumId,
+        accountId,
+        accountSnapshot: { name: account.name || "", type: account.type || "bank" },
+        source: "manual_movement",
+        sourceId: movementRef.id,
+        direction: normalizedDirection,
+        amountMinor: amount,
+        currency: account.currency || "ARS",
+        date: movementDate,
+        concept: normalizedConcept,
+        reason: normalizedReason,
+        reference: cleanText(reference, 220),
+        voided: false,
+        ...evidence,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      transaction.update(accountRef, {
+        currentBalanceMinor: nextBalance,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } catch (error) {
+    if (evidence.evidenceStoragePath) {
+      await deleteObject(storageRef(storage, evidence.evidenceStoragePath)).catch(() => {});
+    }
+    throw error;
+  }
+  return movementRef.id;
+};
+
+export const transferConsortiumTreasuryFunds = async ({
+  inmobiliariaId,
+  consortiumId,
+  fromAccountId,
+  toAccountId,
+  amountMinor,
+  date,
+  concept = "Transferencia entre cuentas",
+  reference = "",
+  notes = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  const transferDate = validDateOrThrow(date, "la fecha de la transferencia");
+  if (!fromAccountId || !toAccountId || fromAccountId === toAccountId) {
+    throw new Error("Seleccioná dos cuentas diferentes.");
+  }
+  if (!amount) throw new Error("Ingresá un importe mayor a cero.");
+  if (transferDate > new Date().toISOString().slice(0, 10)) {
+    throw new Error("No se puede registrar una transferencia con fecha futura.");
+  }
+  const outflowRef = doc(agencyCollection(inmobiliariaId, "treasuryMovements"));
+  const inflowRef = doc(agencyCollection(inmobiliariaId, "treasuryMovements"));
+  const transferId = outflowRef.id;
+  await runTransaction(db, async (transaction) => {
+    const fromRef = agencyDoc(inmobiliariaId, "treasuryAccounts", fromAccountId);
+    const toRef = agencyDoc(inmobiliariaId, "treasuryAccounts", toAccountId);
+    const [fromSnapshot, toSnapshot] = await Promise.all([
+      transaction.get(fromRef),
+      transaction.get(toRef),
+    ]);
+    if (!fromSnapshot.exists() || !toSnapshot.exists()
+      || fromSnapshot.data().active === false || toSnapshot.data().active === false) {
+      throw new Error("Alguna de las cuentas no está disponible.");
+    }
+    const fromAccount = fromSnapshot.data();
+    const toAccount = toSnapshot.data();
+    if (fromAccount.consortiumId !== consortiumId || toAccount.consortiumId !== consortiumId) {
+      throw new Error("Las cuentas deben pertenecer al consorcio activo.");
+    }
+    if ((fromAccount.currency || "ARS") !== (toAccount.currency || "ARS")) {
+      throw new Error("Las cuentas deben utilizar la misma moneda.");
+    }
+    const fromBalance = Math.max(0, Number(fromAccount.currentBalanceMinor) || 0);
+    const toBalance = Math.max(0, Number(toAccount.currentBalanceMinor) || 0);
+    if (amount > fromBalance) throw new Error("La cuenta de origen no tiene saldo suficiente.");
+    const common = {
+      schemaVersion: 1,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      consortiumId,
+      source: "account_transfer",
+      sourceId: transferId,
+      transferId,
+      amountMinor: amount,
+      currency: fromAccount.currency || "ARS",
+      date: transferDate,
+      concept: cleanText(concept, 220) || "Transferencia entre cuentas",
+      reference: cleanText(reference, 220),
+      notes: cleanText(notes, 1000),
+      voided: false,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    };
+    transaction.set(outflowRef, {
+      ...common,
+      id: outflowRef.id,
+      accountId: fromAccountId,
+      accountSnapshot: { name: fromAccount.name || "", type: fromAccount.type || "bank" },
+      counterpartAccountId: toAccountId,
+      counterpartSnapshot: { name: toAccount.name || "", type: toAccount.type || "bank" },
+      direction: "outflow",
+    });
+    transaction.set(inflowRef, {
+      ...common,
+      id: inflowRef.id,
+      accountId: toAccountId,
+      accountSnapshot: { name: toAccount.name || "", type: toAccount.type || "bank" },
+      counterpartAccountId: fromAccountId,
+      counterpartSnapshot: { name: fromAccount.name || "", type: fromAccount.type || "bank" },
+      direction: "inflow",
+    });
+    transaction.update(fromRef, {
+      currentBalanceMinor: fromBalance - amount,
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(toRef, {
+      currentBalanceMinor: toBalance + amount,
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  });
+  return transferId;
+};
+
+export const getConsortiumTreasuryReconciliations = async (
+  inmobiliariaId,
+  consortiumId = "",
+) => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "treasuryReconciliations");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : baseCollection;
+  const snapshot = await getDocs(source);
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .sort((first, second) => (second.statementDate || "").localeCompare(
+      first.statementDate || "",
+    ));
+};
+
+export const createConsortiumTreasuryReconciliation = async ({
+  inmobiliariaId,
+  consortiumId,
+  accountId,
+  statementDate,
+  statementBalanceMinor,
+  notes = "",
+  file = null,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalizedDate = validDateOrThrow(statementDate, "la fecha de conciliación");
+  const statementBalance = Math.round(Number(statementBalanceMinor) || 0);
+  if (statementBalance < 0) throw new Error("El saldo informado no puede ser negativo.");
+  if (normalizedDate > new Date().toISOString().slice(0, 10)) {
+    throw new Error("No se puede conciliar una fecha futura.");
+  }
+  const accountSnapshot = await getDoc(agencyDoc(inmobiliariaId, "treasuryAccounts", accountId));
+  if (!accountSnapshot.exists() || accountSnapshot.data().consortiumId !== consortiumId) {
+    throw new Error("La cuenta no pertenece al consorcio activo.");
+  }
+  const movements = await getConsortiumTreasuryMovements(inmobiliariaId, consortiumId);
+  const bookBalanceMinor = getConsortiumTreasuryBookBalance({
+    accountId,
+    movements,
+    dateKey: normalizedDate,
+  });
+  const differenceMinor = statementBalance - bookBalanceMinor;
+  const reconciliationRef = doc(agencyCollection(inmobiliariaId, "treasuryReconciliations"));
+  let attachment = {
+    statementStoragePath: "",
+    statementFileName: "",
+    statementContentType: "",
+    statementSize: 0,
+  };
+  if (file) {
+    validateConsortiumFileOrThrow(file);
+    const safeName = safeConsortiumFileName(file.name);
+    const path = `consorcios/${inmobiliariaId}/${consortiumId}/treasury-reconciliations/${reconciliationRef.id}/${safeName}`;
+    await uploadPrivateFile({
+      file,
+      path,
+      metadata: {
+        inmobiliariaId,
+        consortiumId,
+        reconciliationId: reconciliationRef.id,
+        uploadedBy: user.uid,
+      },
+    });
+    attachment = {
+      statementStoragePath: path,
+      statementFileName: safeName,
+      statementContentType: file.type,
+      statementSize: Number(file.size || 0),
+    };
+  }
+  try {
+    await setDoc(reconciliationRef, {
+      id: reconciliationRef.id,
+      schemaVersion: 1,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      consortiumId,
+      accountId,
+      accountSnapshot: {
+        name: accountSnapshot.data().name || "",
+        type: accountSnapshot.data().type || "bank",
+      },
+      currency: accountSnapshot.data().currency || "ARS",
+      statementDate: normalizedDate,
+      statementBalanceMinor: statementBalance,
+      bookBalanceMinor,
+      differenceMinor,
+      status: differenceMinor === 0 ? "matched" : "difference",
+      notes: cleanText(notes, 2000),
+      voided: false,
+      ...attachment,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    if (attachment.statementStoragePath) {
+      await deleteObject(storageRef(storage, attachment.statementStoragePath)).catch(() => {});
+    }
+    throw error;
+  }
+  return reconciliationRef.id;
+};
+
+export const voidConsortiumTreasuryReconciliation = async ({
+  inmobiliariaId,
+  reconciliationId,
+  reason,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const voidReason = cleanText(reason, 500);
+  if (!voidReason) throw new Error("Ingresá el motivo de la anulación.");
+  await updateDoc(agencyDoc(
+    inmobiliariaId,
+    "treasuryReconciliations",
+    reconciliationId,
+  ), {
+    voided: true,
+    voidReason,
+    voidedBy: user.uid,
+    voidedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const getConsortiumFinancialClosures = async (
+  inmobiliariaId,
+  { consortiumId = "", periodId = "" } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "financialClosures");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : periodId
+      ? query(baseCollection, where("periodId", "==", periodId))
+      : baseCollection;
+  const snapshot = await getDocs(source);
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !periodId || item.periodId === periodId)
+    .sort((first, second) => Number(second.version || 0) - Number(first.version || 0));
+};
+
+export const closeConsortiumFinancialPeriod = async ({
+  inmobiliariaId,
+  consortiumId,
+  periodId,
+  reason = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const [period, accounts, movements, unitObligations, supplierObligations, previous] = await Promise.all([
+    getConsortiumPeriodById(inmobiliariaId, periodId),
+    getConsortiumTreasuryAccounts(inmobiliariaId, consortiumId),
+    getConsortiumTreasuryMovements(inmobiliariaId, consortiumId),
+    getConsortiumObligations(inmobiliariaId, { consortiumId }),
+    getConsortiumSupplierObligations(inmobiliariaId, { consortiumId, includeVoided: true }),
+    getConsortiumFinancialClosures(inmobiliariaId, { consortiumId, periodId }),
+  ]);
+  if (!period || period.consortiumId !== consortiumId) throw new Error("La liquidación no existe.");
+  if (period.status === "draft") throw new Error("Emití la liquidación antes de cerrar su estado económico.");
+  const normalizedReason = cleanText(reason, 1000);
+  if (previous.length && !normalizedReason) {
+    throw new Error("Explicá el motivo de la nueva versión o rectificación.");
+  }
+  const statement = buildConsortiumEconomicStatement({
+    period,
+    accounts,
+    movements,
+    unitObligations,
+    supplierObligations,
+  });
+  const summary = {
+    openingBalanceMinor: statement.openingBalanceMinor,
+    collectionsMinor: statement.collectionsMinor,
+    otherInflowsMinor: statement.otherInflowsMinor,
+    supplierPaymentsMinor: statement.supplierPaymentsMinor,
+    otherOutflowsMinor: statement.otherOutflowsMinor,
+    closingBalanceMinor: statement.closingBalanceMinor,
+    unitDebtMinor: statement.unitDebtMinor,
+    supplierDebtMinor: statement.supplierDebtMinor,
+    reserveFundsMinor: statement.reserveFundsMinor,
+    assessedMinor: statement.assessedMinor,
+    transferVolumeMinor: statement.transferVolumeMinor,
+    movementCount: statement.movements.length,
+  };
+  const latest = previous[0] || null;
+  const summaryChanged = Object.entries(summary).some(([key, value]) => (
+    Number(latest?.summary?.[key] || 0) !== Number(value || 0)
+  ));
+  if (latest && !summaryChanged) {
+    throw new Error("El estado económico no cambió desde la última versión cerrada.");
+  }
+  const closureRef = doc(agencyCollection(inmobiliariaId, "financialClosures"));
+  await setDoc(closureRef, {
+    id: closureRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId,
+    periodId,
+    periodKey: period.periodKey || "",
+    currency: period.currency || "ARS",
+    version: Number(latest?.version || 0) + 1,
+    type: latest ? "rectification" : "initial_close",
+    previousClosureId: latest?.id || "",
+    reason: normalizedReason,
+    summary,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+  });
+  return closureRef.id;
+};
+
+export const registerConsortiumSupplierPayment = async ({
+  inmobiliariaId,
+  obligationId,
+  accountId,
+  amountMinor,
+  date,
+  method = "transfer",
+  reference = "",
+  notes = "",
+  file = null,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  if (!amount) throw new Error("Ingresá un importe mayor a cero.");
+  const paymentDate = validDateOrThrow(date, "la fecha del pago");
+  if (paymentDate > new Date().toISOString().slice(0, 10)) {
+    throw new Error("No se puede registrar como realizado un pago con fecha futura.");
+  }
+  const obligationPreflight = await getDoc(agencyDoc(inmobiliariaId, "supplierObligations", obligationId));
+  if (!obligationPreflight.exists() || obligationPreflight.data().voided === true) {
+    throw new Error("La obligación no está disponible.");
+  }
+  const paymentRef = doc(agencyCollection(inmobiliariaId, "supplierPayments"));
+  const movementRef = doc(agencyCollection(inmobiliariaId, "treasuryMovements"));
+  let proof = {
+    proofStoragePath: "",
+    proofFileName: "",
+    proofContentType: "",
+    proofSize: 0,
+  };
+  if (file) {
+    validateConsortiumFileOrThrow(file);
+    const safeName = safeConsortiumFileName(file.name);
+    const path = `consorcios/${inmobiliariaId}/${obligationPreflight.data().consortiumId}/supplier-payments/${paymentRef.id}/${safeName}`;
+    await uploadPrivateFile({
+      file,
+      path,
+      metadata: { inmobiliariaId, paymentId: paymentRef.id, uploadedBy: user.uid },
+    });
+    proof = {
+      proofStoragePath: path,
+      proofFileName: safeName,
+      proofContentType: file.type,
+      proofSize: Number(file.size || 0),
+    };
+  }
+  try {
+    await runTransaction(db, async (transaction) => {
+      const obligationRef = agencyDoc(inmobiliariaId, "supplierObligations", obligationId);
+      const accountRef = agencyDoc(inmobiliariaId, "treasuryAccounts", accountId);
+      const [obligationSnap, accountSnap] = await Promise.all([
+        transaction.get(obligationRef),
+        transaction.get(accountRef),
+      ]);
+      if (!obligationSnap.exists() || obligationSnap.data().voided === true) {
+        throw new Error("La obligación no está disponible.");
+      }
+      if (!accountSnap.exists() || accountSnap.data().active === false) {
+        throw new Error("La cuenta de tesorería no está disponible.");
+      }
+      const obligation = obligationSnap.data();
+      const account = accountSnap.data();
+      if (account.consortiumId !== obligation.consortiumId) {
+        throw new Error("La cuenta y la obligación pertenecen a consorcios diferentes.");
+      }
+      if ((account.currency || "ARS") !== (obligation.currency || "ARS")) {
+        throw new Error("La moneda de la cuenta no coincide con la obligación.");
+      }
+      const balance = Math.max(0, Number(obligation.balanceMinor) || 0);
+      const available = Math.max(0, Number(account.currentBalanceMinor) || 0);
+      if (amount > balance) throw new Error("El pago no puede superar el saldo de la obligación.");
+      if (amount > available) throw new Error("La cuenta seleccionada no tiene saldo suficiente.");
+      const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor) || 0) + amount;
+      const balanceMinor = Math.max(0, Number(obligation.amountMinor || 0) - paidAmountMinor);
+      const currentBalanceMinor = available - amount;
+      const payment = {
+        id: paymentRef.id,
+        schemaVersion: 1,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        consortiumId: obligation.consortiumId,
+        obligationId,
+        supplierId: obligation.supplierId,
+        supplierSnapshot: obligation.supplierSnapshot || {},
+        accountId,
+        accountSnapshot: { name: account.name || "", type: account.type || "bank" },
+        currency: obligation.currency || "ARS",
+        amountMinor: amount,
+        date: paymentDate,
+        method: cleanText(method, 40) || "transfer",
+        reference: cleanText(reference, 220),
+        notes: cleanText(notes, 1000),
+        movementId: movementRef.id,
+        voided: false,
+        ...proof,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      transaction.set(paymentRef, payment);
+      transaction.set(movementRef, {
+        id: movementRef.id,
+        schemaVersion: 1,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        consortiumId: obligation.consortiumId,
+        accountId,
+        accountSnapshot: payment.accountSnapshot,
+        source: "supplier_payment",
+        sourceId: paymentRef.id,
+        direction: "outflow",
+        amountMinor: amount,
+        currency: payment.currency,
+        date: paymentDate,
+        concept: `Pago a ${obligation.supplierSnapshot?.name || "proveedor"}: ${obligation.concept || ""}`,
+        reference: payment.reference,
+        voided: false,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      transaction.update(obligationRef, {
+        paidAmountMinor,
+        balanceMinor,
+        status: balanceMinor <= 0 ? "paid" : "partial",
+        paymentIds: [...(Array.isArray(obligation.paymentIds) ? obligation.paymentIds : []), paymentRef.id],
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+      transaction.update(accountRef, {
+        currentBalanceMinor,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  } catch (error) {
+    if (proof.proofStoragePath) {
+      await deleteObject(storageRef(storage, proof.proofStoragePath)).catch(() => {});
+    }
+    throw error;
+  }
+  return paymentRef.id;
+};
+
+export const voidConsortiumSupplierPayment = async ({ inmobiliariaId, paymentId, reason }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const voidReason = cleanText(reason, 500);
+  if (!voidReason) throw new Error("Ingresá el motivo de la anulación.");
+  const paymentRef = agencyDoc(inmobiliariaId, "supplierPayments", paymentId);
+  const reversalRef = doc(agencyCollection(inmobiliariaId, "treasuryMovements"));
+  await runTransaction(db, async (transaction) => {
+    const paymentSnap = await transaction.get(paymentRef);
+    if (!paymentSnap.exists()) throw new Error("El pago no existe.");
+    const payment = paymentSnap.data();
+    if (payment.voided === true) throw new Error("El pago ya está anulado.");
+    const obligationRef = agencyDoc(inmobiliariaId, "supplierObligations", payment.obligationId);
+    const accountRef = agencyDoc(inmobiliariaId, "treasuryAccounts", payment.accountId);
+    const [obligationSnap, accountSnap] = await Promise.all([
+      transaction.get(obligationRef),
+      transaction.get(accountRef),
+    ]);
+    if (!obligationSnap.exists() || !accountSnap.exists()) {
+      throw new Error("No se pudo reconstruir el saldo del pago.");
+    }
+    const amount = Math.max(0, Number(payment.amountMinor) || 0);
+    const obligation = obligationSnap.data();
+    const account = accountSnap.data();
+    const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor || 0) - amount);
+    const balanceMinor = Math.max(0, Number(obligation.amountMinor || 0) - paidAmountMinor);
+    transaction.update(paymentRef, {
+      voided: true,
+      voidReason,
+      reversalMovementId: reversalRef.id,
+      voidedBy: user.uid,
+      voidedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    transaction.set(reversalRef, {
+      id: reversalRef.id,
+      schemaVersion: 1,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      consortiumId: payment.consortiumId,
+      accountId: payment.accountId,
+      accountSnapshot: payment.accountSnapshot || {},
+      source: "supplier_payment_reversal",
+      sourceId: paymentId,
+      reversesMovementId: payment.movementId || "",
+      direction: "inflow",
+      amountMinor: amount,
+      currency: payment.currency || "ARS",
+      date: new Date().toISOString().slice(0, 10),
+      concept: `Anulación de pago a ${payment.supplierSnapshot?.name || "proveedor"}`,
+      reference: voidReason,
+      voided: false,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    });
+    transaction.update(obligationRef, {
+      paidAmountMinor,
+      balanceMinor,
+      status: paidAmountMinor > 0 ? "partial" : "pending",
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(accountRef, {
+      currentBalanceMinor: Math.max(0, Number(account.currentBalanceMinor || 0)) + amount,
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  });
+};
+
+const CLAIM_STATUSES = [
+  "open", "in_review", "scheduled", "in_progress", "resolved", "closed", "rejected",
+];
+const CLAIM_PRIORITIES = ["low", "normal", "high", "urgent"];
+const CLAIM_COMMUNICATION_TYPES = ["notice", "request", "claim"];
+const CLAIM_STATUS_LABELS = {
+  open: "recibido",
+  in_review: "en revisión",
+  scheduled: "visita programada",
+  in_progress: "en curso",
+  resolved: "resuelto",
+  closed: "cerrado",
+  rejected: "no corresponde",
+};
+const CLAIM_PRIORITY_LABELS = {
+  low: "baja",
+  normal: "normal",
+  high: "alta",
+  urgent: "urgente",
+};
+const CLAIM_CATEGORIES = [
+  "plumbing", "electricity", "gas", "elevator", "security", "cleaning",
+  "common_area", "administration", "other",
+];
+
+const assertClaimPortalAccess = async ({ inmobiliariaId, unitId }) => {
+  const user = assertPortalUser();
+  const unitSnap = await getDoc(agencyDoc(inmobiliariaId, "units", unitId));
+  const email = user.email.toLowerCase();
+  if (!unitSnap.exists() || !(unitSnap.data().portalEmails || []).includes(email)) {
+    throw new Error("No tenés acceso a la unidad seleccionada.");
+  }
+  return { user, unit: { id: unitSnap.id, ...unitSnap.data() } };
+};
+
+const claimAuthorName = (user) => cleanText(
+  user.displayName || user.email?.split("@")[0] || "Usuario",
+  160,
+);
+
+export const getConsortiumClaims = async (
+  inmobiliariaId,
+  { consortiumId = "", unitId = "", includeClosed = true } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const source = unitId
+    ? query(
+      agencyCollection(inmobiliariaId, "claims"),
+      where("unitId", "==", unitId),
+      where("portalVisible", "==", true),
+    )
+    : agencyCollection(inmobiliariaId, "claims");
+  const snap = await getDocs(source);
+  return sortUpdatedDesc(snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .filter((item) => !unitId || item.unitId === unitId)
+    .filter((item) => includeClosed || !["resolved", "closed", "rejected"].includes(item.status)));
+};
+
+export const getConsortiumClaimEvents = async (
+  inmobiliariaId,
+  { claimId = "", portalOnly = false } = {},
+) => {
+  if (!inmobiliariaId || !claimId) return [];
+  const source = portalOnly
+    ? query(
+      agencyCollection(inmobiliariaId, "claimEvents"),
+      where("claimId", "==", claimId),
+      where("visibility", "==", "public"),
+    )
+    : query(agencyCollection(inmobiliariaId, "claimEvents"), where("claimId", "==", claimId));
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => item.claimId === claimId)
+    .filter((item) => !portalOnly || item.visibility === "public")
+    .sort((a, b) => (a.createdAtIso || "").localeCompare(b.createdAtIso || ""));
+};
+
+export const createConsortiumClaim = async ({
+  inmobiliariaId,
+  consortiumId,
+  unitId,
+  title,
+  description,
+  communicationType = "request",
+  category = "other",
+  priority = "normal",
+  location = "common_area",
+  accessNotes = "",
+  authorRole = "resident",
+  file = null,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const access = authorRole === "resident"
+    ? await assertClaimPortalAccess({ inmobiliariaId, unitId })
+    : { user: currentUserOrThrow(), unit: null };
+  const user = access.user;
+  let unit = access.unit;
+  if (!unit) {
+    const unitSnap = await getDoc(agencyDoc(inmobiliariaId, "units", unitId));
+    if (!unitSnap.exists()) throw new Error("La unidad no existe.");
+    unit = { id: unitSnap.id, ...unitSnap.data() };
+  }
+  if (unit.consortiumId !== consortiumId) throw new Error("La unidad pertenece a otro consorcio.");
+  const normalizedTitle = cleanText(title, 180);
+  const normalizedDescription = cleanText(description, 4000);
+  if (!normalizedTitle) throw new Error("Ingresá un título para el mensaje.");
+  if (normalizedDescription.length < 10) throw new Error("Describí el problema con un poco más de detalle.");
+  const normalizedCommunicationType = CLAIM_COMMUNICATION_TYPES.includes(communicationType)
+    ? communicationType
+    : "request";
+  const claimRef = doc(agencyCollection(inmobiliariaId, "claims"));
+  const eventRef = doc(agencyCollection(inmobiliariaId, "claimEvents"));
+  const createdAtIso = new Date().toISOString();
+  let attachment = {
+    attachmentStoragePath: "",
+    attachmentFileName: "",
+    attachmentContentType: "",
+    attachmentSize: 0,
+  };
+  if (file) {
+    validateConsortiumFileOrThrow(file);
+    const safeName = safeConsortiumFileName(file.name);
+    const path = `consorcios/${inmobiliariaId}/${consortiumId}/claims/${unitId}/${claimRef.id}/initial/${safeName}`;
+    await uploadPrivateFile({
+      file,
+      path,
+      metadata: { inmobiliariaId, consortiumId, unitId, claimId: claimRef.id, uploadedBy: user.uid },
+    });
+    attachment = {
+      attachmentStoragePath: path,
+      attachmentFileName: safeName,
+      attachmentContentType: file.type,
+      attachmentSize: Number(file.size || 0),
+    };
+  }
+  const normalizedRole = authorRole === "admin" ? "admin" : "resident";
+  const authorName = claimAuthorName(user);
+  const claim = {
+    id: claimRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId,
+    unitId,
+    unitSnapshot: {
+      code: unit.code || "",
+      ownerName: unit.ownerName || "",
+      occupantName: unit.occupantName || "",
+    },
+    title: normalizedTitle,
+    description: normalizedDescription,
+    communicationType: normalizedCommunicationType,
+    category: CLAIM_CATEGORIES.includes(category) ? category : "other",
+    priority: CLAIM_PRIORITIES.includes(priority) ? priority : "normal",
+    location: location === "unit" ? "unit" : "common_area",
+    accessNotes: cleanText(accessNotes, 1000),
+    status: "open",
+    featuredInPortal: false,
+    portalPublicTitle: "",
+    assignedSupplierId: "",
+    assignedSupplierSnapshot: {},
+    scheduledDate: "",
+    resolutionSummary: "",
+    portalVisible: true,
+    submittedBy: user.uid,
+    submittedByEmail: user.email?.toLowerCase?.() || "",
+    submittedByName: authorName,
+    createdByType: normalizedRole,
+    createdDate: createdAtIso.slice(0, 10),
+    createdAtIso,
+    lastActivityAtIso: createdAtIso,
+    lastPublicMessage: "Mensaje recibido por la administración.",
+    deleted: false,
+    ...attachment,
+    createdBy: user.uid,
+    createdAt: serverTimestamp(),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  };
+  const batch = writeBatch(db);
+  batch.set(claimRef, claim);
+  batch.set(eventRef, {
+    id: eventRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId,
+    unitId,
+    claimId: claimRef.id,
+    type: "created",
+    visibility: "public",
+    message: "Mensaje recibido por la administración.",
+    communicationType: normalizedCommunicationType,
+    status: "open",
+    authorRole: normalizedRole,
+    authorId: user.uid,
+    authorName,
+    createdAtIso,
+    attachmentStoragePath: "",
+    attachmentFileName: "",
+    createdAt: serverTimestamp(),
+  });
+  try {
+    await batch.commit();
+  } catch (error) {
+    if (attachment.attachmentStoragePath) {
+      await deleteObject(storageRef(storage, attachment.attachmentStoragePath)).catch(() => {});
+    }
+    throw error;
+  }
+  return claimRef.id;
+};
+
+export const updateConsortiumClaim = async ({
+  inmobiliariaId,
+  claimId,
+  status,
+  priority,
+  assignedSupplierId = "",
+  scheduledDate = "",
+  resolutionSummary = "",
+  featuredInPortal = false,
+  portalPublicTitle = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const claimRef = agencyDoc(inmobiliariaId, "claims", claimId);
+  const claimSnap = await getDoc(claimRef);
+  if (!claimSnap.exists()) throw new Error("El mensaje no existe.");
+  const current = claimSnap.data();
+  const normalizedStatus = CLAIM_STATUSES.includes(status) ? status : current.status || "open";
+  const normalizedPriority = CLAIM_PRIORITIES.includes(priority) ? priority : current.priority || "normal";
+  const normalizedScheduledDate = /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate || "")
+    ? scheduledDate : "";
+  if (normalizedStatus === "scheduled" && !normalizedScheduledDate) {
+    throw new Error("Ingresá la fecha programada para la visita o tarea.");
+  }
+  const normalizedResolution = cleanText(resolutionSummary, 2000);
+  const normalizedFeatured = featuredInPortal === true;
+  const normalizedPortalPublicTitle = cleanText(portalPublicTitle, 220);
+  if (["resolved", "closed", "rejected"].includes(normalizedStatus) && !normalizedResolution) {
+    throw new Error("Explicá cómo se resolvió o por qué se cerró el mensaje.");
+  }
+  let supplierSnapshot = {};
+  if (assignedSupplierId) {
+    const supplier = await getDoc(agencyDoc(inmobiliariaId, "suppliers", assignedSupplierId));
+    if (!supplier.exists() || supplier.data().consortiumId !== current.consortiumId) {
+      throw new Error("El proveedor asignado no pertenece a este consorcio.");
+    }
+    supplierSnapshot = {
+      name: supplier.data().name || "",
+      category: supplier.data().category || "other",
+      phone: supplier.data().phone || "",
+    };
+  }
+  const changes = [];
+  if (normalizedStatus !== current.status) {
+    changes.push(`Estado actualizado a ${CLAIM_STATUS_LABELS[normalizedStatus]}.`);
+  }
+  if (normalizedPriority !== current.priority) {
+    changes.push(`Prioridad actualizada a ${CLAIM_PRIORITY_LABELS[normalizedPriority]}.`);
+  }
+  if (assignedSupplierId !== (current.assignedSupplierId || "")) {
+    changes.push(assignedSupplierId
+      ? `Proveedor asignado: ${supplierSnapshot.name}.`
+      : "Se quitó el proveedor asignado.");
+  }
+  if (normalizedScheduledDate !== (current.scheduledDate || "")) {
+    changes.push(normalizedScheduledDate
+      ? `Intervención programada para el ${normalizedScheduledDate}.`
+      : "Se retiró la fecha programada.");
+  }
+  if (normalizedResolution && normalizedResolution !== (current.resolutionSummary || "")) {
+    changes.push(normalizedResolution);
+  }
+  if (normalizedFeatured !== (current.featuredInPortal === true)) {
+    changes.push(normalizedFeatured
+      ? "La gestión fue destacada en el tablero de propietarios."
+      : "La gestión dejó de estar destacada en el tablero de propietarios.");
+  }
+  if (normalizedPortalPublicTitle !== (current.portalPublicTitle || "")) {
+    changes.push("Se actualizó el título anonimizado del tablero de propietarios.");
+  }
+  if (!changes.length) throw new Error("No hay cambios para guardar.");
+  const createdAtIso = new Date().toISOString();
+  const eventRef = doc(agencyCollection(inmobiliariaId, "claimEvents"));
+  const publicMessage = changes.join(" ");
+  const batch = writeBatch(db);
+  batch.update(claimRef, {
+    status: normalizedStatus,
+    priority: normalizedPriority,
+    assignedSupplierId,
+    assignedSupplierSnapshot: supplierSnapshot,
+    scheduledDate: normalizedScheduledDate,
+    resolutionSummary: normalizedResolution,
+    featuredInPortal: normalizedFeatured,
+    portalPublicTitle: normalizedPortalPublicTitle,
+    lastActivityAtIso: createdAtIso,
+    lastPublicMessage: publicMessage,
+    resolvedAtIso: normalizedStatus === "resolved" ? createdAtIso : current.resolvedAtIso || "",
+    closedAtIso: normalizedStatus === "closed" ? createdAtIso : current.closedAtIso || "",
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(eventRef, {
+    id: eventRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId: current.consortiumId,
+    unitId: current.unitId,
+    claimId,
+    type: normalizedStatus !== current.status ? "status_update" : "management_update",
+    visibility: "public",
+    message: publicMessage,
+    previousStatus: current.status || "open",
+    status: normalizedStatus,
+    previousPriority: current.priority || "normal",
+    priority: normalizedPriority,
+    communicationType: current.communicationType || "claim",
+    authorRole: "admin",
+    authorId: user.uid,
+    authorName: claimAuthorName(user),
+    createdAtIso,
+    attachmentStoragePath: "",
+    attachmentFileName: "",
+    createdAt: serverTimestamp(),
+  });
+  await batch.commit();
+};
+
+export const addConsortiumClaimMessage = async ({
+  inmobiliariaId,
+  claimId,
+  message = "",
+  visibility = "public",
+  authorRole = "resident",
+  file = null,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const claimRef = agencyDoc(inmobiliariaId, "claims", claimId);
+  const claimSnap = await getDoc(claimRef);
+  if (!claimSnap.exists()) throw new Error("El mensaje no existe.");
+  const claim = claimSnap.data();
+  const access = authorRole === "resident"
+    ? await assertClaimPortalAccess({ inmobiliariaId, unitId: claim.unitId })
+    : { user: currentUserOrThrow() };
+  const user = access.user;
+  const normalizedMessage = cleanText(message, 3000);
+  if (!normalizedMessage && !file) throw new Error("Escribí un mensaje o adjuntá un archivo.");
+  const eventRef = doc(agencyCollection(inmobiliariaId, "claimEvents"));
+  const normalizedVisibility = visibility === "internal" ? "internal" : "public";
+  const normalizedRole = authorRole === "admin" ? "admin" : "resident";
+  let attachment = {
+    attachmentStoragePath: "",
+    attachmentFileName: "",
+    attachmentContentType: "",
+    attachmentSize: 0,
+  };
+  if (file) {
+    validateConsortiumFileOrThrow(file);
+    const safeName = safeConsortiumFileName(file.name);
+    const path = `consorcios/${inmobiliariaId}/${claim.consortiumId}/claims/${claim.unitId}/${claimId}/events/${eventRef.id}/${safeName}`;
+    await uploadPrivateFile({
+      file,
+      path,
+      metadata: {
+        inmobiliariaId,
+        consortiumId: claim.consortiumId,
+        unitId: claim.unitId,
+        claimId,
+        eventId: eventRef.id,
+        uploadedBy: user.uid,
+      },
+    });
+    attachment = {
+      attachmentStoragePath: path,
+      attachmentFileName: safeName,
+      attachmentContentType: file.type,
+      attachmentSize: Number(file.size || 0),
+    };
+  }
+  const createdAtIso = new Date().toISOString();
+  const batch = writeBatch(db);
+  batch.set(eventRef, {
+    id: eventRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId: claim.consortiumId,
+    unitId: claim.unitId,
+    claimId,
+    type: "message",
+    visibility: normalizedVisibility,
+    message: normalizedMessage || "Archivo adjunto.",
+    communicationType: claim.communicationType || "claim",
+    status: claim.status,
+    authorRole: normalizedRole,
+    authorId: user.uid,
+    authorName: claimAuthorName(user),
+    createdAtIso,
+    ...attachment,
+    createdAt: serverTimestamp(),
+  });
+  batch.update(claimRef, {
+    lastActivityAtIso: createdAtIso,
+    ...(normalizedVisibility === "public" ? {
+      lastPublicMessage: normalizedMessage || "Se agregó un archivo al mensaje.",
+    } : {}),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+  try {
+    await batch.commit();
+  } catch (error) {
+    if (attachment.attachmentStoragePath) {
+      await deleteObject(storageRef(storage, attachment.attachmentStoragePath)).catch(() => {});
+    }
+    throw error;
+  }
+  return eventRef.id;
 };

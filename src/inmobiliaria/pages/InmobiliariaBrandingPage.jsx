@@ -18,6 +18,9 @@ const INITIAL_FORM = {
     whatsapp: "",
     logoUrl: "",
     heroUrl: "",
+    publicHeadline: "",
+    publicBio: "",
+    publicLocation: "",
 };
 
 const getRoleFlags = (user) => {
@@ -79,6 +82,7 @@ const getFormFromInmobiliaria = (inmobiliaria) => {
     const contacto = inmobiliaria.configuracion?.contacto || {};
     const branding = inmobiliaria.branding || {};
     const backgrounds = branding.backgrounds || {};
+    const publicProfile = inmobiliaria.publicProfile || {};
 
     return {
         nombre: inmobiliaria.nombre || "",
@@ -92,6 +96,9 @@ const getFormFromInmobiliaria = (inmobiliaria) => {
             backgrounds.principal?.url ||
             backgrounds.home?.url ||
             "",
+        publicHeadline: publicProfile.headline || "",
+        publicBio: publicProfile.bio || "",
+        publicLocation: publicProfile.location || "",
     };
 };
 
@@ -241,6 +248,12 @@ const InmobiliariaBrandingPage = () => {
                 },
             };
 
+            const nextPublicProfile = {
+                headline: form.publicHeadline.trim(),
+                bio: form.publicBio.trim(),
+                location: form.publicLocation.trim(),
+            };
+
             const ref = doc(db, "inmobiliarias", activeInmobiliaria.id);
 
             await updateDoc(ref, {
@@ -248,7 +261,9 @@ const InmobiliariaBrandingPage = () => {
                 razonSocial: form.razonSocial.trim(),
                 configuracion: nextConfiguracion,
                 branding: nextBranding,
+                publicProfile: nextPublicProfile,
                 updatedAt: serverTimestamp(),
+                updatedBy: user.uid,
             });
 
             const updatedInmobiliaria = {
@@ -257,6 +272,7 @@ const InmobiliariaBrandingPage = () => {
                 razonSocial: form.razonSocial.trim(),
                 configuracion: nextConfiguracion,
                 branding: nextBranding,
+                publicProfile: nextPublicProfile,
             };
 
             setInmobiliarias((prev) =>
@@ -462,6 +478,60 @@ const InmobiliariaBrandingPage = () => {
                                             Esta imagen se usa como fondo del hero de la landing
                                             pública.
                                         </div>
+                                    </div>
+
+                                    <div className="col-12">
+                                        <hr className="my-2" />
+                                        <h2 className="h5 mb-1">Presentación pública</h2>
+                                        <p className="text-muted small mb-0">
+                                            Se muestra cuando alguien pulsa el nombre de la
+                                            inmobiliaria desde una publicación.
+                                        </p>
+                                    </div>
+
+                                    <div className="col-12">
+                                        <label className="form-label">Título o frase breve</label>
+                                        <input
+                                            type="text"
+                                            name="publicHeadline"
+                                            className="form-control"
+                                            value={form.publicHeadline}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                            maxLength={140}
+                                            placeholder="Ej.: Tu inmobiliaria de confianza en Córdoba"
+                                        />
+                                    </div>
+
+                                    <div className="col-12">
+                                        <label className="form-label">Sobre la inmobiliaria</label>
+                                        <textarea
+                                            name="publicBio"
+                                            className="form-control"
+                                            rows={6}
+                                            value={form.publicBio}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                            maxLength={1500}
+                                            placeholder="Contá la historia, especialidad y forma de trabajo de la inmobiliaria."
+                                        />
+                                        <div className="form-text text-end">
+                                            {form.publicBio.length}/1500
+                                        </div>
+                                    </div>
+
+                                    <div className="col-12">
+                                        <label className="form-label">Ubicación pública</label>
+                                        <input
+                                            type="text"
+                                            name="publicLocation"
+                                            className="form-control"
+                                            value={form.publicLocation}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                            maxLength={100}
+                                            placeholder="Ej.: Córdoba, Argentina"
+                                        />
                                     </div>
                                 </div>
 

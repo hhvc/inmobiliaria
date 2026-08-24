@@ -9,6 +9,8 @@ import {
     applyConsortiumTemplate,
     buildConsortiumAutomationPreview,
     buildConsortiumCommunicationId,
+    buildConsortiumManagedMessages,
+    buildConsortiumPortalUnit,
     cleanConsortiumText,
     CONSORTIUM_TIME_ZONE,
     dateKeyInConsortiumTimeZone,
@@ -29,11 +31,21 @@ const COMMUNICATIONS_COLLECTION = "condominium_communications";
 const OBLIGATIONS_COLLECTION = "condominium_obligations";
 const UNITS_COLLECTION = "condominium_units";
 const CONSORTIUMS_COLLECTION = "condominiums";
+const CLAIMS_COLLECTION = "condominium_claims";
+const CLAIM_EVENTS_COLLECTION = "condominium_claim_events";
+const PORTAL_SETTINGS_COLLECTION = "condominium_portal_settings";
 const AUTOMATION_RUNS_COLLECTION = "condominium_automation_runs";
 const MANUAL_LIMIT = 150;
 const AGENCY_PAGE_SIZE = 150;
 const AUTOMATION_CONSENT_VERSION = "2026-08-10.1";
 const AUTOMATION_ACTION_LIMIT = 500;
+
+const getUnitOwnerEmails = (unit = {}) => [
+    ...(Array.isArray(unit.ownerPortalEmails) ? unit.ownerPortalEmails : []),
+    ...(Array.isArray(unit.manualOwnerPortalEmails) ?
+        unit.manualOwnerPortalEmails : []),
+    unit.ownerEmail,
+].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
 
 const escapeHtml = (value = "") => String(value || "")
     .replace(/&/g, "&amp;")
@@ -323,6 +335,171 @@ const queueCommunication = async ({
         throw error;
     }
 };
+
+export const consortiumGetMyUnits = onCall(
+    {
+        region: REGION,
+        invoker: "public",
+        timeoutSeconds: 30,
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError("unauthenticated", "Tenés que iniciar sesión.");
+        }
+        if (request.auth.token?.email_verified !== true) {
+            throw new HttpsError(
+                "failed-precondition",
+                "Necesitás verificar tu email para acceder a Mi Consorcio.",
+            );
+        }
+        const email = String(request.auth.token?.email || "").trim().toLowerCase();
+        if (!email) {
+            throw new HttpsError(
+                "failed-precondition",
+                "La cuenta no tiene un email verificado.",
+            );
+        }
+
+        try {
+            const snapshot = await db.collectionGroup(UNITS_COLLECTION)
+                .where("portalEmails", "array-contains", email)
+                .limit(100)
+                .get();
+            const units = snapshot.docs
+                .map((unitSnapshot) => {
+                    const path = unitSnapshot.ref.path.split("/");
+                    if (path.length !== 4 || path[0] !== "inmobiliarias" ||
+                        path[2] !== UNITS_COLLECTION) {
+                        return null;
+                    }
+                    const data = unitSnapshot.data() || {};
+                    if (data.active === false || data.deleted === true) return null;
+                    const ownerEmails = getUnitOwnerEmails(data);
+                    return buildConsortiumPortalUnit(unitSnapshot.id, {
+                        ...data,
+                        inmobiliariaId: path[1],
+                        portalAccessRole: ownerEmails.includes(email) ?
+                            "owner" : "occupant",
+                    });
+                })
+                .filter((unit) => unit?.id && unit.inmobiliariaId && unit.consortiumId)
+                .sort((first, second) => (
+                    `${first.consortiumName} ${first.code}`.localeCompare(
+                        `${second.consortiumName} ${second.code}`,
+                        "es",
+                    )
+                ));
+            return { units };
+        } catch (error) {
+            console.error("No se pudieron consultar las unidades del portal", {
+                uid: request.auth.uid,
+                code: error?.code || "unknown",
+            });
+            throw new HttpsError(
+                "internal",
+                "No pudimos comprobar tus unidades habilitadas.",
+            );
+        }
+    },
+);
+
+export const consortiumGetManagedMessages = onCall(
+    {
+        region: REGION,
+        invoker: "public",
+        timeoutSeconds: 30,
+    },
+    async (request) => {
+        if (!request.auth?.uid) {
+            throw new HttpsError("unauthenticated", "Tenés que iniciar sesión.");
+        }
+        if (request.auth.token?.email_verified !== true) {
+            throw new HttpsError(
+                "failed-precondition",
+                "Necesitás verificar tu email para acceder a esta información.",
+            );
+        }
+        const email = String(request.auth.token?.email || "").trim().toLowerCase();
+        const inmobiliariaId = cleanConsortiumText(
+            request.data?.inmobiliariaId,
+            128,
+        );
+        const consortiumId = cleanConsortiumText(request.data?.consortiumId, 128);
+        if (!email || !inmobiliariaId || !consortiumId) {
+            throw new HttpsError("invalid-argument", "Faltan datos para la consulta.");
+        }
+
+        try {
+            const unitSnapshot = await db.collectionGroup(UNITS_COLLECTION)
+                .where("portalEmails", "array-contains", email)
+                .limit(100)
+                .get();
+            const ownerAccess = unitSnapshot.docs.some((unitDocument) => {
+                const path = unitDocument.ref.path.split("/");
+                const unit = unitDocument.data() || {};
+                return path.length === 4 && path[0] === "inmobiliarias" &&
+                    path[1] === inmobiliariaId && path[2] === UNITS_COLLECTION &&
+                    unit.consortiumId === consortiumId && unit.active !== false &&
+                    unit.deleted !== true && getUnitOwnerEmails(unit).includes(email);
+            });
+            if (!ownerAccess) {
+                throw new HttpsError(
+                    "permission-denied",
+                    "Este bloque está disponible únicamente para propietarios.",
+                );
+            }
+
+            const settingsSnapshot = await nestedRef(
+                inmobiliariaId,
+                PORTAL_SETTINGS_COLLECTION,
+                consortiumId,
+            ).get();
+            const managedSection = settingsSnapshot.data()?.sections?.managed_messages;
+            if (!settingsSnapshot.exists || managedSection?.enabled !== true ||
+                managedSection?.visibility !== "owners") {
+                throw new HttpsError(
+                    "failed-precondition",
+                    "La administración no habilitó este bloque.",
+                );
+            }
+
+            const [claimsSnapshot, eventsSnapshot] = await Promise.all([
+                agencyRef(inmobiliariaId).collection(CLAIMS_COLLECTION)
+                    .where("consortiumId", "==", consortiumId)
+                    .limit(200)
+                    .get(),
+                agencyRef(inmobiliariaId).collection(CLAIM_EVENTS_COLLECTION)
+                    .where("consortiumId", "==", consortiumId)
+                    .limit(1000)
+                    .get(),
+            ]);
+            return {
+                messages: buildConsortiumManagedMessages({
+                    claims: claimsSnapshot.docs.map((item) => ({
+                        id: item.id,
+                        ...(item.data() || {}),
+                    })),
+                    events: eventsSnapshot.docs.map((item) => ({
+                        id: item.id,
+                        ...(item.data() || {}),
+                    })),
+                }),
+            };
+        } catch (error) {
+            if (error instanceof HttpsError) throw error;
+            console.error("No se pudo consultar el tablero de gestiones", {
+                uid: request.auth.uid,
+                inmobiliariaId,
+                consortiumId,
+                code: error?.code || "unknown",
+            });
+            throw new HttpsError(
+                "internal",
+                "No pudimos cargar las gestiones del edificio.",
+            );
+        }
+    },
+);
 
 export const consortiumSaveNotificationSettings = onCall(
     { region: REGION, invoker: "public" },

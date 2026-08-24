@@ -1,5 +1,6 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
+import { Link } from "react-router-dom";
 
 import {
   OPERACIONES_OPCIONES,
@@ -27,6 +28,8 @@ import {
   getStoredParcelSummary,
   mergeParcelResultIntoInmueble,
 } from "../utils/inmuebleParcel.helpers";
+import { getMyPublicProfile } from "../../profile/services/publicProfile.service";
+import { resolveInmueblePublisherMode } from "../../profile/utils/publicProfile.helpers";
 
 import {
   AMENITIES_LABELS,
@@ -146,6 +149,9 @@ const InmuebleForm = ({
   const [parcelLoading, setParcelLoading] = useState(false);
   const [parcelError, setParcelError] = useState("");
   const [parcelMessage, setParcelMessage] = useState("");
+  const [personalProfile, setPersonalProfile] = useState(null);
+  const [personalProfileLoading, setPersonalProfileLoading] = useState(false);
+  const [personalProfileReloadKey, setPersonalProfileReloadKey] = useState(0);
   const valuesRef = useRef(values);
   const parcelRequestRef = useRef(0);
 
@@ -183,6 +189,34 @@ const InmuebleForm = ({
   }, [selectedInmobiliariaId, userInmobiliarias]);
 
   const selectorInmobiliariaIdsKey = selectorInmobiliariaIds.join("|");
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPersonalProfile = async () => {
+      if (!user?.uid) {
+        setPersonalProfile(null);
+        return;
+      }
+
+      try {
+        setPersonalProfileLoading(true);
+        const profile = await getMyPublicProfile();
+        if (mounted) setPersonalProfile(profile);
+      } catch (error) {
+        console.warn("No se pudo cargar el perfil público personal:", error);
+        if (mounted) setPersonalProfile(null);
+      } finally {
+        if (mounted) setPersonalProfileLoading(false);
+      }
+    };
+
+    loadPersonalProfile();
+
+    return () => {
+      mounted = false;
+    };
+  }, [personalProfileReloadKey, user?.uid]);
 
   useEffect(() => {
     let mounted = true;
@@ -299,6 +333,22 @@ const InmuebleForm = ({
     : branches;
 
   const selectedTipo = values?.tipo || "";
+  const publisherMode = resolveInmueblePublisherMode(values);
+  const publisherUserId =
+    values?.publisherUserId || values?.publisher?.id || values?.createdBy || "";
+  const usesAnotherPersonalProfile =
+    publisherMode === "user" &&
+    Boolean(publisherUserId) &&
+    publisherUserId !== user?.uid;
+  const personalProfileReady = Boolean(
+    personalProfile?.isPublic && personalProfile?.displayName,
+  );
+  const publisherSelection =
+    publisherMode !== "user"
+      ? "agency"
+      : usesAnotherPersonalProfile
+        ? "user_existing"
+        : "user_me";
 
   const superficieValues = {
     ...DEFAULT_SUPERFICIE,
@@ -577,6 +627,70 @@ const InmuebleForm = ({
           readOnly
         />
       )}
+
+      <div className="card mb-4">
+        <div className="card-header fw-semibold">Quién aparece como publicador</div>
+        <div className="card-body">
+          <label className="form-label" htmlFor="inmueble-publisher-profile">
+            Presentación pública
+          </label>
+          <select
+            id="inmueble-publisher-profile"
+            className="form-select"
+            value={publisherSelection}
+            onChange={(event) => {
+              const nextValue = event.target.value;
+
+              if (nextValue === "agency") {
+                handleNestedChange("publisherMode", null, "agency");
+                handleNestedChange("publisherUserId", null, "");
+                return;
+              }
+
+              if (nextValue === "user_me") {
+                handleNestedChange("publisherMode", null, "user");
+                handleNestedChange("publisherUserId", null, user?.uid || "");
+              }
+            }}
+            disabled={loading || personalProfileLoading}
+          >
+            <option value="agency">
+              {selectedInmobiliaria?.nombre || "La inmobiliaria"}
+            </option>
+            {usesAnotherPersonalProfile && (
+              <option value="user_existing">
+                {values?.publisher?.name || "Perfil personal actual"}
+              </option>
+            )}
+            <option value="user_me" disabled={!personalProfileReady}>
+              {personalProfileReady
+                ? `Mi perfil: ${personalProfile.displayName}`
+                : "Mi perfil personal (primero completalo)"}
+            </option>
+          </select>
+          <div className="form-text">
+            La inmobiliaria sigue siendo responsable de la publicación y recibe la
+            consulta. Esta opción solo define la presentación visible para el público.
+          </div>
+          {!personalProfileLoading && !personalProfileReady && (
+            <div className="small mt-2 d-flex flex-wrap align-items-center gap-2">
+              <span>
+              Para publicar con tu nombre, completá y habilitá tu{" "}
+              <Link to="/perfil" target="_blank" rel="noopener noreferrer">
+                perfil público
+              </Link>
+              .</span>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => setPersonalProfileReloadKey((value) => value + 1)}
+              >
+                Volver a comprobar
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="card mb-4">
         <div className="card-header fw-semibold">Emprendimiento y unidad</div>

@@ -83,7 +83,7 @@ const HomePage = () => {
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: "ONO Prop",
-    url: siteUrl,
+    url: `${siteUrl}/sobre-onoprop`,
     potentialAction: {
       "@type": "SearchAction",
       target: `${siteUrl}/inmuebles?search={search_term_string}`,
@@ -128,9 +128,9 @@ const HomePage = () => {
   return (
     <main id="page-top" className="portal-home">
       <SEO
-        title="ONO Prop | Portal inmobiliario para buscar, publicar y gestionar inmuebles"
-        description="Buscá casas, departamentos, terrenos, locales y oficinas en ONO Prop. Publicá como particular o inmobiliaria, recibí consultas y compartí propiedades."
-        url={siteUrl}
+        title="Conocé ONO Prop | Portal y herramientas inmobiliarias"
+        description="Conocé cómo ONO Prop ayuda a buscar, publicar y gestionar inmuebles, tanto para particulares como para inmobiliarias independientes."
+        url={`${siteUrl}/sobre-onoprop`}
         type="website"
         siteName="ONO Prop"
         jsonLd={websiteJsonLd}

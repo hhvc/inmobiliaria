@@ -2,49 +2,55 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://onoprop.com/</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmuebles</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/mapa</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/emprendimientos</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/planes</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/sobre-onoprop</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/privacidad</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/terminos</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/eliminacion-de-datos</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
@@ -55,74 +61,170 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/inmueble/departamento-en-venta-en-centro-amplio-patio-4-dorm-2-banos-0tIkukvvcWZFrlWgeTF4</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/lomas-de-la-carolina-casa-moderna-4-dorm-en-suite-636m-1zMmEEES7AnmLtGyfBHw</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/inmueble/casa-categoria-en-lote-de-845-m-no-perder-urca-apto-credito-39gBnbYYaIOQ5SrmuVUD</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/departamento-en-venta-zona-nuevo-centro-shopping-frente-balcon-3jzkIYGEDHsC8MS85YHr</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/departamento-en-venta-en-centro-a-estrenar-2-dorm-financiacion-8wlknP2F4y9zXPwfyUqo</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-en-venta-en-lomas-de-la-carolina-una-planta-amplio-parque-9YYMWTFTH85DEKFWNh45</loc>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-zona-cerro-dino-apto-credito-3-dorm-playroom-y-servicio-patio-pileta-GGDnWGvKSRu1QSNrXQDf</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/dpto-en-venta-nueva-cordoba-a-metros-de-plaza-espana-sobre-av-j-m-estrada-Gy4IvIbBj7ZgiKK4u3dF</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/lote-en-valle-cercano-10-x-25-mts-apto-duplex-con-escritura-apto-credito-HdBbOmToNc7XQwCdfGwF</loc>
-    <lastmod>2026-08-16</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/oficina-comercial-cerro-de-las-rosas-sobre-av-rafael-nunez-4072-planta-alta-NSPckhF29xbeuWLeydxJ</loc>
-    <lastmod>2026-08-16</lastmod>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-en-alquiler-en-cerro-de-las-rosas-una-planta-remodelada-3-dorm-Pwxvjh9X53I7IjiK1bpf</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-en-venta-en-barrio-maipu-3-dorm-amplio-patio-QNGpID5W9edPH0S9AZ3l</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-en-venta-santa-isabel-una-planta-apta-hipotecario-QlG24CcYPQIQ9G6u05Y7</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-en-venta-en-lomas-de-la-carolina-impecable-3-dorm-3-banos-pileta-QlGIU30Z9xv5bdGhRLtc</loc>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/alto-villasol-3-dormitorios-2-banos-impecable-ReP4vj1WnXDkba7yKk21</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/nazareth-al-2900-las-rosas-cordoba-copia-S9njXFaQpHziRiACa8pt</loc>
-    <lastmod>2026-08-16</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/oficina-en-venta-calle-belgrano-157-2piso-centro-Tax5IVomKcoSHiT2y3Uy</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/lotes-en-venta-en-san-ignacio-village-manantiales-apto-duplex-desde-360-m-b6xtP7FtElgEKI6EGh4w</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/la-paya-ii-alquiler-duplex-casa-3-dorm-iaztU1sEVyPhr3PacAa4</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vilanova-departamento-premium-en-villa-belgrano-cescritura-jnHr7lobbUOT4Dv03xUi</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-en-venta-en-villa-allende-una-planta-apto-hipotecario-k2L2jYYlTIPNibcqAb0b</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/nazareth-al-2900-las-rosas-cordoba-pzMTipfrrFzBgxnpM4wS</loc>
-    <lastmod>2026-08-16</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/inmueble/venta-casa-3-dorm-vista-al-lago-los-espinillos-potrero-de-garay-amplio-parque-qFxbCFLltuilb8zVB7MI</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/inmueble/departamento-en-venta-alberdi-1-dormitorio-apto-hipotecario-posesion-inmediata-sUWM7L5C130JDlNuMyzW</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/villa-belgrano-una-planta-amplio-parque-pileta-seguridad-nocturna-yWxbBPxIr4hzXmT5e2Mu</loc>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-de-categoria-483m2-cubiertos-lote-1500m2-altos-del-chateau-4-dorm-pileta-cochera-triple-zHG8FWh7LdPEYOK4F16V</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/venta-casa-3-dorm-pileta-patio-y-asador-housing-v-rivera-indarte-apto-credito-zhVsmdXQojqsRB76wScJ</loc>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-en-venta-en-lomas-de-la-carolina-zje5056NPzfubl6y0i3u</loc>
-    <lastmod>2026-08-17</lastmod>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -137,6 +239,18 @@
     <lastmod>2026-08-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-hasta-7-personas-pileta-y-vistas-a-las-sierras-V07w2d3LA3yyRGujeebm</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-para-5-personas-con-pileta-cochera-y-terraza-con-asador-vistas-a-las-sierras-nXMu4D0qzSqHAQ4RNBWb</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmobiliaria/ladoctaprop</loc>
@@ -164,13 +278,13 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/hermosa-casa-con-pileta-quincho-2955-mts2-5tM00s2uRf2DMB7EAGaJ</loc>
-    <lastmod>2026-08-11</lastmod>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/villa-belgrano-400-m-cub-700-m-terraza-A1wQCi2GO7zaEek5Kgi2</loc>
-    <lastmod>2026-08-11</lastmod>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -193,12 +307,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://onoprop.com/inmueble/casa-moderna-2-dorm-tanti-KOt8NAIPpWUHktGvJHpK</loc>
-    <lastmod>2026-07-21</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://onoprop.com/inmueble/vendo-dpto-nva-cba-2-dorm-balcon-u120000-parana-600-NwBP5usMCL2gthAJXmJ4</loc>
     <lastmod>2026-08-11</lastmod>
     <changefreq>weekly</changefreq>
@@ -207,6 +315,12 @@
   <url>
     <loc>https://onoprop.com/inmueble/vendo-universitario-de-horizonte-1-dorm-u59-mil-Tv5AyAweS3pfwu960mTV</loc>
     <lastmod>2026-07-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-dpto-1-dorm-nueva-cba-ud-79-mil-VBgjzz93jXmKv1VEqIsH</loc>
+    <lastmod>2026-08-19</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -224,7 +338,7 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/vendo-dpto-centro-de-carlos-paz-2-dorm-con-cochera-jtHstNLD1jVdlmjIh2zU</loc>
-    <lastmod>2026-07-21</lastmod>
+    <lastmod>2026-08-20</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -242,7 +356,13 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/b-marques-a-casa-depto-usd-65-m-uyTRBFnLscJXLawMlthA</loc>
-    <lastmod>2026-08-11</lastmod>
+    <lastmod>2026-08-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/vendo-casa-en-planta-alta-con-patio-y-terraza-alto-alberdi-wARQL3dYIjonowqeqAvk</loc>
+    <lastmod>2026-08-18</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>

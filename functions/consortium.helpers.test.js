@@ -5,11 +5,88 @@ import {
     applyConsortiumTemplate,
     buildConsortiumAutomationPreview,
     buildConsortiumCommunicationId,
+    buildConsortiumManagedMessages,
+    buildConsortiumPortalUnit,
     getAutomaticConsortiumCommunication,
     normalizeConsortiumNotificationSettings,
     resolveConsortiumRecipients,
     resolveEffectiveConsortiumNotificationSettings,
 } from "./consortium.helpers.js";
+
+test("limita los datos de una unidad expuestos al portal del consorcista", () => {
+    const result = buildConsortiumPortalUnit("unidad-1", {
+        inmobiliariaId: "inmo-1",
+        consortiumId: "consorcio-1",
+        consortiumName: "Edificio Centro",
+        consortiumAddress: "Av. Siempre Viva 123",
+        consortiumCurrency: "ARS",
+        code: "1 A",
+        portalAccessRole: "owner",
+        coefficient: 12.5,
+        creditBalanceMinor: 2500.4,
+        ownerTaxId: "20-00000000-0",
+        ownerEmail: "privado@example.com",
+        portalEmails: ["privado@example.com"],
+        notes: "Información interna",
+    });
+    assert.deepEqual(result, {
+        id: "unidad-1",
+        inmobiliariaId: "inmo-1",
+        consortiumId: "consorcio-1",
+        consortiumName: "Edificio Centro",
+        consortiumAddress: "Av. Siempre Viva 123",
+        consortiumCurrency: "ARS",
+        code: "1 A",
+        floor: "",
+        apartment: "",
+        type: "apartment",
+        portalAccessRole: "owner",
+        coefficient: 12.5,
+        creditBalanceMinor: 2500,
+    });
+    assert.equal(Object.hasOwn(result, "ownerTaxId"), false);
+    assert.equal(Object.hasOwn(result, "portalEmails"), false);
+    assert.equal(Object.hasOwn(result, "notes"), false);
+});
+
+test("anonimiza las gestiones compartidas con propietarios", () => {
+    const result = buildConsortiumManagedMessages({
+        claims: [{
+            id: "casoABC123456",
+            createdDate: "2026-08-24",
+            title: "Juan de la unidad 3 informó una pérdida",
+            description: "La informó una persona identificada.",
+            submittedByEmail: "privado@example.com",
+            unitId: "unidad-1",
+            communicationType: "notice",
+            category: "plumbing",
+            priority: "high",
+            status: "resolved",
+            portalVisible: true,
+            featuredInPortal: true,
+            lastActivityAtIso: "2026-08-25T10:00:00.000Z",
+        }],
+        events: [{
+            claimId: "casoABC123456",
+            type: "status_update",
+            previousStatus: "in_review",
+            status: "resolved",
+            message: "Incluye una explicación privada.",
+            createdAtIso: "2026-08-25T10:00:00.000Z",
+        }],
+    });
+    assert.equal(result[0].reference, "MSG-20260824-123456");
+    assert.equal(result[0].title, "Gestión sobre Agua y plomería");
+    assert.equal(result[0].featured, true);
+    assert.deepEqual(result[0].statusHistory, [{
+        previousStatus: "in_review",
+        status: "resolved",
+        createdAtIso: "2026-08-25T10:00:00.000Z",
+    }]);
+    assert.equal(Object.hasOwn(result[0], "description"), false);
+    assert.equal(Object.hasOwn(result[0], "submittedByEmail"), false);
+    assert.equal(Object.hasOwn(result[0], "unitId"), false);
+});
 
 test("resuelve titular, ocupante o ambos sin duplicar emails", () => {
     const unit = {

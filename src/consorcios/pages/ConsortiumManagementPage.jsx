@@ -103,7 +103,10 @@ const ConsortiumManagementPage = () => {
             {activeInmobiliaria?.nombre || "Inmobiliaria activa"} · unidades, expensas, cobros y cuentas corrientes.
           </p>
         </div>
-        {canManage && <Link className="btn btn-primary" to="/admin/consorcios/nuevo">+ Nuevo consorcio</Link>}
+        <div className="d-flex flex-wrap gap-2">
+          <Link className="btn btn-outline-primary" to="/guias/administracion-consorcios">Manual del módulo</Link>
+          {canManage && <Link className="btn btn-primary" to="/admin/consorcios/nuevo">+ Nuevo consorcio</Link>}
+        </div>
       </header>
 
       <section className="row g-3 mb-4" aria-label="Resumen de consorcios">

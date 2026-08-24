@@ -9,6 +9,7 @@ import {
     query,
     runTransaction,
     serverTimestamp,
+    startAfter,
     updateDoc,
     where,
 } from "firebase/firestore";
@@ -355,21 +356,34 @@ export const getMyParticularPublications = async ({ pageSize = 50 } = {}) => {
         });
 };
 
-export const getActiveParticularPublications = async ({ pageSize = 100 } = {}) => {
-    const q = query(
-        particularPublicationsRef,
+export const getActiveParticularPublications = async ({
+    pageSize = 12,
+    lastDoc = null,
+} = {}) => {
+    const constraints = [
         where("publicationType", "==", "particular"),
         where("publicStatus", "==", "active"),
         where("moderationStatus", "==", "approved"),
         orderBy("createdAt", "desc"),
-        limit(pageSize),
-    );
+    ];
+
+    if (lastDoc) {
+        constraints.push(startAfter(lastDoc));
+    }
+
+    constraints.push(limit(pageSize));
+
+    const q = query(particularPublicationsRef, ...constraints);
 
     const snap = await getDocs(q);
 
-    return snap.docs
-        .map((docSnap) => mapParticularPublication(docSnap))
-        .filter(Boolean);
+    return {
+        data: snap.docs
+            .map((docSnap) => mapParticularPublication(docSnap))
+            .filter(Boolean),
+        lastDoc: snap.docs[snap.docs.length - 1] || null,
+        hasMore: snap.docs.length === pageSize,
+    };
 };
 
 export const updateParticularPublicationPublicStatus = async (

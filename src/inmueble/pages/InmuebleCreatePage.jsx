@@ -120,6 +120,8 @@ const INITIAL_VALUES = {
   inmobiliariaId: "",
   ownerInmobiliariaId: "",
   sucursalId: "",
+  publisherMode: "agency",
+  publisherUserId: "",
 
   sharedWith: {},
   deleted: false,

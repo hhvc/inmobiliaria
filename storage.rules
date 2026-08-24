@@ -70,6 +70,25 @@ service firebase.storage {
         && request.resource.size <= 10 * 1024 * 1024;
     }
 
+    function isValidProfileImageSize() {
+      return request.resource != null
+        && request.resource.size <= 5 * 1024 * 1024;
+    }
+
+    /* ================= Perfil público de usuario ================= */
+
+    match /public-profiles/{userId}/{allPaths=**} {
+      allow read: if true;
+
+      allow create, update: if
+        isSignedIn()
+        && request.auth.uid == userId
+        && isImage()
+        && isValidProfileImageSize();
+
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
     function isValidInstagramReel() {
       return request.resource != null
         && request.resource.contentType.matches('^video/(mp4|quicktime)$')
@@ -120,6 +139,61 @@ service firebase.storage {
         && request.auth.token.email in firestore.get(
           /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominiums/$(consortiumId)
         ).data.portalEmails;
+    }
+
+    function hasConsortiumOwnerPortalAccess(inmobiliariaId, consortiumId) {
+      return hasVerifiedAuthEmail()
+        && firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominiums/$(consortiumId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominiums/$(consortiumId)
+        ).data.ownerPortalEmails is list
+        && request.auth.token.email in firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominiums/$(consortiumId)
+        ).data.ownerPortalEmails;
+    }
+
+    function hasConsortiumPortalResourceAccess(inmobiliariaId, consortiumId, sectionId, resourceId) {
+      return firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+        ).data.published == true
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+        ).data.consortiumId == consortiumId
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+        ).data.section == sectionId
+        && firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_settings/$(consortiumId)
+        )
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+        ).data.section in firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_settings/$(consortiumId)
+        ).data.sections
+        && firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_settings/$(consortiumId)
+        ).data.sections[firestore.get(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+        ).data.section].enabled == true
+        && (
+          (
+            firestore.get(
+              /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+            ).data.visibility == "all"
+            && hasConsortiumPortalAccess(inmobiliariaId, consortiumId)
+          )
+          || (
+            firestore.get(
+              /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_portal_resources/$(resourceId)
+            ).data.visibility == "owners"
+            && hasConsortiumOwnerPortalAccess(inmobiliariaId, consortiumId)
+          )
+        );
     }
 
     function hasConsortiumUnitPortalAccess(inmobiliariaId, unitId) {
@@ -357,6 +431,134 @@ service firebase.storage {
         isAgencyAdmin(inmobiliariaId)
         && !firestore.exists(
           /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_expense_documents/$(documentId)
+        );
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/supplier-obligations/{obligationId}/{fileName} {
+      allow read: if isAgencyAdmin(inmobiliariaId);
+
+      allow create: if
+        isAgencyAdmin(inmobiliariaId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isAgencyAdmin(inmobiliariaId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_supplier_obligations/$(obligationId)
+        );
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/supplier-payments/{paymentId}/{fileName} {
+      allow read: if isAgencyAdmin(inmobiliariaId);
+
+      allow create: if
+        isAgencyAdmin(inmobiliariaId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isAgencyAdmin(inmobiliariaId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_supplier_payments/$(paymentId)
+        );
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/treasury-movements/{movementId}/{fileName} {
+      allow read: if isAgencyAdmin(inmobiliariaId);
+
+      allow create: if
+        isAgencyAdmin(inmobiliariaId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isAgencyAdmin(inmobiliariaId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_treasury_movements/$(movementId)
+        );
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/treasury-reconciliations/{reconciliationId}/{fileName} {
+      allow read: if isAgencyAdmin(inmobiliariaId);
+
+      allow create: if
+        isAgencyAdmin(inmobiliariaId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isAgencyAdmin(inmobiliariaId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_treasury_reconciliations/$(reconciliationId)
+        );
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/claims/{unitId}/{claimId}/initial/{fileName} {
+      allow read: if
+        isAgencyAdmin(inmobiliariaId)
+        || hasConsortiumUnitPortalAccess(inmobiliariaId, unitId);
+
+      allow create: if
+        (
+          isAgencyAdmin(inmobiliariaId)
+          || hasConsortiumUnitPortalAccess(inmobiliariaId, unitId)
+        )
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        isAgencyAdmin(inmobiliariaId)
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_claims/$(claimId)
+        );
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/portal/{sectionId}/{resourceId}/{fileName} {
+      allow read: if
+        isAgencyAdmin(inmobiliariaId)
+        || hasConsortiumPortalResourceAccess(
+          inmobiliariaId,
+          consortiumId,
+          sectionId,
+          resourceId
+        );
+
+      allow create: if
+        isAgencyAdmin(inmobiliariaId)
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if isAgencyAdmin(inmobiliariaId);
+    }
+
+    match /consorcios/{inmobiliariaId}/{consortiumId}/claims/{unitId}/{claimId}/events/{eventId}/{fileName} {
+      allow read: if
+        isAgencyAdmin(inmobiliariaId)
+        || hasConsortiumUnitPortalAccess(inmobiliariaId, unitId);
+
+      allow create: if
+        (
+          isAgencyAdmin(inmobiliariaId)
+          || hasConsortiumUnitPortalAccess(inmobiliariaId, unitId)
+        )
+        && isValidConsortiumDocument();
+
+      allow update: if false;
+
+      allow delete: if
+        (
+          isAgencyAdmin(inmobiliariaId)
+          || hasConsortiumUnitPortalAccess(inmobiliariaId, unitId)
+        )
+        && !firestore.exists(
+          /databases/(default)/documents/inmobiliarias/$(inmobiliariaId)/condominium_claim_events/$(eventId)
         );
     }
 

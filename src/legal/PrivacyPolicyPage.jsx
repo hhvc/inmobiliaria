@@ -65,6 +65,20 @@ const PrivacyPolicyPage = () => {
             de la interacción.
           </li>
           <li>
+            <strong>Búsquedas y alertas:</strong> correo, filtros elegidos,
+            frecuencia, confirmación, estado de la suscripción y registros
+            técnicos necesarios para limitar abusos. Los inmuebles marcados
+            como favoritos sin iniciar sesión se conservan solamente en el
+            navegador del dispositivo.
+          </li>
+          <li>
+            <strong>Rendimiento de publicaciones:</strong> contabilizamos en
+            forma agregada las aperturas de fichas, favoritos, clics de contacto
+            y consultas enviadas. Estos totales no guardan dirección IP, email
+            ni el contenido de la consulta. El navegador conserva una marca
+            técnica diaria para evitar contar repetidamente la misma acción.
+          </li>
+          <li>
             <strong>Datos de integraciones:</strong> identificadores de cuenta,
             nombre de usuario, tipo de cuenta, permisos concedidos, estado de
             conexión, vencimientos, identificadores de publicaciones,
@@ -110,6 +124,10 @@ const PrivacyPolicyPage = () => {
           <li>crear y administrar cuentas, permisos y suscripciones;</li>
           <li>publicar y mostrar inmuebles en el portal y destinos autorizados;</li>
           <li>gestionar consultas, solicitudes, derivaciones y seguimiento;</li>
+          <li>
+            guardar búsquedas confirmadas y enviar avisos de nuevas
+            coincidencias con la frecuencia elegida;
+          </li>
           <li>
             conectar, mantener y desconectar integraciones solicitadas por la
             persona usuaria;
@@ -173,6 +191,12 @@ const PrivacyPolicyPage = () => {
           inutilizan al desconectarla. Los estados temporales de autorización y
           las constancias técnicas de eliminación tienen vencimientos
           limitados.
+        </p>
+        <p>
+          Las alertas de búsqueda se conservan mientras permanezcan activas.
+          Podés cancelarlas desde el enlace incluido en cada aviso; desde ese
+          momento dejan de utilizarse para nuevos envíos y se conservan de
+          manera limitada como constancia de la baja y para prevenir abusos.
         </p>
         <p>
           Una solicitud de eliminación de datos de Instagram elimina la
