@@ -17,6 +17,31 @@
   min-width: 160px;
 }
 
+.leaflet-tooltip.ono-map-price-tooltip {
+  color: #fff;
+  background: rgb(33 37 41 / 94%);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 28%);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.36rem 0.5rem;
+  white-space: nowrap;
+}
+
+.leaflet-tooltip-top.ono-map-price-tooltip::before {
+  border-top-color: rgb(33 37 41 / 94%);
+}
+
+.leaflet-tooltip.ono-map-price-tooltip.is-selected {
+  background: #0d6efd;
+}
+
+.leaflet-tooltip-top.ono-map-price-tooltip.is-selected::before {
+  border-top-color: #0d6efd;
+}
+
 .ono-map-property-icon-host {
   border: 0;
   background: transparent;
@@ -132,6 +157,25 @@
   min-height: 340px;
 }
 
+.ono-map-coordinate-summary {
+  align-items: center;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+}
+
+.ono-map-manual-coordinates {
+  background: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
 .mapa-portal-map {
   min-height: min(68vh, 720px);
 }
@@ -223,6 +267,10 @@
   }
 
   .mapa-filter {
+    width: 100%;
+  }
+
+  .ono-map-coordinate-summary .btn {
     width: 100%;
   }
 }

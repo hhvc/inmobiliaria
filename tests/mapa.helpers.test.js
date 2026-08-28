@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   MAX_TASACION_COMPARABLES,
   addMappedComparable,
+  buildGoogleMapsCoordinatesUrl,
   buildInmuebleMapPoint,
   buildOmiComparable,
   buildOmiMapPoint,
@@ -67,6 +68,15 @@ test("respeta la ubicación precisa elegida por quien publica", () => {
   assert.deepEqual(point.position, [-31.420145, -64.188845]);
   assert.match(point.address, /San Martín 123/);
   assert.equal(point.mapPrecision, "precisa");
+});
+
+test("genera el enlace de Google Maps con la ubicación pública", () => {
+  assert.equal(
+    buildGoogleMapsCoordinatesUrl([-31.42, -64.189]),
+    "https://www.google.com/maps/search/?api=1&query=-31.42%2C-64.189",
+  );
+  assert.equal(buildGoogleMapsCoordinatesUrl([]), "");
+  assert.equal(buildGoogleMapsCoordinatesUrl([200, -64.189]), "");
 });
 
 test("clasifica tipologías para los marcadores del mapa", () => {

@@ -2,55 +2,55 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://onoprop.com/</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmuebles</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/mapa</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/emprendimientos</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/planes</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/sobre-onoprop</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/privacidad</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/terminos</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/eliminacion-de-datos</loc>
-    <lastmod>2026-08-24</lastmod>
+    <lastmod>2026-08-28</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
@@ -85,6 +85,12 @@
     <priority>0.7</priority>
   </url>
   <url>
+    <loc>https://onoprop.com/inmueble/rio-cuarto-barrio-golf-venta-2-dormiorios-8fhTInTF8v912s5b4gLY</loc>
+    <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
     <loc>https://onoprop.com/inmueble/departamento-en-venta-en-centro-a-estrenar-2-dorm-financiacion-8wlknP2F4y9zXPwfyUqo</loc>
     <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
@@ -113,6 +119,12 @@
     <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-zona-cerro-dino-apto-credito-3-dorm-playroom-y-servicio-patio-pileta-JPyy7WPgtIu31U7fPWAK</loc>
+    <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/oficina-comercial-cerro-de-las-rosas-sobre-av-rafael-nunez-4072-planta-alta-NSPckhF29xbeuWLeydxJ</loc>
@@ -209,6 +221,12 @@
     <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/casa-en-una-planta-cuestas-de-manantiales-2-dorm-2-banos-ypyyqv4Gorj9C2kB1Iyv</loc>
+    <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-de-categoria-483m2-cubiertos-lote-1500m2-altos-del-chateau-4-dorm-pileta-cochera-triple-zHG8FWh7LdPEYOK4F16V</loc>
@@ -380,7 +398,7 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmobiliaria/hvc</loc>
-    <lastmod>2026-08-18</lastmod>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>

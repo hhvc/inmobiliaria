@@ -359,13 +359,24 @@ export const getMyParticularPublications = async ({ pageSize = 50 } = {}) => {
 export const getActiveParticularPublications = async ({
     pageSize = 12,
     lastDoc = null,
+    operacion = "",
+    tipo = "",
 } = {}) => {
     const constraints = [
         where("publicationType", "==", "particular"),
         where("publicStatus", "==", "active"),
         where("moderationStatus", "==", "approved"),
-        orderBy("createdAt", "desc"),
     ];
+
+    if (operacion) {
+        constraints.push(where("operacion", "==", operacion));
+    }
+
+    if (tipo) {
+        constraints.push(where("tipo", "==", tipo));
+    }
+
+    constraints.push(orderBy("createdAt", "desc"));
 
     if (lastDoc) {
         constraints.push(startAfter(lastDoc));

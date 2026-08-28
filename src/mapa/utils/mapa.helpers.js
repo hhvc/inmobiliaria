@@ -157,6 +157,15 @@ export const formatMapPrice = (item = {}) => {
   return `${currency} ${price.toLocaleString("es-AR")}`;
 };
 
+export const buildGoogleMapsCoordinatesUrl = (position = []) => {
+  if (!Array.isArray(position) || position.length < 2) return "";
+  const coordinates = normalizeMapCoordinates(position[0], position[1]);
+  if (!coordinates) return "";
+
+  const query = `${coordinates.latitude},${coordinates.longitude}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+};
+
 export const buildInmuebleMapPoint = (
   inmueble = {},
   { publicView = false, subjectLocation = null } = {},

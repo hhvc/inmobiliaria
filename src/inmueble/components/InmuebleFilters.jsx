@@ -43,6 +43,9 @@ const InmuebleFilters = ({ filters, onChange, onReset, loading = false }) => {
               <option value="">Todas</option>
               <option value="venta">Venta</option>
               <option value="alquiler">Alquiler</option>
+              <option value="alquiler_temporal">Alquiler temporal</option>
+              <option value="compra">Compra</option>
+              <option value="tasacion">Tasación</option>
             </select>
           </div>
 
@@ -62,6 +65,10 @@ const InmuebleFilters = ({ filters, onChange, onReset, loading = false }) => {
               <option value="terreno">Terreno</option>
               <option value="local">Local</option>
               <option value="oficina">Oficina</option>
+              <option value="cochera">Cochera</option>
+              <option value="deposito">Depósito</option>
+              <option value="quinta">Quinta</option>
+              <option value="campo">Campo</option>
             </select>
           </div>
 

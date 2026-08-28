@@ -5,7 +5,10 @@ import SEO from "../../components/SEO";
 import InteractiveMap from "../components/InteractiveMap";
 import PropertyTypeLegend from "../components/PropertyTypeLegend";
 import { getAllPublicInmueblesForMap } from "../services/mapa.service";
-import { buildInmuebleMapPoint } from "../utils/mapa.helpers";
+import {
+  buildGoogleMapsCoordinatesUrl,
+  buildInmuebleMapPoint,
+} from "../utils/mapa.helpers";
 import "../mapa.css";
 
 const OPERATION_OPTIONS = [
@@ -71,6 +74,9 @@ const MapaPortalPage = () => {
     [filteredInmuebles],
   );
   const missingLocationCount = filteredInmuebles.length - points.length;
+  const selectedGoogleMapsUrl = buildGoogleMapsCoordinatesUrl(
+    selectedPoint?.position,
+  );
 
   useEffect(() => {
     if (
@@ -137,6 +143,7 @@ const MapaPortalPage = () => {
               points={points}
               zoom={14}
               fitToPoints
+              showPropertyPriceLabels
               selectedPointId={selectedPoint?.id || ""}
               onSelectPoint={setSelectedPoint}
               className="mapa-portal-map"
@@ -152,15 +159,27 @@ const MapaPortalPage = () => {
                   <h2 className="h5">{selectedPoint.title}</h2>
                   {selectedPoint.address && <p>{selectedPoint.address}</p>}
                   <p className="h5">{selectedPoint.priceLabel}</p>
-                  {selectedPoint.slug && (
-                    <Link
-                      className="btn btn-primary w-100"
-                      to={`/inmueble/${selectedPoint.slug}`}
-                      state={{ performanceSource: "map" }}
-                    >
-                      Ver publicación
-                    </Link>
-                  )}
+                  <div className="d-grid gap-2">
+                    {selectedPoint.slug && (
+                      <Link
+                        className="btn btn-primary"
+                        to={`/inmueble/${selectedPoint.slug}`}
+                        state={{ performanceSource: "map" }}
+                      >
+                        Ver publicación
+                      </Link>
+                    )}
+                    {selectedGoogleMapsUrl && (
+                      <a
+                        className="btn btn-outline-primary"
+                        href={selectedGoogleMapsUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ver en Google Maps
+                      </a>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (

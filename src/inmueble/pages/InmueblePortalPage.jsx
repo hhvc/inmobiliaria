@@ -1032,6 +1032,8 @@ const loadPortalBatch = async ({
     includeParticular = true,
     agencyLastDoc = null,
     particularLastDoc = null,
+    operacion = "",
+    tipo = "",
 } = {}) => {
     const emptyResult = {
         data: [],
@@ -1044,12 +1046,16 @@ const loadPortalBatch = async ({
             ? getPublicInmuebles({
                 pageSize: PAGE_SIZE_PER_SOURCE,
                 lastDoc: agencyLastDoc,
+                operacion,
+                tipo,
             })
             : Promise.resolve(emptyResult),
         includeParticular
             ? getActiveParticularPublications({
                 pageSize: PAGE_SIZE_PER_SOURCE,
                 lastDoc: particularLastDoc,
+                operacion,
+                tipo,
             })
             : Promise.resolve(emptyResult),
     ]);
@@ -1219,6 +1225,8 @@ const InmueblePortalPage = () => {
                 const batch = await loadPortalBatch({
                     includeAgency: filters.sourceType !== "particular",
                     includeParticular: filters.sourceType !== "inmobiliaria",
+                    operacion: filters.operacion,
+                    tipo: filters.tipo,
                 });
 
                 if (!active) return;
@@ -1246,7 +1254,7 @@ const InmueblePortalPage = () => {
         return () => {
             active = false;
         };
-    }, [filters.sourceType]);
+    }, [filters.sourceType, filters.operacion, filters.tipo]);
 
     const updateFilters = (nextFilters, options = {}) => {
         setFilters(nextFilters);
@@ -1299,6 +1307,8 @@ const InmueblePortalPage = () => {
                     filters.sourceType !== "inmobiliaria" && hasMore.particular,
                 agencyLastDoc: cursors.agency,
                 particularLastDoc: cursors.particular,
+                operacion: filters.operacion,
+                tipo: filters.tipo,
             });
 
             setInmuebles((currentItems) =>

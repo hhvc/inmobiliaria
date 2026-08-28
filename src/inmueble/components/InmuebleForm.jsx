@@ -1089,32 +1089,6 @@ const InmuebleForm = ({
             </div>
           </div>
 
-          <div className="col-md-3">
-            <label className="form-label">Latitud</label>
-            <input
-              type="number"
-              step="any"
-              className="form-control"
-              value={values?.direccion?.lat ?? ""}
-              onChange={(e) =>
-                handleNestedChange("direccion", "lat", e.target.value)
-              }
-            />
-          </div>
-
-          <div className="col-md-3">
-            <label className="form-label">Longitud</label>
-            <input
-              type="number"
-              step="any"
-              className="form-control"
-              value={values?.direccion?.lng ?? ""}
-              onChange={(e) =>
-                handleNestedChange("direccion", "lng", e.target.value)
-              }
-            />
-          </div>
-
           <div className="col-12">
             <MapPointPicker
               latitude={values?.direccion?.lat}
@@ -1129,9 +1103,16 @@ const InmuebleForm = ({
               ]
                 .filter(Boolean)
                 .join(", ")}
-              onChange={({ latitude, longitude }) => {
+              addressContext={{
+                street: values?.direccion?.calle,
+                number: values?.direccion?.numero,
+                locality: values?.direccion?.ciudad,
+                province: values?.direccion?.provincia,
+              }}
+              onChange={({ latitude, longitude, geocoding }) => {
                 handleNestedChange("direccion", "lat", latitude);
                 handleNestedChange("direccion", "lng", longitude);
+                handleNestedChange("direccion", "geocoding", geocoding || {});
                 setLocationValidationError("");
                 queryAndApplyParcel({ latitude, longitude });
               }}

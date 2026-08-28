@@ -114,6 +114,37 @@
         { "fieldPath": "deleted", "order": "ASCENDING" },
         { "fieldPath": "estado", "order": "ASCENDING" },
         { "fieldPath": "publicarEnPortal", "order": "ASCENDING" },
+        { "fieldPath": "operacion", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inmuebles",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "deleted", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "publicarEnPortal", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inmuebles",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "deleted", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "publicarEnPortal", "order": "ASCENDING" },
+        { "fieldPath": "operacion", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inmuebles",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "deleted", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "publicarEnPortal", "order": "ASCENDING" },
         { "fieldPath": "slug", "order": "ASCENDING" }
       ]
     },
@@ -165,6 +196,40 @@
         { "fieldPath": "moderationStatus", "order": "ASCENDING" },
         { "fieldPath": "publicStatus", "order": "ASCENDING" },
         { "fieldPath": "publicationType", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "particular_publications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "moderationStatus", "order": "ASCENDING" },
+        { "fieldPath": "publicStatus", "order": "ASCENDING" },
+        { "fieldPath": "publicationType", "order": "ASCENDING" },
+        { "fieldPath": "operacion", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "particular_publications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "moderationStatus", "order": "ASCENDING" },
+        { "fieldPath": "publicStatus", "order": "ASCENDING" },
+        { "fieldPath": "publicationType", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "particular_publications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "moderationStatus", "order": "ASCENDING" },
+        { "fieldPath": "publicStatus", "order": "ASCENDING" },
+        { "fieldPath": "publicationType", "order": "ASCENDING" },
+        { "fieldPath": "operacion", "order": "ASCENDING" },
+        { "fieldPath": "tipo", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
     },

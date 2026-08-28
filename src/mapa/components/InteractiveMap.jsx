@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import L from "leaflet";
 import {
   CircleMarker,
@@ -7,6 +7,7 @@ import {
   Marker,
   Popup,
   TileLayer,
+  Tooltip,
   WMSTileLayer,
   useMap,
   useMapEvents,
@@ -33,6 +34,7 @@ const getPropertyMarkerIcon = (propertyType, selected) => {
     iconSize: selected ? [42, 48] : [38, 44],
     iconAnchor: selected ? [21, 46] : [19, 42],
     popupAnchor: [0, -40],
+    tooltipAnchor: selected ? [0, -48] : [0, -44],
   });
   propertyIconCache.set(cacheKey, icon);
   return icon;
@@ -109,9 +111,24 @@ const MapFocusController = ({ focusPosition, focusVersion = 0 }) => {
 
 const MapBoundsController = ({ positions, enabled }) => {
   const map = useMap();
+  const lastBoundsKeyRef = useRef("");
 
   useEffect(() => {
-    if (!enabled || !Array.isArray(positions) || positions.length === 0) return;
+    if (!enabled) {
+      lastBoundsKeyRef.current = "";
+      return;
+    }
+    if (!Array.isArray(positions) || positions.length === 0) return;
+
+    const boundsKey = positions
+      .map((position) =>
+        Array.isArray(position) ? position.slice(0, 2).join(",") : "",
+      )
+      .join("|");
+
+    if (!boundsKey || boundsKey === lastBoundsKeyRef.current) return;
+    lastBoundsKeyRef.current = boundsKey;
+
     map.fitBounds(positions, {
       animate: false,
       maxZoom: 15,
@@ -144,6 +161,7 @@ const InteractiveMap = ({
   focusPosition = null,
   focusVersion = 0,
   fitToPoints = false,
+  showPropertyPriceLabels = false,
   showParcelLayer = true,
   highlightGeoJson = null,
   className = "",
@@ -219,6 +237,17 @@ const InteractiveMap = ({
                   click: () => onSelectPoint?.(point),
                 }}
               >
+                {showPropertyPriceLabels && point.priceLabel && (
+                  <Tooltip
+                    permanent
+                    direction="top"
+                    className={`ono-map-price-tooltip${
+                      selected ? " is-selected" : ""
+                    }`}
+                  >
+                    {point.priceLabel}
+                  </Tooltip>
+                )}
                 <Popup>
                   {renderPopup ? renderPopup(point) : <DefaultPopup point={point} />}
                 </Popup>

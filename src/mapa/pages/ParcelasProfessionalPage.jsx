@@ -236,7 +236,9 @@ const ParcelasProfessionalPage = () => {
     try {
       setSearching(true);
       setError("");
-      setAddressResults(await searchAddressCandidates(address));
+      setAddressResults(await searchAddressCandidates(address, {
+        province: "Córdoba",
+      }));
     } catch (searchError) {
       setAddressResults([]);
       setError(searchError.message || "No se pudo buscar la dirección.");

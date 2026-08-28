@@ -11,7 +11,7 @@
     "test:instagram-reels": "node --test tests/instagramReels.test.js",
     "test:billing": "node --test tests/billing.helpers.test.js",
     "test:tasaciones": "node --test tests/tasacion.helpers.test.js",
-    "test:mapa": "node --test tests/mapa.helpers.test.js",
+    "test:mapa": "node --test tests/mapa.helpers.test.js tests/geocoding.helpers.test.js",
     "test:tributos": "node --test tests/tax.helpers.test.js",
     "test:consorcios": "node --test tests/consorcio.helpers.test.js tests/consorcioPortalInformation.test.js",
     "test:auth": "node --test tests/auth.helpers.test.js",

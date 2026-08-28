@@ -280,8 +280,6 @@ export const TasacionStepTwo = ({
         <InputField label="Provincia" value={values.inspection.address.province} onChange={(value) => setValue("inspection.address.province", value)} className="col-md-3" required />
         <InputField label="País" value={values.inspection.address.country} onChange={(value) => setValue("inspection.address.country", value)} className="col-md-3" />
         <InputField label="Código postal" value={values.inspection.address.postalCode} onChange={(value) => setValue("inspection.address.postalCode", value)} className="col-md-2" />
-        <InputField label="Latitud" type="number" step="any" value={values.inspection.geolocation.latitude} onChange={(value) => setValue("inspection.geolocation.latitude", value)} className="col-md-3" />
-        <InputField label="Longitud" type="number" step="any" value={values.inspection.geolocation.longitude} onChange={(value) => setValue("inspection.geolocation.longitude", value)} className="col-md-3" />
         <div className="col-12">
           <MapPointPicker
             latitude={values.inspection.geolocation.latitude}
@@ -296,6 +294,12 @@ export const TasacionStepTwo = ({
             ]
               .filter(Boolean)
               .join(", ")}
+            addressContext={{
+              street: values.inspection.address.street,
+              number: values.inspection.address.number,
+              locality: values.inspection.address.city,
+              province: values.inspection.address.province,
+            }}
             title="Marcar inmueble a tasar"
             help="La ubicación alimenta la búsqueda geográfica de antecedentes. Hacé clic para corregir el punto."
             onChange={onTasacionLocationChange}
