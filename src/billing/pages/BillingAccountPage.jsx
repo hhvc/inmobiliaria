@@ -3,6 +3,10 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
+import {
+    createMercadoPagoCheckout,
+    openMercadoPagoCheckout,
+} from "../../mercadopago/services/mercadoPago.service";
 import BillingContractAmendmentForm from "../components/BillingContractAmendmentForm";
 import BillingPaymentProofLink from "../components/BillingPaymentProofLink";
 import BillingContractRequestForm from "../components/BillingContractRequestForm";
@@ -137,6 +141,39 @@ const BillingAccountPage = () => {
             setError(operationError.message || "No se pudo completar la operación.");
             return false;
         } finally {
+            setOperation("");
+        }
+    };
+
+    const payObligationWithMercadoPago = async (obligationId) => {
+        try {
+            setOperation(`mercadopago-${obligationId}`);
+            setError("");
+            setSuccess("");
+            const result = await createMercadoPagoCheckout({
+                contextType: "billing_obligation",
+                inmobiliariaId,
+                obligationId,
+            });
+            openMercadoPagoCheckout(result.initPoint);
+        } catch (paymentError) {
+            setError(paymentError.message || "No se pudo iniciar el pago.");
+            setOperation("");
+        }
+    };
+
+    const payAccountBalanceWithMercadoPago = async () => {
+        try {
+            setOperation("mercadopago-account-ARS");
+            setError("");
+            setSuccess("");
+            const result = await createMercadoPagoCheckout({
+                contextType: "billing_account",
+                inmobiliariaId,
+            });
+            openMercadoPagoCheckout(result.initPoint);
+        } catch (paymentError) {
+            setError(paymentError.message || "No se pudo iniciar el pago.");
             setOperation("");
         }
     };
@@ -390,6 +427,18 @@ const BillingAccountPage = () => {
                                             ? "Saldo a favor"
                                             : "Cuenta al día"}
                                 </div>
+                                {currency === "ARS" && Number(amountMinor) > 0 && (
+                                    <button
+                                        className="btn btn-success btn-sm mt-3"
+                                        type="button"
+                                        disabled={Boolean(operation)}
+                                        onClick={payAccountBalanceWithMercadoPago}
+                                    >
+                                        {operation === "mercadopago-account-ARS"
+                                            ? "Abriendo Mercado Pago..."
+                                            : "Pagar saldo con Mercado Pago"}
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -801,6 +850,7 @@ const BillingAccountPage = () => {
                                     <th>Capital pendiente</th>
                                     <th>Interés pendiente</th>
                                     <th>Estado</th>
+                                    <th className="text-end">Acción</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -863,12 +913,29 @@ const BillingAccountPage = () => {
                                                     </div>
                                                 )}
                                             </td>
+                                            <td className="text-end">
+                                                {obligation.status !== "paid" &&
+                                                    (obligation.currency || "ARS") === "ARS" &&
+                                                    (Number(obligation.principalOutstandingMinor || 0) +
+                                                        Number(obligation.interestOutstandingMinor || 0)) > 0 && (
+                                                    <button
+                                                        className="btn btn-success btn-sm text-nowrap"
+                                                        type="button"
+                                                        disabled={operation === `mercadopago-${obligation.id}`}
+                                                        onClick={() => payObligationWithMercadoPago(obligation.id)}
+                                                    >
+                                                        {operation === `mercadopago-${obligation.id}`
+                                                            ? "Abriendo..."
+                                                            : "Pagar con Mercado Pago"}
+                                                    </button>
+                                                )}
+                                            </td>
                                         </tr>
                                     );
                                 })}
                                 {!overview?.obligations?.length && (
                                     <tr>
-                                        <td colSpan="7" className="text-center text-muted py-4">
+                                        <td colSpan="8" className="text-center text-muted py-4">
                                             Todavía no hay obligaciones generadas.
                                         </td>
                                     </tr>
@@ -1074,11 +1141,39 @@ const BillingAccountPage = () => {
                                 {(overview?.paymentReports || []).map((report) => (
                                     <tr key={report.id}>
                                         <td>{report.paidDateKey || formatBillingDate(report.paidAt)}</td>
-                                        <td>{formatMoneyMinor(report.amountMinor, report.currency)}</td>
+                                        <td>
+                                            {formatMoneyMinor(report.amountMinor, report.currency)}
+                                            {isRoot && Number(
+                                                report.providerDeductionMinor ||
+                                                report.providerFeeMinor || 0,
+                                            ) > 0 && (
+                                                <div className="small text-muted">
+                                                    Deducciones MP: {formatMoneyMinor(
+                                                        report.providerDeductionMinor ||
+                                                        report.providerFeeMinor,
+                                                        report.currency,
+                                                    )}
+                                                    {Number(report.netReceivedAmountMinor || 0) > 0 && (
+                                                        <> · Neto: {formatMoneyMinor(
+                                                            report.netReceivedAmountMinor,
+                                                            report.currency,
+                                                        )}</>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {isRoot && Number(report.providerReversedAmountMinor || 0) > 0 && (
+                                                <div className="small text-danger">
+                                                    Revertido: {formatMoneyMinor(
+                                                        report.providerReversedAmountMinor,
+                                                        report.currency,
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td>{report.reference || "-"}</td>
                                         <td>
-                                            <span className={`badge ${report.status === "confirmed" ? "text-bg-success" : report.status === "rejected" ? "text-bg-danger" : "text-bg-warning"}`}>
-                                                {report.status === "confirmed" ? "Confirmado" : report.status === "rejected" ? "Rechazado" : "Pendiente"}
+                                            <span className={`badge ${report.status === "confirmed" ? "text-bg-success" : ["reversed", "rejected"].includes(report.status) ? "text-bg-danger" : "text-bg-warning"}`}>
+                                                {report.status === "confirmed" ? "Confirmado" : report.status === "reversed" ? "Revertido" : report.status === "partially_reversed" ? "Devuelto parcialmente" : report.status === "rejected" ? "Rechazado" : "Pendiente"}
                                             </span>
                                         </td>
                                         <td className="small">

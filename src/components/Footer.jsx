@@ -139,6 +139,15 @@ const Footer = () => {
             className="d-flex flex-wrap justify-content-center gap-3"
             aria-label="Información legal"
           >
+            {isPortalDomain && (
+              <Link
+                to="/donar"
+                className="text-decoration-none"
+                style={{ color: "rgba(255,255,255,0.72)" }}
+              >
+                Apoyar ONO Prop
+              </Link>
+            )}
             <a
               href="https://onoprop.com/privacidad"
               className="text-decoration-none"

@@ -160,18 +160,33 @@ const ConsortiumUnitAccountPage = () => {
       setPayments((current) => current.map((item) => (
         item.id === payment.id ? { ...item, voided: true, voidReason: reason.trim() } : item
       )));
-      setObligations((current) => current.map((item) => (
-        item.id === payment.obligationId
-          ? {
-            ...item,
-            paidAmountMinor: Math.max(0, Number(item.paidAmountMinor || 0) - Number(payment.amountMinor || 0)),
-            balanceMinor: Math.min(
-              Number(item.totalAmountMinor || 0),
-              Number(item.balanceMinor || 0) + Number(payment.amountMinor || 0),
-            ),
-          }
-          : item
-      )));
+      const allocations = Array.isArray(payment.allocations) && payment.allocations.length
+        ? payment.allocations
+        : [{ obligationId: payment.obligationId, amountMinor: payment.amountMinor }];
+      const allocationByObligation = new Map(
+        allocations.map((item) => [item.obligationId, Number(item.amountMinor || 0)]),
+      );
+      setObligations((current) => current.map((item) => {
+        const allocatedMinor = allocationByObligation.get(item.id);
+        if (!allocatedMinor) return item;
+        return {
+          ...item,
+          paidAmountMinor: Math.max(0, Number(item.paidAmountMinor || 0) - allocatedMinor),
+          balanceMinor: Math.min(
+            Number(item.totalAmountMinor || 0),
+            Number(item.balanceMinor || 0) + allocatedMinor,
+          ),
+        };
+      }));
+      if (Number(payment.creditAmountMinor || 0) > 0) {
+        setUnit((current) => current ? {
+          ...current,
+          creditBalanceMinor: Math.max(
+            0,
+            Number(current.creditBalanceMinor || 0) - Number(payment.creditAmountMinor || 0),
+          ),
+        } : current);
+      }
       setSuccess("Cobro anulado y saldo recalculado. El movimiento se conserva en el historial.");
     } catch (voidError) {
       setError(voidError.message || "No se pudo anular el cobro.");
@@ -263,7 +278,7 @@ const ConsortiumUnitAccountPage = () => {
             <table className="table table-sm">
               <thead><tr><th>Fecha</th><th>Período</th><th>Medio</th><th>Referencia</th><th className="text-end">Importe</th><th className="consortium-no-print text-end">Recibo</th></tr></thead>
               <tbody>
-                {payments.map((payment) => <tr className={payment.voided ? "text-muted" : ""} key={payment.id}><td>{payment.date}</td><td>{getConsortiumAccountingPeriodLabel(payment)}</td><td>{payment.method}</td><td>{payment.voided ? <><span className="badge text-bg-dark">Anulado</span><small className="d-block">{payment.voidReason}</small></> : payment.reference || "—"}</td><td className={`text-end consortium-money ${payment.voided ? "text-decoration-line-through" : ""}`}>{formatConsortiumMoney(payment.amountMinor, payment.currency)}</td><td className="consortium-no-print text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/recibos/${payment.id}`}>Ver</Link>{canManage && !payment.voided && <button className="btn btn-outline-danger" disabled={working === payment.id} type="button" onClick={() => voidPayment(payment)}>Anular</button>}</div></td></tr>)}
+                {payments.map((payment) => { const reversedMinor = Number(payment.providerReversedAmountMinor || 0); const allocationCount = Array.isArray(payment.allocations) ? payment.allocations.length : 0; return <tr className={payment.voided || reversedMinor > 0 ? "text-muted" : ""} key={payment.id}><td>{payment.date}</td><td>{allocationCount > 1 ? `${allocationCount} períodos` : getConsortiumAccountingPeriodLabel(payment)}{Number(payment.creditAmountMinor || 0) > 0 && <small className="d-block text-success">Incluye saldo a favor</small>}</td><td>{payment.method}</td><td>{payment.voided ? <><span className="badge text-bg-dark">Anulado</span><small className="d-block">{payment.voidReason}</small></> : reversedMinor > 0 ? <><span className="badge text-bg-danger">Devuelto / contracargo</span><small className="d-block">{payment.provider === "siro" ? "SIRO" : "Mercado Pago"} {payment.providerPaymentId}</small></> : payment.reference || "—"}</td><td className={`text-end consortium-money ${payment.voided || reversedMinor >= Number(payment.amountMinor || 0) ? "text-decoration-line-through" : ""}`}>{formatConsortiumMoney(payment.amountMinor, payment.currency)}{Number(payment.providerDeductionMinor || 0) > 0 && <small className="d-block text-muted">Deducciones: {formatConsortiumMoney(payment.providerDeductionMinor, payment.currency)} · Neto: {formatConsortiumMoney(payment.netReceivedAmountMinor, payment.currency)}</small>}{reversedMinor > 0 && <small className="d-block text-danger">Revertido: {formatConsortiumMoney(reversedMinor, payment.currency)}</small>}</td><td className="consortium-no-print text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/recibos/${payment.id}`}>Ver</Link>{canManage && !payment.voided && !["mercadopago", "siro"].includes(payment.provider) && <button className="btn btn-outline-danger" disabled={working === payment.id} type="button" onClick={() => voidPayment(payment)}>Anular</button>}</div></td></tr>; })}
                 {!payments.length && <tr><td className="text-center text-muted py-4" colSpan="6">Todavía no hay cobros registrados.</td></tr>}
               </tbody>
             </table>

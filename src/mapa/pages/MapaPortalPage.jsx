@@ -127,7 +127,7 @@ const MapaPortalPage = () => {
           ))}
         </select>
         <span className="align-self-center text-muted small">
-          {points.length} ubicaciones visibles
+          {points.length} ubicaciones visibles · Acercá el mapa para ver los precios.
         </span>
       </div>
 

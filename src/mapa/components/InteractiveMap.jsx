@@ -139,6 +139,30 @@ const MapBoundsController = ({ positions, enabled }) => {
   return null;
 };
 
+const MapPriceLabelsController = ({ enabled, minZoom }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    const container = map.getContainer();
+    const updateVisibility = () => {
+      container.classList.toggle(
+        "ono-map-show-price-labels",
+        enabled && map.getZoom() >= minZoom,
+      );
+    };
+
+    updateVisibility();
+    map.on("zoomend", updateVisibility);
+
+    return () => {
+      map.off("zoomend", updateVisibility);
+      container.classList.remove("ono-map-show-price-labels");
+    };
+  }, [enabled, map, minZoom]);
+
+  return null;
+};
+
 const DefaultPopup = ({ point }) => (
   <div className="ono-map-popup">
     <strong>{point.title}</strong>
@@ -162,6 +186,7 @@ const InteractiveMap = ({
   focusVersion = 0,
   fitToPoints = false,
   showPropertyPriceLabels = false,
+  propertyPriceLabelsMinZoom = 12,
   showParcelLayer = true,
   highlightGeoJson = null,
   className = "",
@@ -208,6 +233,10 @@ const InteractiveMap = ({
         <MapBoundsController
           enabled={fitToPoints}
           positions={visiblePoints.map((point) => point.position)}
+        />
+        <MapPriceLabelsController
+          enabled={showPropertyPriceLabels}
+          minZoom={propertyPriceLabelsMinZoom}
         />
 
         {highlightGeoJson && (

@@ -13,7 +13,7 @@
     "test:tasaciones": "node --test tests/tasacion.helpers.test.js",
     "test:mapa": "node --test tests/mapa.helpers.test.js tests/geocoding.helpers.test.js",
     "test:tributos": "node --test tests/tax.helpers.test.js",
-    "test:consorcios": "node --test tests/consorcio.helpers.test.js tests/consorcioPortalInformation.test.js",
+    "test:consorcios": "node --test tests/consorcio.helpers.test.js tests/consorcioPortalInformation.test.js tests/consorcioCollections.helpers.test.js",
     "test:auth": "node --test tests/auth.helpers.test.js",
     "test:arca-invoice": "node --test tests/arcaInvoice.helpers.test.js",
     "test:arca-share": "node --test tests/arcaVoucherShare.helpers.test.js",

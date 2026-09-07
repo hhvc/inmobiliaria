@@ -227,6 +227,16 @@ const MODULE_CARDS = [
         icon: "💳",
         alwaysAvailable: true,
     },
+    {
+        id: "payments",
+        section: "settings",
+        title: "Medios de cobro",
+        description: "Configurar Mercado Pago, SIRO y asignar cobros a consorcios o contratos.",
+        route: "/admin/pagos",
+        cta: "Configurar cobros",
+        icon: "💸",
+        alwaysAvailable: true,
+    },
 ];
 
 const VERIFICATION_CONFIG = {

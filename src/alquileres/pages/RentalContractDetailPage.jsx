@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import SEO from "../../components/SEO";
 import { useAuth } from "../../context/auth/useAuth";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
+import { createOnlinePaymentCheckout } from "../../payments/services/onlinePayment.service";
 import {
   getInternalPermissions,
   getInternalRoleForInmobiliaria,
@@ -165,6 +166,29 @@ const RentalContractDetailPage = () => {
       setPaymentObligationId("");
       setPayment({ amount: "", paidAt: todayKey(), method: "transfer", reference: "", notes: "" });
     }, "Pago registrado y recibo disponible.");
+  };
+
+  const createOnlinePaymentLink = async (obligationId) => {
+    try {
+      setWorking(true);
+      setError("");
+      setNotice("");
+      const result = await createOnlinePaymentCheckout({
+        contextType: "rental_obligation",
+        inmobiliariaId: activeInmobiliariaId,
+        obligationId,
+      });
+      try {
+        await navigator.clipboard.writeText(result.initPoint);
+        setNotice("Enlace de pago copiado. Podés enviárselo al locatario.");
+      } catch {
+        window.prompt("Copiá este enlace y envíaselo al locatario:", result.initPoint);
+      }
+    } catch (paymentError) {
+      setError(paymentError.message || "No se pudo generar el enlace de pago.");
+    } finally {
+      setWorking(false);
+    }
   };
 
   const closeOutsideManagement = async (event) => {
@@ -383,6 +407,7 @@ const RentalContractDetailPage = () => {
                     <div className="col-lg-3 small"><div>Neto locador: <strong>{formatRentalMoney(settlementPreview.netOwnerAmountMinor, contract.currency)}</strong></div><div>Honorarios: {formatRentalMoney(settlementPreview.administrationFeeMinor, contract.currency)}</div><div>Gastos locador: {formatRentalMoney(settlementPreview.ownerExpensesMinor, contract.currency)}</div>{settlement && <div className="mt-2"><span className={`badge ${SETTLEMENT_LABELS[settlement.status]?.[1] || SETTLEMENT_LABELS.draft[1]}`}>{SETTLEMENT_LABELS[settlement.status]?.[0] || SETTLEMENT_LABELS.draft[0]}</span></div>}</div>
                     <div className="col-lg-3 d-flex flex-wrap justify-content-lg-end gap-2">
                       {canManage && !obligation.externalClosure?.closed && obligation.balanceMinor > 0 && <button type="button" className="btn btn-sm btn-primary" onClick={() => { setPaymentObligationId(obligation.id); setPayment((current) => ({ ...current, amount: minorToMajorInput(obligation.balanceMinor) })); }}>Registrar pago</button>}
+                      {canManage && !obligation.externalClosure?.closed && obligation.balanceMinor > 0 && (obligation.currency || contract.currency) === "ARS" && <button type="button" className="btn btn-sm btn-success" disabled={working} onClick={() => createOnlinePaymentLink(obligation.id)}>Copiar link de pago</button>}
                       {canManage && !obligation.externalClosure?.closed && obligation.balanceMinor > 0 && <button type="button" className="btn btn-sm btn-outline-dark" onClick={() => { setExternalClosureObligationId(obligation.id); setExternalClosure({ reason: "pre_management", closedAt: todayKey(), notes: "" }); }}>Cancelación externa</button>}
                       {canManage && obligation.externalClosure?.closed && <button type="button" className="btn btn-sm btn-outline-secondary" disabled={working} onClick={() => runAction(() => reopenRentalObligationOutsideManagement({ inmobiliariaId: activeInmobiliariaId, obligationId: obligation.id }), "Período reabierto. El saldo pendiente volvió a la gestión.")}>Reabrir período</button>}
                       {canManage && !obligation.externalClosure?.closed && obligation.paidAmountMinor > 0 && (!settlement || !["paid", "received"].includes(settlement.status)) && <button type="button" className="btn btn-sm btn-outline-primary" disabled={working} onClick={() => saveSettlement(obligation)}>{settlement ? "Recalcular" : "Liquidar"}</button>}
@@ -395,7 +420,7 @@ const RentalContractDetailPage = () => {
                   </div>
                   {obligation.externalClosure?.closed && <div className="alert alert-light border small py-2 mt-3 mb-0"><strong>Cancelación externa:</strong> {RENTAL_EXTERNAL_CLOSURE_REASONS.find((item) => item.id === obligation.externalClosure.reason)?.label || obligation.externalClosure.reason} · {obligation.externalClosure.closedAt}.{obligation.externalClosure.notes ? ` ${obligation.externalClosure.notes}` : ""} Este importe no integra las cobranzas ni las liquidaciones de la inmobiliaria.</div>}
                   {canManage && !obligation.externalClosure?.closed && <div className="row g-2 align-items-end border-top mt-3 pt-3"><div className="col-sm-6 col-lg-2"><label className="form-label small" htmlFor={`charge-${obligation.id}`}>Cargos adicionales</label><input id={`charge-${obligation.id}`} className="form-control form-control-sm" inputMode="decimal" value={chargeDrafts[obligation.id] ?? minorToMajorInput(obligation.otherChargesMinor)} onChange={(event) => setChargeDrafts({ ...chargeDrafts, [obligation.id]: event.target.value })} /></div><div className="col-sm-6 col-lg-2"><label className="form-label small" htmlFor={`discount-${obligation.id}`}>Bonificación</label><input id={`discount-${obligation.id}`} className="form-control form-control-sm" inputMode="decimal" value={discountDraft.amount ?? minorToMajorInput(obligation.discountAmountMinor)} onChange={(event) => setDiscountDrafts({ ...discountDrafts, [obligation.id]: { ...discountDraft, amount: event.target.value } })} /></div><div className="col-lg-4"><label className="form-label small" htmlFor={`discount-reason-${obligation.id}`}>Motivo de la bonificación</label><input id={`discount-reason-${obligation.id}`} className="form-control form-control-sm" maxLength="300" placeholder="Ej.: atención comercial de lanzamiento" value={discountDraft.reason ?? obligation.discountReason ?? ""} onChange={(event) => setDiscountDrafts({ ...discountDrafts, [obligation.id]: { ...discountDraft, reason: event.target.value } })} /></div><div className="col-sm-6 col-lg-2"><button type="button" className="btn btn-sm btn-outline-success w-100" disabled={working} onClick={() => setDiscountDrafts({ ...discountDrafts, [obligation.id]: { ...discountDraft, amount: minorToMajorInput(grossAmountMinor) } })}>Bonificar total</button></div><div className="col-sm-6 col-lg-2"><button type="button" className="btn btn-sm btn-outline-secondary w-100" disabled={working} onClick={() => runAction(() => updateRentalObligationCharges({ inmobiliariaId: activeInmobiliariaId, obligationId: obligation.id, otherChargesMinor: majorToMinor(chargeDrafts[obligation.id] ?? minorToMajorInput(obligation.otherChargesMinor)), discountAmountMinor: majorToMinor(discountDraft.amount ?? minorToMajorInput(obligation.discountAmountMinor)), discountReason: discountDraft.reason ?? obligation.discountReason ?? "" }), "Cargos y bonificación actualizados.")}>Guardar ajustes</button></div></div>}
-                  {obligation.payments?.length > 0 && <div className="table-responsive mt-3"><table className="table table-sm align-middle mb-0"><thead><tr><th>Recibo</th><th>Fecha</th><th>Método</th><th>Importe</th><th>Estado</th><th></th></tr></thead><tbody>{obligation.payments.map((item) => <tr className={item.voided ? "text-muted" : ""} key={item.id}><td>{item.receiptNumber}</td><td>{item.paidAt}</td><td>{RENTAL_PAYMENT_METHODS.find((method) => method.id === item.method)?.label || item.method}</td><td className={item.voided ? "text-decoration-line-through" : ""}>{formatRentalMoney(item.amountMinor, contract.currency)}</td><td>{item.voided ? <><span className="badge text-bg-dark">Anulado</span><small className="d-block">{item.voidReason}</small></> : <span className="badge text-bg-success">Activo</span>}</td><td className="text-end">{!item.voided && <Link className="btn btn-sm btn-link" to={`/admin/alquileres/${contractId}/recibos/${obligation.id}/${item.id}`}>Ver recibo</Link>}{canManage && !item.voided && <button type="button" className="btn btn-sm btn-link text-danger" disabled={working} onClick={() => voidTenantPayment(obligation.id, item.id)}>Anular cobro</button>}</td></tr>)}</tbody></table></div>}
+                  {obligation.payments?.length > 0 && <div className="table-responsive mt-3"><table className="table table-sm align-middle mb-0"><thead><tr><th>Recibo</th><th>Fecha</th><th>Método</th><th>Importe</th><th>Estado</th><th></th></tr></thead><tbody>{obligation.payments.map((item) => { const reversedMinor = Number(item.providerReversedAmountMinor || 0); return <tr className={item.voided || reversedMinor > 0 ? "text-muted" : ""} key={item.id}><td>{item.receiptNumber}</td><td>{item.paidAt}</td><td>{RENTAL_PAYMENT_METHODS.find((method) => method.id === item.method)?.label || item.method}</td><td className={item.voided || reversedMinor >= Number(item.amountMinor || 0) ? "text-decoration-line-through" : ""}>{formatRentalMoney(item.amountMinor, contract.currency)}{Number(item.providerDeductionMinor || 0) > 0 && <small className="d-block text-muted">Deducciones MP: {formatRentalMoney(item.providerDeductionMinor, contract.currency)} · Neto: {formatRentalMoney(item.netReceivedAmountMinor, contract.currency)}</small>}{reversedMinor > 0 && <small className="d-block text-danger">Revertido: {formatRentalMoney(reversedMinor, contract.currency)}</small>}</td><td>{item.voided ? <><span className="badge text-bg-dark">Anulado</span><small className="d-block">{item.voidReason}</small></> : reversedMinor > 0 ? <span className="badge text-bg-danger">Devuelto / contracargo</span> : <span className="badge text-bg-success">Activo</span>}</td><td className="text-end">{!item.voided && <Link className="btn btn-sm btn-link" to={`/admin/alquileres/${contractId}/recibos/${obligation.id}/${item.id}`}>Ver recibo</Link>}{canManage && !item.voided && item.provider !== "mercadopago" && <button type="button" className="btn btn-sm btn-link text-danger" disabled={working} onClick={() => voidTenantPayment(obligation.id, item.id)}>Anular cobro</button>}</td></tr>; })}</tbody></table></div>}
                 </article>
               );
             })}

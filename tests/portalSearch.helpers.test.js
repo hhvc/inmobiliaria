@@ -7,7 +7,9 @@ import {
     getPortalSearchParamsFromFilters,
     hasAdvancedPortalFilters,
     hasMeaningfulPortalSearch,
+    matchesPortalTextSearch,
     mergePortalItems,
+    requiresCompletePortalDataset,
 } from "../src/inmueble/utils/portalSearch.helpers.js";
 
 test("serializa únicamente filtros activos y omite el orden por defecto", () => {
@@ -63,4 +65,46 @@ test("acumula páginas sin duplicar publicaciones", () => {
 test("ignora el orden cuando decide si una búsqueda tiene criterios", () => {
     assert.equal(hasMeaningfulPortalSearch({ sortBy: "recientes" }), false);
     assert.equal(hasMeaningfulPortalSearch({ tipo: "casa" }), true);
+});
+
+test("busca localidades sin depender de tildes ni del formato de dirección", () => {
+    assert.equal(
+        matchesPortalTextSearch(
+            { direccion: { localidad: "Villa Parque Síquiman" } },
+            "siquiman",
+        ),
+        true,
+    );
+    assert.equal(
+        matchesPortalTextSearch(
+            { localidad: "Villa Parque Siquiman" },
+            "síquiman",
+        ),
+        true,
+    );
+    assert.equal(
+        matchesPortalTextSearch(
+            { direccion: { ciudad: "Villa Carlos Paz" } },
+            "síquiman",
+        ),
+        false,
+    );
+});
+
+test("carga el conjunto completo cuando un filtro se resuelve en el cliente", () => {
+    assert.equal(requiresCompletePortalDataset(PORTAL_INITIAL_FILTERS), false);
+    assert.equal(
+        requiresCompletePortalDataset({
+            ...PORTAL_INITIAL_FILTERS,
+            search: "síquiman",
+        }),
+        true,
+    );
+    assert.equal(
+        requiresCompletePortalDataset({
+            ...PORTAL_INITIAL_FILTERS,
+            operacion: "alquiler_temporal",
+        }),
+        false,
+    );
 });

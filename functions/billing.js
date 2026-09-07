@@ -2310,6 +2310,342 @@ const allocatePaymentToObligations = async ({ reportId, report, uid }) => {
     return result;
 };
 
+export const applyApprovedBillingProviderPayment = async ({
+    inmobiliariaId,
+    amountMinor,
+    currency = "ARS",
+    providerPaymentId,
+    providerOrderId = "",
+    providerFeeMinor = 0,
+    providerDeductionMinor = 0,
+    netReceivedAmountMinor = 0,
+    paidAtMs = Date.now(),
+}) => {
+    const safeInmobiliariaId = cleanBillingText(inmobiliariaId, 128);
+    const safePaymentId = cleanBillingText(providerPaymentId, 128)
+        .replace(/[^A-Za-z0-9_-]/g, "");
+    const amount = normalizeAmountMinor(amountMinor);
+    if (!safeInmobiliariaId || !safePaymentId || amount === null || amount <= 0) {
+        throw new Error("El pago de Mercado Pago está incompleto.");
+    }
+
+    const reportId = `mp_${safePaymentId}`;
+    const ref = paymentReportRef(reportId);
+    const existing = await ref.get();
+    if (existing.exists && existing.data()?.status === "confirmed") {
+        return { reportId, idempotent: true };
+    }
+
+    const now = Timestamp.now();
+    const paidDateKey = dateKeyFromMs(paidAtMs);
+    const report = {
+        inmobiliariaId: safeInmobiliariaId,
+        amountMinor: amount,
+        currency: normalizeCurrencyCode(currency),
+        paidAt: Timestamp.fromMillis(paidAtMs),
+        paidDateKey,
+        paymentMethod: "mercadopago",
+        reference: `Mercado Pago ${safePaymentId}`,
+        note: "Cobro conciliado automáticamente por Mercado Pago.",
+        proofPath: "",
+        proofUrl: "",
+        status: "pending",
+        provider: "mercadopago",
+        providerPaymentId: safePaymentId,
+        providerOrderId: cleanBillingText(providerOrderId, 128),
+        providerFeeMinor: Math.max(0, Number(providerFeeMinor || 0)),
+        providerDeductionMinor: Math.max(0, Number(providerDeductionMinor || 0)),
+        netReceivedAmountMinor: Math.max(0, Number(netReceivedAmountMinor || 0)),
+        reportedBy: "mercadopago_webhook",
+        reportedAt: now,
+        createdAt: existing.exists ? existing.data()?.createdAt || now : now,
+        updatedAt: now,
+    };
+    await ref.set(report, { merge: true });
+    await processMoratoryInterests(getArgentinaDateKey());
+    const entry = await postLedgerEntry({
+        inmobiliariaId: safeInmobiliariaId,
+        entryId: `payment_${reportId}`,
+        type: "payment",
+        direction: "credit",
+        amountMinor: amount,
+        currency: report.currency,
+        description: `Cobro Mercado Pago · ${safePaymentId}`,
+        paymentReportId: reportId,
+        createdBy: "mercadopago_webhook",
+        metadata: {
+            paidAtMs,
+            paymentMethod: "mercadopago",
+            providerPaymentId: safePaymentId,
+        },
+    });
+    const allocation = await allocatePaymentToObligations({
+        reportId,
+        report,
+        uid: "mercadopago_webhook",
+    });
+    await ref.update({
+        status: "confirmed",
+        resolutionNote: "Acreditado automáticamente por Mercado Pago.",
+        resolvedAt: Timestamp.now(),
+        resolvedBy: "mercadopago_webhook",
+        ledgerEntryId: entry?.id || "",
+        paymentAllocationId: allocation?.id || "",
+        allocatedMinor: allocation?.allocatedMinor || 0,
+        unallocatedMinor: allocation?.unallocatedMinor || 0,
+        updatedAt: Timestamp.now(),
+    });
+    return {
+        reportId,
+        entryId: entry?.id || "",
+        allocationId: allocation?.id || "",
+        idempotent: false,
+    };
+};
+
+const buildBillingAllocationRestorePlan = (allocations = [], targetMinor = 0) => {
+    let pending = Math.max(0, Math.round(Number(targetMinor) || 0));
+    const plan = new Map();
+    [...allocations].reverse().forEach((line) => {
+        const principalPaidMinor = Math.max(
+            0,
+            Math.round(Number(line.principalPaidMinor) || 0),
+        );
+        const interestPaidMinor = Math.max(
+            0,
+            Math.round(Number(line.interestPaidMinor) || 0),
+        );
+        const restoredMinor = Math.min(
+            principalPaidMinor + interestPaidMinor,
+            pending,
+        );
+        const principalRestoredMinor = Math.min(
+            principalPaidMinor,
+            restoredMinor,
+        );
+        const interestRestoredMinor = Math.max(
+            0,
+            restoredMinor - principalRestoredMinor,
+        );
+        plan.set(line.obligationId, {
+            principalRestoredMinor,
+            interestRestoredMinor,
+        });
+        pending -= restoredMinor;
+    });
+    return plan;
+};
+
+const reduceBillingPrincipalPaymentEvents = ({
+    events = [],
+    paymentReportId,
+    amountMinor,
+}) => {
+    let pending = Math.max(0, Math.round(Number(amountMinor) || 0));
+    const next = [...events];
+    for (let index = next.length - 1; index >= 0 && pending > 0; index -= 1) {
+        const event = next[index] || {};
+        if (event.paymentReportId !== paymentReportId) continue;
+        const amount = Math.max(0, Math.round(Number(event.amountMinor) || 0));
+        const restored = Math.min(amount, pending);
+        pending -= restored;
+        if (restored >= amount) next.splice(index, 1);
+        else next[index] = { ...event, amountMinor: amount - restored };
+    }
+    return next.slice(-500);
+};
+
+export const applyBillingProviderPaymentReversal = async ({
+    inmobiliariaId,
+    providerPaymentId,
+    providerOrderId = "",
+    totalReversedAmountMinor,
+    providerStatus = "refunded",
+}) => {
+    const safeInmobiliariaId = cleanBillingText(inmobiliariaId, 128);
+    const safePaymentId = cleanBillingText(providerPaymentId, 128)
+        .replace(/[^A-Za-z0-9_-]/g, "");
+    const requestedTotal = normalizeAmountMinor(totalReversedAmountMinor);
+    if (!safeInmobiliariaId || !safePaymentId || requestedTotal === null ||
+        requestedTotal <= 0) {
+        throw new Error("La reversión de Mercado Pago está incompleta.");
+    }
+
+    const reportId = `mp_${safePaymentId}`;
+    const reportRef = paymentReportRef(reportId);
+    const allocationRef = paymentAllocationsRef(safeInmobiliariaId).doc(reportId);
+    let result = null;
+
+    await db.runTransaction(async (transaction) => {
+        const [reportSnap, allocationSnap] = await Promise.all([
+            transaction.get(reportRef),
+            transaction.get(allocationRef),
+        ]);
+        if (!reportSnap.exists) throw new Error("No se encontró el cobro a revertir.");
+        const report = reportSnap.data() || {};
+        const paymentAmountMinor = Math.max(0, Number(report.amountMinor || 0));
+        const previousTotal = Math.min(
+            paymentAmountMinor,
+            Math.max(0, Number(report.providerReversedAmountMinor || 0)),
+        );
+        const targetTotal = Math.min(paymentAmountMinor, requestedTotal);
+        const reversalDeltaMinor = targetTotal - previousTotal;
+        if (reversalDeltaMinor <= 0) {
+            result = { reportId, idempotent: true, reversalDeltaMinor: 0 };
+            return;
+        }
+
+        const reversalEntryId = `provider_reversal_${reportId}_${targetTotal}`;
+        const reversalEntryRef = entriesRef(safeInmobiliariaId).doc(reversalEntryId);
+        const accountDocumentRef = accountRef(safeInmobiliariaId);
+        const allocation = allocationSnap.data() || {};
+        const allocationLines = Array.isArray(allocation.allocations)
+            ? allocation.allocations : [];
+        const obligationRefs = [...new Set(allocationLines
+            .map((line) => cleanBillingText(line.obligationId, 180))
+            .filter(Boolean))]
+            .map((obligationId) => obligationsRef(safeInmobiliariaId)
+                .doc(obligationId));
+        const [entrySnap, accountSnap, ...obligationSnaps] = await Promise.all([
+            transaction.get(reversalEntryRef),
+            transaction.get(accountDocumentRef),
+            ...obligationRefs.map((ref) => transaction.get(ref)),
+        ]);
+        if (entrySnap.exists) {
+            result = { reportId, idempotent: true, reversalDeltaMinor: 0 };
+            return;
+        }
+
+        const unallocatedMinor = Math.max(
+            0,
+            Number(allocation.unallocatedMinor || 0),
+        );
+        const previousAllocatedRestore = Math.max(0, previousTotal - unallocatedMinor);
+        const targetAllocatedRestore = Math.max(0, targetTotal - unallocatedMinor);
+        const previousPlan = buildBillingAllocationRestorePlan(
+            allocationLines,
+            previousAllocatedRestore,
+        );
+        const targetPlan = buildBillingAllocationRestorePlan(
+            allocationLines,
+            targetAllocatedRestore,
+        );
+        const obligationById = new Map(obligationSnaps.map((snap) => [
+            snap.id,
+            snap,
+        ]));
+        const now = Timestamp.now();
+        const todayDateKey = getArgentinaDateKey();
+
+        allocationLines.forEach((line) => {
+            const snap = obligationById.get(line.obligationId);
+            if (!snap?.exists) return;
+            const before = previousPlan.get(line.obligationId) || {};
+            const after = targetPlan.get(line.obligationId) || {};
+            const principalDelta = Math.max(
+                0,
+                Number(after.principalRestoredMinor || 0) -
+                    Number(before.principalRestoredMinor || 0),
+            );
+            const interestDelta = Math.max(
+                0,
+                Number(after.interestRestoredMinor || 0) -
+                    Number(before.interestRestoredMinor || 0),
+            );
+            if (principalDelta + interestDelta <= 0) return;
+            const obligation = snap.data() || {};
+            const principalOutstandingMinor = Math.max(
+                0,
+                Number(obligation.principalOutstandingMinor || 0),
+            ) + principalDelta;
+            const interestOutstandingMinor = Math.max(
+                0,
+                Number(obligation.interestOutstandingMinor || 0),
+            ) + interestDelta;
+            transaction.update(snap.ref, {
+                principalOutstandingMinor,
+                interestOutstandingMinor,
+                paidPrincipalMinor: Math.max(
+                    0,
+                    Number(obligation.paidPrincipalMinor || 0) - principalDelta,
+                ),
+                paidInterestMinor: Math.max(
+                    0,
+                    Number(obligation.paidInterestMinor || 0) - interestDelta,
+                ),
+                principalPaymentEvents: reduceBillingPrincipalPaymentEvents({
+                    events: Array.isArray(obligation.principalPaymentEvents)
+                        ? obligation.principalPaymentEvents : [],
+                    paymentReportId: reportId,
+                    amountMinor: principalDelta,
+                }),
+                status: todayDateKey > obligation.dueDateKey ? "overdue" : "open",
+                paidAt: FieldValue.delete(),
+                lastProviderReversalAt: now,
+                updatedAt: now,
+            });
+        });
+
+        const currency = normalizeCurrencyCode(report.currency);
+        const account = accountSnap.data() || {};
+        const currentBalance = getAccountBalance(account, currency);
+        const nextBalance = currentBalance + reversalDeltaMinor;
+        transaction.set(reversalEntryRef, {
+            type: "payment_reversal",
+            direction: "debit",
+            amountMinor: reversalDeltaMinor,
+            currency,
+            description: `Reversión Mercado Pago · ${safePaymentId}`,
+            contractId: "",
+            catalogItemId: "",
+            obligationId: "",
+            paymentReportId: reportId,
+            createdBy: "mercadopago_webhook",
+            metadata: {
+                provider: "mercadopago",
+                providerPaymentId: safePaymentId,
+                providerOrderId: cleanBillingText(providerOrderId, 128),
+                providerStatus: cleanBillingText(providerStatus, 60),
+                cumulativeReversedMinor: targetTotal,
+            },
+            balanceAfterMinor: nextBalance,
+            createdAt: now,
+        });
+        transaction.set(accountDocumentRef, {
+            inmobiliariaId: safeInmobiliariaId,
+            balanceByCurrency: {
+                ...(account.balanceByCurrency || {}),
+                [currency]: nextBalance,
+            },
+            status: "open",
+            lastEntryAt: now,
+            createdAt: account.createdAt || now,
+            updatedAt: now,
+        }, { merge: true });
+        transaction.update(allocationRef, {
+            reversedMinor: targetTotal,
+            allocationReversedMinor: targetAllocatedRestore,
+            updatedAt: now,
+        });
+        transaction.update(reportRef, {
+            providerStatus: cleanBillingText(providerStatus, 60),
+            providerReversedAmountMinor: targetTotal,
+            status: targetTotal >= paymentAmountMinor
+                ? "reversed" : "partially_reversed",
+            needsReview: true,
+            reviewReason: "Mercado Pago informó una devolución o contracargo.",
+            updatedAt: now,
+        });
+        result = {
+            reportId,
+            entryId: reversalEntryId,
+            reversalDeltaMinor,
+            idempotent: false,
+        };
+    });
+    return result;
+};
+
 export const billingResolvePaymentReport = onCall(
     { region: REGION, invoker: "public", timeoutSeconds: 120 },
     async (request) => {
@@ -2877,18 +3213,33 @@ const capitalizeObligationInterest = async ({
     return result;
 };
 
-const processMoratoryInterests = async (todayDateKey) => {
-    const [obligationsSnap, allRates] = await Promise.all([
-        db.collectionGroup("obligations")
+const processMoratoryInterests = async (
+    todayDateKey,
+    { inmobiliariaId = "", obligationId = "", currency = "" } = {},
+) => {
+    let obligationsSnap;
+    if (inmobiliariaId && obligationId) {
+        const snap = await obligationsRef(inmobiliariaId).doc(obligationId).get();
+        obligationsSnap = { docs: snap.exists ? [snap] : [], size: snap.exists ? 1 : 0 };
+    } else if (inmobiliariaId) {
+        obligationsSnap = await obligationsRef(inmobiliariaId).limit(500).get();
+    } else {
+        obligationsSnap = await db.collectionGroup("obligations")
             .where("status", "in", ["open", "overdue"])
             .orderBy("dueDateKey", "asc")
             .limit(500)
-            .get(),
-        getInterestRates(),
-    ]);
+            .get();
+    }
+    const allRates = await getInterestRates();
+    const obligationDocs = obligationsSnap.docs.filter((snap) => {
+        const obligation = snap.data() || {};
+        return ["open", "overdue"].includes(obligation.status) &&
+            (!currency || obligation.currency === currency);
+    });
     let capitalizations = 0;
+    const pendingRateDateKeys = [];
 
-    for (const obligationSnap of obligationsSnap.docs) {
+    for (const obligationSnap of obligationDocs) {
         const obligation = obligationSnap.data() || {};
         const dueDateKey = normalizeDateKey(obligation.dueDateKey);
         const periodStartDateKey = normalizeDateKey(obligation.periodStartDateKey);
@@ -2918,11 +3269,13 @@ const processMoratoryInterests = async (todayDateKey) => {
             });
             const missingIndex = rateSnapshots.findIndex((rate) => !rate);
             if (missingIndex >= 0 || rateSnapshots.length !== accrualDates.length) {
+                const pendingRateDateKey = accrualDates[missingIndex] ||
+                    periodStartDateKey;
                 await obligationSnap.ref.update({
-                    interestPendingRateDateKey:
-                        accrualDates[missingIndex] || periodStartDateKey,
+                    interestPendingRateDateKey: pendingRateDateKey,
                     updatedAt: Timestamp.now(),
                 });
+                pendingRateDateKeys.push(pendingRateDateKey);
                 continue;
             }
             await capitalizeObligationInterest({
@@ -2949,6 +3302,7 @@ const processMoratoryInterests = async (todayDateKey) => {
                     interestPendingRateDateKey: nextAccrualDateKey,
                     updatedAt: Timestamp.now(),
                 });
+                pendingRateDateKeys.push(nextAccrualDateKey);
                 break;
             }
             await capitalizeObligationInterest({
@@ -2971,7 +3325,25 @@ const processMoratoryInterests = async (todayDateKey) => {
             safety += 1;
         }
     }
-    return { obligations: obligationsSnap.size, capitalizations };
+    return {
+        obligations: obligationDocs.length,
+        capitalizations,
+        pendingRateDateKey: pendingRateDateKeys.sort()[0] || "",
+    };
+};
+
+export const refreshBillingInterestsForCheckout = async ({
+    inmobiliariaId,
+    obligationId = "",
+}) => {
+    const safeInmobiliariaId = cleanBillingText(inmobiliariaId, 128);
+    const safeObligationId = cleanBillingText(obligationId, 128);
+    if (!safeInmobiliariaId) throw new Error("Falta la inmobiliaria del pago.");
+    return processMoratoryInterests(getArgentinaDateKey(), {
+        inmobiliariaId: safeInmobiliariaId,
+        obligationId: safeObligationId,
+        currency: "ARS",
+    });
 };
 
 const completeEndedContracts = async (todayDateKey) => {

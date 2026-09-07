@@ -67,6 +67,15 @@ const RentalReceiptPage = () => {
         signatureLabel="Firma y aclaración de la inmobiliaria"
       >
         {payment.voided && <div className="alert alert-danger"><strong>RECIBO ANULADO.</strong> {payment.voidReason || "Movimiento rectificado en el sistema."}</div>}
+        {Number(payment.providerReversedAmountMinor || 0) > 0 && (
+          <div className="alert alert-danger">
+            <strong>COBRO REVERTIDO POR MERCADO PAGO.</strong>{" "}
+            Importe revertido: {formatRentalMoney(
+              payment.providerReversedAmountMinor,
+              contract.currency,
+            )}. Este recibo no acredita ese importe.
+          </div>
+        )}
         <div className="rental-receipt-statement">
           <span className="rental-receipt-lead">Recibimos del <strong>locatario {tenantNames || "identificado en el contrato"}</strong> la suma de: </span>
           <strong className="rental-receipt-amount">

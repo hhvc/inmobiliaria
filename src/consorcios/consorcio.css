@@ -99,6 +99,50 @@
   font-variant-numeric: tabular-nums;
 }
 
+.consortium-collections-page {
+  max-width: 1440px;
+}
+
+.consortium-aging-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 7rem;
+  padding: 0.85rem;
+  color: inherit;
+  background: #f8f9fa;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.75rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.consortium-aging-card:hover,
+.consortium-aging-card.active {
+  border-color: var(--bs-primary);
+  box-shadow: 0 0.35rem 1rem rgba(13, 110, 253, 0.12);
+  transform: translateY(-1px);
+}
+
+.consortium-aging-card strong {
+  margin-top: auto;
+  font-size: 1.05rem;
+}
+
+.consortium-aging-card small {
+  color: var(--bs-secondary-color);
+}
+
+.consortium-collections-table tbody tr {
+  cursor: default;
+}
+
+.consortium-collection-detail {
+  scroll-margin-top: 1rem;
+}
+
+.consortium-collection-timeline article {
+  border-color: var(--bs-primary) !important;
+}
+
 @media (min-width: 1200px) {
   .consortium-workspace-nav .nav {
     grid-template-columns: repeat(6, minmax(0, 1fr));

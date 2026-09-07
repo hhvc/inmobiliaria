@@ -31,10 +31,14 @@ import {
     getPortalFiltersFromSearchParams,
     getPortalSearchParamsFromFilters,
     hasAdvancedPortalFilters,
+    matchesPortalTextSearch,
     mergePortalItems,
+    requiresCompletePortalDataset,
 } from "../utils/portalSearch.helpers";
 
 const PAGE_SIZE_PER_SOURCE = 12;
+const COMPLETE_PAGE_SIZE_PER_SOURCE = 50;
+const MAX_COMPLETE_DATASET_PAGES = 20;
 
 const SOURCE_TYPES = [
     { value: "inmobiliaria", label: "Inmobiliarias" },
@@ -280,31 +284,14 @@ const getActiveFilterBadges = (filters) => {
 };
 
 const matchesTextSearch = (inmueble, search) => {
-    const normalizedSearch = normalizeText(search);
-
-    if (!normalizedSearch) return true;
-
     const amenityText = getInmuebleAmenityBadges(inmueble, 20)
         .map((item) => item.label)
         .join(" ");
 
-    const searchableText = [
-        inmueble.titulo,
-        inmueble.descripcion,
-        inmueble.tipo,
-        inmueble.operacion,
-        inmueble.ubicacion,
+    return matchesPortalTextSearch(inmueble, search, [
         inmueble.sourceLabel,
         amenityText,
-        getDireccionValue(inmueble, "calle"),
-        getDireccionValue(inmueble, "barrio"),
-        getDireccionValue(inmueble, "ciudad"),
-        getDireccionValue(inmueble, "provincia"),
-    ]
-        .filter(Boolean)
-        .join(" ");
-
-    return normalizeText(searchableText).includes(normalizedSearch);
+    ]);
 };
 
 const matchesMinNumberFilter = ({ currentValue, filterValue }) => {
@@ -684,6 +671,8 @@ const getInmuebleInmobiliariaId = (inmueble = {}) => {
 };
 
 const getInmobiliariaLogoUrl = (inmobiliaria = {}) => {
+    if (!inmobiliaria || typeof inmobiliaria !== "object") return "";
+
     return (
         inmobiliaria.logoUrl ||
         inmobiliaria.logo ||
@@ -1034,6 +1023,7 @@ const loadPortalBatch = async ({
     particularLastDoc = null,
     operacion = "",
     tipo = "",
+    pageSize = PAGE_SIZE_PER_SOURCE,
 } = {}) => {
     const emptyResult = {
         data: [],
@@ -1044,7 +1034,7 @@ const loadPortalBatch = async ({
     const [agencyResult, particularResult] = await Promise.all([
         includeAgency
             ? getPublicInmuebles({
-                pageSize: PAGE_SIZE_PER_SOURCE,
+                pageSize,
                 lastDoc: agencyLastDoc,
                 operacion,
                 tipo,
@@ -1052,7 +1042,7 @@ const loadPortalBatch = async ({
             : Promise.resolve(emptyResult),
         includeParticular
             ? getActiveParticularPublications({
-                pageSize: PAGE_SIZE_PER_SOURCE,
+                pageSize,
                 lastDoc: particularLastDoc,
                 operacion,
                 tipo,
@@ -1112,6 +1102,7 @@ const InmueblePortalPage = () => {
     const [loadMoreError, setLoadMoreError] = useState(null);
 
     const alertStatus = searchParams.get("alerta") || "";
+    const needsCompleteDataset = requiresCompletePortalDataset(filters);
 
     useEffect(() => {
         const nextFilters = getPortalFiltersFromSearchParams(searchParams);
@@ -1222,18 +1213,55 @@ const InmueblePortalPage = () => {
                 setLoadMoreError(null);
                 setInmuebles([]);
 
-                const batch = await loadPortalBatch({
+                const pageSize = needsCompleteDataset
+                    ? COMPLETE_PAGE_SIZE_PER_SOURCE
+                    : PAGE_SIZE_PER_SOURCE;
+                let batch = await loadPortalBatch({
                     includeAgency: filters.sourceType !== "particular",
                     includeParticular: filters.sourceType !== "inmobiliaria",
                     operacion: filters.operacion,
                     tipo: filters.tipo,
+                    pageSize,
                 });
 
                 if (!active) return;
 
-                setInmuebles(batch.items);
-                setCursors(batch.cursors);
-                setHasMore(batch.hasMore);
+                let loadedItems = batch.items;
+                let loadedCursors = batch.cursors;
+                let loadedHasMore = batch.hasMore;
+                let loadedPages = 1;
+
+                while (
+                    active &&
+                    needsCompleteDataset &&
+                    (loadedHasMore.agency || loadedHasMore.particular) &&
+                    loadedPages < MAX_COMPLETE_DATASET_PAGES
+                ) {
+                    const nextBatch = await loadPortalBatch({
+                        includeAgency:
+                            filters.sourceType !== "particular" &&
+                            loadedHasMore.agency,
+                        includeParticular:
+                            filters.sourceType !== "inmobiliaria" &&
+                            loadedHasMore.particular,
+                        agencyLastDoc: loadedCursors.agency,
+                        particularLastDoc: loadedCursors.particular,
+                        operacion: filters.operacion,
+                        tipo: filters.tipo,
+                        pageSize,
+                    });
+
+                    if (!active) return;
+
+                    loadedItems = mergePortalItems(loadedItems, nextBatch.items);
+                    loadedCursors = nextBatch.cursors;
+                    loadedHasMore = nextBatch.hasMore;
+                    loadedPages += 1;
+                }
+
+                setInmuebles(loadedItems);
+                setCursors(loadedCursors);
+                setHasMore(loadedHasMore);
             } catch (err) {
                 if (!active) return;
 
@@ -1254,7 +1282,12 @@ const InmueblePortalPage = () => {
         return () => {
             active = false;
         };
-    }, [filters.sourceType, filters.operacion, filters.tipo]);
+    }, [
+        filters.sourceType,
+        filters.operacion,
+        filters.tipo,
+        needsCompleteDataset,
+    ]);
 
     const updateFilters = (nextFilters, options = {}) => {
         setFilters(nextFilters);

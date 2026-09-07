@@ -172,6 +172,32 @@ export {
 } from "./billing.js";
 
 export {
+  mercadoPagoConnectPlatform,
+  mercadoPagoAuthStart,
+  mercadoPagoOAuthCallback,
+  mercadoPagoGetConfiguration,
+  mercadoPagoDisconnect,
+  mercadoPagoSaveAssignment,
+  mercadoPagoCreateCheckout,
+  mercadoPagoWebhook,
+  mercadoPagoGetOrderStatus,
+  mercadoPagoSyncOrder,
+} from "./mercadopago.js";
+
+export { paymentResolveCheckoutProvider } from "./paymentProviders.js";
+
+export {
+  siroGetConfiguration,
+  siroTestHomologation,
+  siroSaveAssignment,
+  siroDisableAssignment,
+  siroCreateCheckout,
+  siroGetOrderStatus,
+  siroSyncOrder,
+  siroPaymentCallback,
+} from "./siro.js";
+
+export {
   taxProcessDueReminders,
   taxRunDueAutomation,
 } from "./tax.js";

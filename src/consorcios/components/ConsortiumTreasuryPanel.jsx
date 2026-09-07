@@ -123,6 +123,8 @@ const movementSourceLabels = {
   opening_balance: "Saldo inicial",
   consortium_collection: "Cobro de expensas",
   consortium_collection_reversal: "Anulación de cobro",
+  mercadopago_deduction: "Deducciones Mercado Pago",
+  mercadopago_reversal: "Devolución / contracargo MP",
   supplier_payment: "Pago a proveedor",
   supplier_payment_reversal: "Anulación de pago",
   manual_movement: "Movimiento manual",

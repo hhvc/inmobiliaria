@@ -21,9 +21,19 @@ const ReceiptCopy = ({ label, consortium, payment }) => {
     || "responsable de la unidad";
   const method = CONSORTIUM_PAYMENT_METHODS.find((item) => item.id === payment.method)?.label
     || payment.method;
+  const allocations = Array.isArray(payment.allocations) && payment.allocations.length
+    ? payment.allocations
+    : payment.obligationId
+      ? [{
+        obligationId: payment.obligationId,
+        periodKey: payment.periodKey,
+        amountMinor: payment.amountMinor,
+      }]
+      : [];
   return (
     <section className="consortium-receipt-sheet mb-4">
       {payment.voided && <div className="alert alert-danger text-center fw-bold">RECIBO ANULADO · {payment.voidReason}</div>}
+      {Number(payment.providerReversedAmountMinor || 0) > 0 && <div className="alert alert-danger text-center fw-bold">COBRO REVERTIDO POR MERCADO PAGO · {formatConsortiumMoney(payment.providerReversedAmountMinor, payment.currency)} · ESTE RECIBO NO ACREDITA ESE IMPORTE</div>}
       <div className="d-flex justify-content-between gap-3 border-bottom pb-3 mb-4">
         <div><p className="text-uppercase text-muted small mb-1">Recibo de expensas</p><h2 className="h4 mb-1">{consortium.name}</h2><p className="mb-0">{consortium.address}</p></div>
         <div className="text-end"><span className="badge text-bg-light border text-dark">{label}</span><div className="mt-2"><strong>N.º interno</strong><br />{payment.id.slice(0, 12).toUpperCase()}</div></div>
@@ -33,8 +43,9 @@ const ReceiptCopy = ({ label, consortium, payment }) => {
         <strong>{formatRentalAmountInWords(payment.amountMinor, payment.currency)}</strong>{" "}
         <span>({formatConsortiumMoney(payment.amountMinor, payment.currency)})</span>
       </div>
+      {allocations.length > 0 && <div className="table-responsive mt-3"><table className="table table-sm mb-2"><thead><tr><th>Imputación</th><th className="text-end">Importe</th></tr></thead><tbody>{allocations.map((item) => <tr key={`${item.obligationId}_${item.periodKey}`}><td>{getConsortiumPeriodLabel(item.periodKey)}</td><td className="text-end consortium-money">{formatConsortiumMoney(item.amountMinor, payment.currency)}</td></tr>)}</tbody>{Number(payment.creditAmountMinor || 0) > 0 && <tfoot><tr className="text-success"><th>Saldo a favor sin imputar</th><th className="text-end consortium-money">{formatConsortiumMoney(payment.creditAmountMinor, payment.currency)}</th></tr></tfoot>}</table></div>}
       <div className="row g-3 mt-2">
-        <div className="col-md-6"><strong>Período:</strong> {getConsortiumPeriodLabel(payment.periodKey)}</div>
+        <div className="col-md-6"><strong>Período:</strong> {allocations.length > 1 ? `${allocations.length} períodos` : allocations.length ? getConsortiumPeriodLabel(allocations[0].periodKey) : "Pago a cuenta"}</div>
         <div className="col-md-6"><strong>Fecha de cobro:</strong> {payment.date}</div>
         <div className="col-md-6"><strong>Medio:</strong> {method}</div>
         <div className="col-md-6"><strong>Referencia:</strong> {payment.reference || "Sin referencia"}</div>

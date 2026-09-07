@@ -1508,6 +1508,23 @@ allow delete: if isRoot();
           && request.resource.data.inmobiliariaId == inmoId
           && request.resource.data.ownerInmobiliariaId == inmoId
           && request.resource.data.id == paymentId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.unitId is string
+          && request.resource.data.amountMinor is int
+          && request.resource.data.amountMinor > 0
+          && (
+            !request.resource.data.keys().hasAny(["allocations"])
+            || (
+              request.resource.data.allocations is list
+              && request.resource.data.appliedAmountMinor is int
+              && request.resource.data.creditAmountMinor is int
+              && request.resource.data.appliedAmountMinor >= 0
+              && request.resource.data.creditAmountMinor >= 0
+              && request.resource.data.amountMinor
+                == request.resource.data.appliedAmountMinor
+                  + request.resource.data.creditAmountMinor
+            )
+          )
           && request.resource.data.voided == false;
         allow update: if
           isSignedIn()
@@ -1541,6 +1558,69 @@ allow delete: if isRoot();
           && request.resource.data.amountMinor is int
           && request.resource.data.amountMinor > 0;
         allow update, delete: if false;
+      }
+
+      match /condominium_collection_actions/{actionId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.id == actionId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.unitId is string
+          && request.resource.data.type in [
+            "contact", "promise", "notice", "note", "agreement_created", "agreement_status"
+          ]
+          && request.resource.data.channel in [
+            "phone", "whatsapp", "email", "in_person", "letter", "system", "other"
+          ]
+          && request.resource.data.occurredOn is string
+          && request.resource.data.promiseAmountMinor is int
+          && request.resource.data.immutable == true
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      match /condominium_payment_agreements/{agreementId} {
+        allow read: if isRoot() || adminHasInmobiliaria(inmoId);
+        allow create: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && request.resource.data.id == agreementId
+          && request.resource.data.inmobiliariaId == inmoId
+          && request.resource.data.ownerInmobiliariaId == inmoId
+          && request.resource.data.consortiumId is string
+          && request.resource.data.unitId is string
+          && request.resource.data.obligationIds is list
+          && request.resource.data.obligationIds.size() > 0
+          && request.resource.data.originalDebtMinor is int
+          && request.resource.data.originalDebtMinor > 0
+          && request.resource.data.agreedAmountMinor is int
+          && request.resource.data.agreedAmountMinor > 0
+          && request.resource.data.downPaymentMinor is int
+          && request.resource.data.downPaymentMinor >= 0
+          && request.resource.data.downPaymentMinor < request.resource.data.agreedAmountMinor
+          && request.resource.data.financedAmountMinor
+            == request.resource.data.agreedAmountMinor - request.resource.data.downPaymentMinor
+          && request.resource.data.installmentCount is int
+          && request.resource.data.installmentCount > 0
+          && request.resource.data.installmentCount <= 60
+          && request.resource.data.schedule is list
+          && request.resource.data.status == "active"
+          && request.resource.data.accountingEffect == "none_until_payment"
+          && request.resource.data.createdBy == request.auth.uid;
+        allow update: if
+          isSignedIn()
+          && (isRoot() || adminHasInmobiliaria(inmoId))
+          && resource.data.inmobiliariaId == inmoId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "status", "statusReason", "statusChangedAt", "updatedBy", "updatedAt"
+          ])
+          && request.resource.data.status in ["active", "completed", "defaulted", "cancelled"]
+          && request.resource.data.updatedBy == request.auth.uid;
+        allow delete: if false;
       }
 
       match /condominium_penalties/{penaltyId} {
@@ -2986,6 +3066,64 @@ match /particular_publication_requests/{requestId} {
     }
 
     match /billing_commercial_leads/{document=**} {
+      allow read, write: if false;
+    }
+
+    /* ============================
+       MERCADO PAGO
+       Tokens, órdenes y conciliaciones solo mediante Cloud Functions.
+       ============================ */
+
+    match /mercadopago_accounts/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /mercadopago_account_links/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /mercadopago_oauth_states/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /mercadopago_assignments/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /mercadopago_orders/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /mercadopago_webhook_events/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /mercadopago_donations/{document=**} {
+      allow read, write: if false;
+    }
+
+    /* ============================
+       PROVEEDORES DE COBRO / SIRO
+       Configuración, órdenes y conciliación solo mediante Cloud Functions.
+       ============================ */
+
+    match /payment_provider_accounts/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /payment_provider_connections/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /payment_provider_assignments/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /payment_provider_orders/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /payment_provider_callbacks/{document=**} {
       allow read, write: if false;
     }
 

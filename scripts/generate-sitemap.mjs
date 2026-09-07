@@ -42,6 +42,11 @@ const STATIC_ROUTES = [
         priority: "0.8",
     },
     {
+        path: "/donar",
+        changefreq: "monthly",
+        priority: "0.5",
+    },
+    {
         path: "/sobre-onoprop",
         changefreq: "monthly",
         priority: "0.7",

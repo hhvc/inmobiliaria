@@ -14,6 +14,8 @@
     "test:tax": "node --test tax.helpers.test.js",
     "test:parcelas": "node --test parcelas.helpers.test.js",
     "test:consorcios": "node --test consortium.helpers.test.js",
+    "test:mercadopago": "node --test mercadopago.helpers.test.js",
+    "test:siro": "node --test siro.helpers.test.js",
     "test:portal-demand": "node --test portalDemand.helpers.test.js",
     "test:portal-performance": "node --test portalPerformance.helpers.test.js"
   },

@@ -101,6 +101,11 @@ import BillingAccountPage from "./billing/pages/BillingAccountPage";
 import BillingAdminPage from "./billing/pages/BillingAdminPage";
 import PublicPlansPage from "./billing/pages/PublicPlansPage";
 
+// Mercado Pago
+import DonationPage from "./mercadopago/pages/DonationPage";
+import MercadoPagoResultPage from "./mercadopago/pages/MercadoPagoResultPage";
+import MercadoPagoAdministrationPage from "./mercadopago/pages/MercadoPagoAdministrationPage";
+
 // Emprendimientos
 import EmprendimientoListPage from "./emprendimiento/pages/EmprendimientoListPage";
 import EmprendimientoFormPage from "./emprendimiento/pages/EmprendimientoFormPage";
@@ -136,6 +141,7 @@ import ConsortiumReceiptPage from "./consorcios/pages/ConsortiumReceiptPage";
 import ConsortiumResidentPortalPage from "./consorcios/pages/ConsortiumResidentPortalPage";
 import ConsortiumAssessmentPage from "./consorcios/pages/ConsortiumAssessmentPage";
 import ConsortiumEconomicStatementPage from "./consorcios/pages/ConsortiumEconomicStatementPage";
+import ConsortiumCollectionsPage from "./consorcios/pages/ConsortiumCollectionsPage";
 
 // Control tributario inmobiliario
 import TaxManagementPage from "./tributos/pages/TaxManagementPage";
@@ -162,6 +168,8 @@ function App() {
                 <Route path="/galeria" element={<DynamicGallery />} />
                 <Route path="/contacto" element={<Contact />} />
                 <Route path="/planes" element={<PublicPlansPage />} />
+                <Route path="/donar" element={<DonationPage />} />
+                <Route path="/pagos/resultado" element={<MercadoPagoResultPage />} />
                 <Route path="/reservar" element={<ReservationPage />} />
                 <Route path="/login" element={<LoginPage />} />
                 <Route path="/verificar-email" element={<EmailVerificationPage />} />
@@ -373,6 +381,15 @@ function App() {
                   element={
                     <ProtectedRoute role="admin">
                       <BillingAccountPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/pagos"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <MercadoPagoAdministrationPage />
                     </ProtectedRoute>
                   }
                 />
@@ -689,6 +706,19 @@ function App() {
                       <InmobiliariaModuleGuard moduleId="consorcios">
                         <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
                           <ConsortiumReceiptPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/consorcios/:id/cobranzas"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="consorcios">
+                        <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
+                          <ConsortiumCollectionsPage />
                         </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>

@@ -31,6 +31,10 @@ import {
   validateConsortiumUnit,
 } from "../utils/consorcio.helpers";
 import {
+  buildConsortiumPaymentAllocations,
+  buildConsortiumPaymentAgreementSchedule,
+} from "../utils/consorcioCollections.helpers";
+import {
   isConsortiumDocumentFileValid,
   normalizeConsortiumEmails,
   safeConsortiumFileName,
@@ -62,6 +66,8 @@ const COLLECTIONS = {
   financialClosures: "condominium_financial_closures",
   claims: "condominium_claims",
   claimEvents: "condominium_claim_events",
+  collectionActions: "condominium_collection_actions",
+  paymentAgreements: "condominium_payment_agreements",
 };
 
 const functions = getFunctions(app, "southamerica-east1");
@@ -369,6 +375,14 @@ export const getConsortiumUnits = async (inmobiliariaId, consortiumId = "") => {
     .filter((item) => item.deleted !== true)
     .filter((item) => !consortiumId || item.consortiumId === consortiumId)
     .sort((a, b) => (a.code || "").localeCompare(b.code || "", "es", { numeric: true }));
+};
+
+export const getConsortiumUnitById = async (inmobiliariaId, unitId) => {
+  if (!inmobiliariaId || !unitId) return null;
+  const snap = await getDoc(agencyDoc(inmobiliariaId, "units", unitId));
+  return snap.exists() && snap.data()?.deleted !== true
+    ? { id: snap.id, ...snap.data() }
+    : null;
 };
 
 export const getConsortiumUnitChanges = async (
@@ -721,12 +735,12 @@ export const getConsortiumObligations = async (
 ) => {
   if (!inmobiliariaId) return [];
   const baseCollection = agencyCollection(inmobiliariaId, "obligations");
-  const source = consortiumId
-    ? query(baseCollection, where("consortiumId", "==", consortiumId))
-    : periodId
-      ? query(baseCollection, where("periodId", "==", periodId))
-      : unitId
-        ? query(baseCollection, where("unitId", "==", unitId))
+  const source = unitId
+    ? query(baseCollection, where("unitId", "==", unitId))
+    : consortiumId
+      ? query(baseCollection, where("consortiumId", "==", consortiumId))
+      : periodId
+        ? query(baseCollection, where("periodId", "==", periodId))
         : baseCollection;
   const snap = await getDocs(source);
   return snap.docs
@@ -1129,6 +1143,198 @@ export const getConsortiumPaymentById = async (inmobiliariaId, paymentId) => {
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 };
 
+export const registerConsortiumAccountPayment = async ({
+  inmobiliariaId,
+  consortiumId,
+  unitId,
+  amountMinor,
+  obligationIds = [],
+  date,
+  method,
+  reference = "",
+  notes = "",
+  treasuryAccountId = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  if (!amount) throw new Error("Ingresá un importe mayor a cero.");
+  if (!hasValidDateKey(date)) throw new Error("Ingresá la fecha del cobro.");
+  const requestedIds = [...new Set(
+    (Array.isArray(obligationIds) ? obligationIds : []).map((item) => cleanText(item, 128)),
+  )].filter(Boolean);
+  const knownObligations = await getConsortiumObligations(inmobiliariaId, {
+    consortiumId,
+    unitId,
+  });
+  if (knownObligations.length > 200) {
+    throw new Error("La cuenta tiene demasiados períodos para imputar en una sola operación.");
+  }
+  const obligationRefs = knownObligations.map((item) => (
+    agencyDoc(inmobiliariaId, "obligations", item.id)
+  ));
+  const unitRef = agencyDoc(inmobiliariaId, "units", unitId);
+  const treasuryAccountRef = treasuryAccountId
+    ? agencyDoc(inmobiliariaId, "treasuryAccounts", treasuryAccountId)
+    : null;
+  const paymentRef = doc(agencyCollection(inmobiliariaId, "payments"));
+  const movementRef = treasuryAccountId
+    ? doc(agencyCollection(inmobiliariaId, "treasuryMovements"))
+    : null;
+
+  await runTransaction(db, async (transaction) => {
+    const snapshots = await Promise.all([
+      transaction.get(unitRef),
+      ...obligationRefs.map((ref) => transaction.get(ref)),
+      ...(treasuryAccountRef ? [transaction.get(treasuryAccountRef)] : []),
+    ]);
+    const unitSnap = snapshots[0];
+    if (!unitSnap.exists() || unitSnap.data()?.deleted === true ||
+      unitSnap.data()?.consortiumId !== consortiumId) {
+      throw new Error("La unidad no pertenece al consorcio.");
+    }
+    const unit = unitSnap.data() || {};
+    const freshObligations = snapshots.slice(1, 1 + obligationRefs.length)
+      .map((snap) => ({ id: snap.id, ...(snap.data() || {}) }))
+      .filter((item) => item.consortiumId === consortiumId && item.unitId === unitId);
+    const openObligations = freshObligations.filter((item) => (
+      item.voided !== true && Number(item.balanceMinor || 0) > 0
+    ));
+    const openIds = new Set(openObligations.map((item) => item.id));
+    if (requestedIds.some((id) => !openIds.has(id))) {
+      throw new Error("Una de las expensas seleccionadas ya no tiene saldo disponible.");
+    }
+    const currency = openObligations[0]?.currency || unit.currency || "ARS";
+    if (openObligations.some((item) => (item.currency || "ARS") !== currency)) {
+      throw new Error("No se pueden imputar en un mismo cobro obligaciones de monedas distintas.");
+    }
+    const allocation = buildConsortiumPaymentAllocations({
+      amountMinor: amount,
+      obligations: openObligations,
+      obligationIds: requestedIds,
+    });
+    if (allocation.creditAmountMinor > 0 && requestedIds.length &&
+      allocation.allocations.length < openObligations.length) {
+      throw new Error("Para registrar un excedente como saldo a favor, seleccioná todos los períodos pendientes.");
+    }
+    let treasuryAccount = null;
+    if (treasuryAccountRef) {
+      const accountSnap = snapshots.at(-1);
+      if (!accountSnap?.exists() || accountSnap.data()?.active === false) {
+        throw new Error("La cuenta de tesorería no está disponible.");
+      }
+      treasuryAccount = accountSnap.data();
+      if (treasuryAccount.consortiumId !== consortiumId) {
+        throw new Error("La cuenta pertenece a otro consorcio.");
+      }
+      if ((treasuryAccount.currency || "ARS") !== currency) {
+        throw new Error("La moneda de la cuenta no coincide con el cobro.");
+      }
+    }
+    const allocationById = new Map(
+      allocation.allocations.map((item) => [item.obligationId, item]),
+    );
+    freshObligations.forEach((obligation) => {
+      const item = allocationById.get(obligation.id);
+      if (!item) return;
+      const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor) || 0)
+        + item.amountMinor;
+      const balanceMinor = Math.max(0, Number(obligation.totalAmountMinor || 0) - paidAmountMinor);
+      transaction.update(agencyDoc(inmobiliariaId, "obligations", obligation.id), {
+        paidAmountMinor,
+        balanceMinor,
+        status: balanceMinor <= 0 ? "paid" : getConsortiumObligationStatus({
+          ...obligation,
+          paidAmountMinor,
+          balanceMinor,
+        }),
+        paymentIds: [
+          ...(Array.isArray(obligation.paymentIds) ? obligation.paymentIds : []),
+          paymentRef.id,
+        ],
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    if (allocation.creditAmountMinor > 0) {
+      transaction.update(unitRef, {
+        creditBalanceMinor: Math.max(0, Number(unit.creditBalanceMinor) || 0)
+          + allocation.creditAmountMinor,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    }
+    const primaryAllocation = allocation.allocations[0] || {};
+    const periodKeys = [...new Set(allocation.allocations.map((item) => item.periodKey).filter(Boolean))];
+    transaction.set(paymentRef, {
+      id: paymentRef.id,
+      schemaVersion: 2,
+      obligationId: primaryAllocation.obligationId || "",
+      consortiumId,
+      periodId: primaryAllocation.periodId || "",
+      periodKey: primaryAllocation.periodKey || "",
+      periodKeys,
+      source: allocation.allocations.length === 1 && !allocation.creditAmountMinor
+        ? primaryAllocation.source : "account_payment",
+      allocationMode: requestedIds.length ? "selected" : "oldest_due",
+      allocations: allocation.allocations,
+      appliedAmountMinor: allocation.appliedAmountMinor,
+      creditAmountMinor: allocation.creditAmountMinor,
+      unitId,
+      unitSnapshot: {
+        code: cleanText(unit.code, 80),
+        ownerName: cleanText(unit.ownerName, 220),
+        occupantName: cleanText(unit.occupantName, 220),
+      },
+      currency,
+      amountMinor: amount,
+      date,
+      method: cleanText(method, 40) || "transfer",
+      reference: cleanText(reference, 220),
+      notes: cleanText(notes, 1000),
+      treasuryAccountId: treasuryAccountId || "",
+      treasuryMovementId: movementRef?.id || "",
+      voided: false,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    if (treasuryAccount && treasuryAccountRef && movementRef) {
+      transaction.set(movementRef, {
+        id: movementRef.id,
+        schemaVersion: 1,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        consortiumId,
+        accountId: treasuryAccountId,
+        accountSnapshot: {
+          name: treasuryAccount.name || "",
+          type: treasuryAccount.type || "bank",
+        },
+        source: "consortium_collection",
+        sourceId: paymentRef.id,
+        direction: "inflow",
+        amountMinor: amount,
+        currency,
+        date,
+        concept: `Cobro de expensas · Unidad ${unit.code || unitId}`,
+        reference: cleanText(reference, 220),
+        voided: false,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+      transaction.update(treasuryAccountRef, {
+        currentBalanceMinor: Math.max(0, Number(treasuryAccount.currentBalanceMinor) || 0) + amount,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    }
+  });
+  return paymentRef.id;
+};
+
 export const registerConsortiumPayment = async ({
   inmobiliariaId,
   obligationId,
@@ -1257,26 +1463,47 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
     if (!paymentSnap.exists()) throw new Error("El cobro no existe.");
     const payment = paymentSnap.data();
     if (payment.voided === true) throw new Error("El cobro ya está anulado.");
-    const obligationRef = agencyDoc(inmobiliariaId, "obligations", payment.obligationId);
-    const obligationSnap = await transaction.get(obligationRef);
-    if (!obligationSnap.exists()) throw new Error("La expensa relacionada no existe.");
-    const obligation = obligationSnap.data();
-    let treasuryAccount = null;
-    let treasuryAccountRef = null;
-    if (payment.treasuryAccountId) {
-      treasuryAccountRef = agencyDoc(inmobiliariaId, "treasuryAccounts", payment.treasuryAccountId);
-      const accountSnap = await transaction.get(treasuryAccountRef);
-      if (!accountSnap.exists()) throw new Error("La cuenta de tesorería asociada no existe.");
-      treasuryAccount = accountSnap.data();
-      if (Number(treasuryAccount.currentBalanceMinor || 0) < Number(payment.amountMinor || 0)) {
-        throw new Error("La cuenta no tiene saldo suficiente para revertir este cobro.");
-      }
+    const allocations = Array.isArray(payment.allocations) && payment.allocations.length
+      ? payment.allocations
+      : payment.obligationId
+        ? [{ obligationId: payment.obligationId, amountMinor: payment.amountMinor }]
+        : [];
+    const obligationRefs = allocations.map((item) => (
+      agencyDoc(inmobiliariaId, "obligations", item.obligationId)
+    ));
+    const unitRef = Number(payment.creditAmountMinor || 0) > 0
+      ? agencyDoc(inmobiliariaId, "units", payment.unitId)
+      : null;
+    const treasuryAccountRef = payment.treasuryAccountId
+      ? agencyDoc(inmobiliariaId, "treasuryAccounts", payment.treasuryAccountId)
+      : null;
+    const relatedSnapshots = await Promise.all([
+      ...obligationRefs.map((ref) => transaction.get(ref)),
+      ...(unitRef ? [transaction.get(unitRef)] : []),
+      ...(treasuryAccountRef ? [transaction.get(treasuryAccountRef)] : []),
+    ]);
+    const obligationSnapshots = relatedSnapshots.slice(0, obligationRefs.length);
+    if (obligationSnapshots.some((snap) => !snap.exists())) {
+      throw new Error("Una expensa relacionada con el cobro ya no existe.");
     }
-    const paidAmountMinor = Math.max(
-      0,
-      Number(obligation.paidAmountMinor || 0) - Number(payment.amountMinor || 0),
-    );
-    const balanceMinor = Math.max(0, Number(obligation.totalAmountMinor || 0) - paidAmountMinor);
+    const unitSnapshotIndex = obligationRefs.length;
+    const unitSnap = unitRef ? relatedSnapshots[unitSnapshotIndex] : null;
+    const treasurySnapshotIndex = obligationRefs.length + (unitRef ? 1 : 0);
+    const treasurySnap = treasuryAccountRef
+      ? relatedSnapshots[treasurySnapshotIndex]
+      : null;
+    if (unitRef && (!unitSnap?.exists() ||
+      Number(unitSnap.data()?.creditBalanceMinor || 0) < Number(payment.creditAmountMinor || 0))) {
+      throw new Error("El saldo a favor generado por este cobro ya fue utilizado y no puede anularse.");
+    }
+    const treasuryAccount = treasurySnap?.exists() ? treasurySnap.data() : null;
+    if (treasuryAccountRef && !treasuryAccount) {
+      throw new Error("La cuenta de tesorería asociada no existe.");
+    }
+    if (treasuryAccount &&
+      Number(treasuryAccount.currentBalanceMinor || 0) < Number(payment.amountMinor || 0)) {
+      throw new Error("La cuenta no tiene saldo suficiente para revertir este cobro.");
+    }
     transaction.update(paymentRef, {
       voided: true,
       voidReason,
@@ -1285,6 +1512,40 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
       treasuryReversalMovementId: treasuryAccount ? reversalRef.id : "",
       updatedAt: serverTimestamp(),
     });
+    obligationSnapshots.forEach((snap, index) => {
+      const obligation = snap.data();
+      const allocatedMinor = Math.max(0, Number(allocations[index]?.amountMinor) || 0);
+      const paidAmountMinor = Math.max(
+        0,
+        Number(obligation.paidAmountMinor || 0) - allocatedMinor,
+      );
+      const balanceMinor = Math.max(
+        0,
+        Number(obligation.totalAmountMinor || 0) - paidAmountMinor,
+      );
+      transaction.update(obligationRefs[index], {
+        paidAmountMinor,
+        balanceMinor,
+        status: getConsortiumObligationStatus({
+          ...obligation,
+          paidAmountMinor,
+          balanceMinor,
+        }),
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    });
+    if (unitRef && unitSnap) {
+      transaction.update(unitRef, {
+        creditBalanceMinor: Math.max(
+          0,
+          Number(unitSnap.data()?.creditBalanceMinor || 0)
+            - Number(payment.creditAmountMinor || 0),
+        ),
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+    }
     if (treasuryAccount && treasuryAccountRef) {
       transaction.set(reversalRef, {
         id: reversalRef.id,
@@ -1317,17 +1578,6 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
         updatedAt: serverTimestamp(),
       });
     }
-    transaction.update(obligationRef, {
-      paidAmountMinor,
-      balanceMinor,
-      status: getConsortiumObligationStatus({
-        ...obligation,
-        paidAmountMinor,
-        balanceMinor,
-      }),
-      updatedBy: user.uid,
-      updatedAt: serverTimestamp(),
-    });
   });
 };
 
@@ -3730,4 +3980,320 @@ export const addConsortiumClaimMessage = async ({
     throw error;
   }
   return eventRef.id;
+};
+
+const COLLECTION_ACTION_TYPES = new Set([
+  "contact",
+  "promise",
+  "notice",
+  "note",
+  "agreement_created",
+  "agreement_status",
+]);
+
+const COLLECTION_CHANNELS = new Set([
+  "phone",
+  "whatsapp",
+  "email",
+  "in_person",
+  "letter",
+  "system",
+  "other",
+]);
+
+const collectionActorSnapshot = (user) => ({
+  uid: user.uid,
+  name: cleanText(user.displayName, 160),
+  email: cleanText(user.email, 220),
+});
+
+export const getConsortiumCollectionActions = async (
+  inmobiliariaId,
+  { consortiumId = "", unitId = "" } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const source = consortiumId
+    ? query(
+      agencyCollection(inmobiliariaId, "collectionActions"),
+      where("consortiumId", "==", consortiumId),
+    )
+    : agencyCollection(inmobiliariaId, "collectionActions");
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !unitId || item.unitId === unitId)
+    .sort((left, right) => (
+      (right.occurredOn || "").localeCompare(left.occurredOn || "") ||
+      timestampMillis(right.createdAt) - timestampMillis(left.createdAt)
+    ));
+};
+
+export const recordConsortiumCollectionAction = async ({
+  inmobiliariaId,
+  consortiumId,
+  unitId,
+  type,
+  channel = "other",
+  occurredOn,
+  outcome = "",
+  notes = "",
+  promiseAmountMinor = 0,
+  promiseDueDate = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalizedType = cleanText(type, 40);
+  const normalizedChannel = cleanText(channel, 40);
+  if (!COLLECTION_ACTION_TYPES.has(normalizedType) ||
+    !COLLECTION_CHANNELS.has(normalizedChannel)) {
+    throw new Error("El tipo o canal de la gestión no es válido.");
+  }
+  if (!hasValidDateKey(occurredOn)) throw new Error("Ingresá la fecha de la gestión.");
+  if (normalizedType === "promise" &&
+    (!(Number(promiseAmountMinor) > 0) || !hasValidDateKey(promiseDueDate))) {
+    throw new Error("La promesa requiere importe y fecha comprometida.");
+  }
+  if (!cleanText(notes, 3000) && !cleanText(outcome, 500)) {
+    throw new Error("Describí el resultado o las observaciones de la gestión.");
+  }
+  const unitSnap = await getDoc(agencyDoc(inmobiliariaId, "units", unitId));
+  if (!unitSnap.exists() || unitSnap.data()?.consortiumId !== consortiumId ||
+    unitSnap.data()?.deleted === true) {
+    throw new Error("La unidad no pertenece al consorcio.");
+  }
+  const unit = unitSnap.data() || {};
+  const ref = doc(agencyCollection(inmobiliariaId, "collectionActions"));
+  await setDoc(ref, {
+    id: ref.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId,
+    unitId,
+    unitSnapshot: {
+      code: cleanText(unit.code, 80),
+      ownerName: cleanText(unit.ownerName, 220),
+      occupantName: cleanText(unit.occupantName, 220),
+    },
+    type: normalizedType,
+    channel: normalizedChannel,
+    occurredOn,
+    outcome: cleanText(outcome, 500),
+    notes: cleanText(notes, 3000),
+    promiseAmountMinor: normalizedType === "promise"
+      ? Math.round(Number(promiseAmountMinor)) : 0,
+    promiseDueDate: normalizedType === "promise" ? promiseDueDate : "",
+    promiseStatus: normalizedType === "promise" ? "pending" : "",
+    immutable: true,
+    createdBy: user.uid,
+    createdBySnapshot: collectionActorSnapshot(user),
+    createdAt: serverTimestamp(),
+  });
+  return ref.id;
+};
+
+export const getConsortiumPaymentAgreements = async (
+  inmobiliariaId,
+  { consortiumId = "", unitId = "" } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const source = consortiumId
+    ? query(
+      agencyCollection(inmobiliariaId, "paymentAgreements"),
+      where("consortiumId", "==", consortiumId),
+    )
+    : agencyCollection(inmobiliariaId, "paymentAgreements");
+  const snap = await getDocs(source);
+  return snap.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !unitId || item.unitId === unitId)
+    .sort((left, right) => (
+      (right.agreementDate || "").localeCompare(left.agreementDate || "") ||
+      timestampMillis(right.createdAt) - timestampMillis(left.createdAt)
+    ));
+};
+
+export const createConsortiumPaymentAgreement = async ({
+  inmobiliariaId,
+  consortiumId,
+  unitId,
+  obligationIds = [],
+  agreementDate,
+  agreedAmountMinor,
+  downPaymentMinor = 0,
+  installmentCount = 1,
+  firstDueDate,
+  notes = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  if (!hasValidDateKey(agreementDate) || !hasValidDateKey(firstDueDate)) {
+    throw new Error("Revisá las fechas del convenio.");
+  }
+  const normalizedObligationIds = [...new Set(
+    (Array.isArray(obligationIds) ? obligationIds : []).map((item) => cleanText(item, 128)),
+  )].filter(Boolean);
+  if (!normalizedObligationIds.length) {
+    throw new Error("Seleccioná al menos una deuda para el convenio.");
+  }
+  const [unitSnap, ...obligationSnaps] = await Promise.all([
+    getDoc(agencyDoc(inmobiliariaId, "units", unitId)),
+    ...normalizedObligationIds.map((id) => (
+      getDoc(agencyDoc(inmobiliariaId, "obligations", id))
+    )),
+  ]);
+  if (!unitSnap.exists() || unitSnap.data()?.consortiumId !== consortiumId) {
+    throw new Error("La unidad no pertenece al consorcio.");
+  }
+  const obligations = obligationSnaps.map((snap) => {
+    if (!snap.exists() || snap.data()?.consortiumId !== consortiumId ||
+      snap.data()?.unitId !== unitId || snap.data()?.voided === true ||
+      !(Number(snap.data()?.balanceMinor) > 0)) {
+      throw new Error("Una de las deudas seleccionadas ya no es válida.");
+    }
+    return { id: snap.id, ...snap.data() };
+  });
+  const originalDebtMinor = obligations.reduce(
+    (sum, item) => sum + Math.max(0, Math.round(Number(item.balanceMinor) || 0)),
+    0,
+  );
+  const agreed = Math.round(Number(agreedAmountMinor) || 0);
+  const downPayment = Math.round(Number(downPaymentMinor) || 0);
+  const count = Math.max(1, Math.min(60, Math.trunc(Number(installmentCount) || 1)));
+  if (!(originalDebtMinor > 0)) throw new Error("Las deudas seleccionadas no tienen saldo.");
+  if (!(agreed > 0) || downPayment < 0 || downPayment >= agreed) {
+    throw new Error("Los importes del convenio no son válidos.");
+  }
+  const schedule = buildConsortiumPaymentAgreementSchedule({
+    agreedAmountMinor: agreed,
+    downPaymentMinor: downPayment,
+    installmentCount: count,
+    firstDueDate,
+  });
+  const unit = unitSnap.data() || {};
+  const agreementRef = doc(agencyCollection(inmobiliariaId, "paymentAgreements"));
+  const actionRef = doc(agencyCollection(inmobiliariaId, "collectionActions"));
+  const actor = collectionActorSnapshot(user);
+  const batch = writeBatch(db);
+  batch.set(agreementRef, {
+    id: agreementRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId,
+    unitId,
+    unitSnapshot: {
+      code: cleanText(unit.code, 80),
+      ownerName: cleanText(unit.ownerName, 220),
+      occupantName: cleanText(unit.occupantName, 220),
+    },
+    obligationIds: normalizedObligationIds,
+    obligationSnapshots: obligations.map((item) => ({
+      id: item.id,
+      periodKey: cleanText(item.periodKey, 10),
+      dueDate: cleanText(item.dueDate, 10),
+      balanceMinor: Math.max(0, Math.round(Number(item.balanceMinor) || 0)),
+    })),
+    agreementDate,
+    originalDebtMinor,
+    agreedAmountMinor: agreed,
+    discountMinor: Math.max(0, originalDebtMinor - agreed),
+    surchargeMinor: Math.max(0, agreed - originalDebtMinor),
+    downPaymentMinor: downPayment,
+    financedAmountMinor: agreed - downPayment,
+    installmentCount: count,
+    firstDueDate,
+    schedule,
+    status: "active",
+    notes: cleanText(notes, 3000),
+    accountingEffect: "none_until_payment",
+    createdBy: user.uid,
+    createdBySnapshot: actor,
+    createdAt: serverTimestamp(),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(actionRef, {
+    id: actionRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId,
+    unitId,
+    unitSnapshot: {
+      code: cleanText(unit.code, 80),
+      ownerName: cleanText(unit.ownerName, 220),
+      occupantName: cleanText(unit.occupantName, 220),
+    },
+    type: "agreement_created",
+    channel: "system",
+    occurredOn: agreementDate,
+    outcome: `Convenio ${agreementRef.id} creado`,
+    notes: cleanText(notes, 3000),
+    agreementId: agreementRef.id,
+    promiseAmountMinor: agreed,
+    promiseDueDate: firstDueDate,
+    promiseStatus: "pending",
+    immutable: true,
+    createdBy: user.uid,
+    createdBySnapshot: actor,
+    createdAt: serverTimestamp(),
+  });
+  await batch.commit();
+  return agreementRef.id;
+};
+
+export const updateConsortiumPaymentAgreementStatus = async ({
+  inmobiliariaId,
+  agreementId,
+  status,
+  reason = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalizedStatus = cleanText(status, 40);
+  if (!["active", "completed", "defaulted", "cancelled"].includes(normalizedStatus)) {
+    throw new Error("El estado del convenio no es válido.");
+  }
+  const agreementRef = agencyDoc(inmobiliariaId, "paymentAgreements", agreementId);
+  const agreementSnap = await getDoc(agreementRef);
+  if (!agreementSnap.exists()) throw new Error("El convenio no existe.");
+  const agreement = agreementSnap.data() || {};
+  if (["defaulted", "cancelled"].includes(normalizedStatus) && !cleanText(reason, 1000)) {
+    throw new Error("Indicá el motivo del cambio de estado.");
+  }
+  const actionRef = doc(agencyCollection(inmobiliariaId, "collectionActions"));
+  const actor = collectionActorSnapshot(user);
+  const today = new Date().toISOString().slice(0, 10);
+  const batch = writeBatch(db);
+  batch.update(agreementRef, {
+    status: normalizedStatus,
+    statusReason: cleanText(reason, 1000),
+    statusChangedAt: serverTimestamp(),
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(actionRef, {
+    id: actionRef.id,
+    schemaVersion: 1,
+    inmobiliariaId,
+    ownerInmobiliariaId: inmobiliariaId,
+    consortiumId: agreement.consortiumId,
+    unitId: agreement.unitId,
+    unitSnapshot: agreement.unitSnapshot || {},
+    type: "agreement_status",
+    channel: "system",
+    occurredOn: today,
+    outcome: `Convenio ${agreementId}: ${normalizedStatus}`,
+    notes: cleanText(reason, 1000),
+    agreementId,
+    promiseAmountMinor: 0,
+    promiseDueDate: "",
+    promiseStatus: "",
+    immutable: true,
+    createdBy: user.uid,
+    createdBySnapshot: actor,
+    createdAt: serverTimestamp(),
+  });
+  await batch.commit();
 };

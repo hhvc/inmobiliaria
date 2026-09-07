@@ -3,6 +3,10 @@ import { Link } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { useAuth } from "../../context/auth/useAuth";
+import {
+  createOnlinePaymentCheckout,
+  openOnlinePaymentCheckout,
+} from "../../payments/services/onlinePayment.service";
 import ConsortiumExpenseDocumentsPanel from "../components/ConsortiumExpenseDocumentsPanel";
 import ConsortiumPrivateDocumentButton from "../components/ConsortiumPrivateDocumentButton";
 import ConsortiumClaimsPanel from "../components/ConsortiumClaimsPanel";
@@ -186,6 +190,24 @@ const ConsortiumResidentPortalPage = () => {
     document.getElementById("consortium-resident-payment-report")?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const payOnline = async (obligationId) => {
+    if (!selectedUnit) return;
+    try {
+      setOperation(`online-${obligationId}`);
+      setError("");
+      setSuccess("");
+      const result = await createOnlinePaymentCheckout({
+        contextType: "consortium_obligation",
+        inmobiliariaId: selectedUnit.inmobiliariaId,
+        obligationId,
+      });
+      openOnlinePaymentCheckout(result.initPoint);
+    } catch (paymentError) {
+      setError(paymentError.message || "No se pudo iniciar el pago.");
+      setOperation("");
+    }
+  };
+
   const submitReport = async (event) => {
     event.preventDefault();
     if (!selectedUnit) return;
@@ -257,7 +279,7 @@ const ConsortiumResidentPortalPage = () => {
             portalMode
           />
 
-          <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Estado de cuenta</h2>{detailLoading ? <p className="text-muted">Cargando movimientos...</p> : <div className="table-responsive"><table className="table table-hover align-middle"><thead><tr><th>Período</th><th>Vencimiento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead><tbody>{obligations.map((obligation) => { const status = getConsortiumObligationStatus(obligation); const state = getConsortiumObligationStatusLabel(status); return <tr key={obligation.id}><td>{getConsortiumAccountingPeriodLabel(obligation)}</td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/mi-consorcio/${selectedUnit.inmobiliariaId}/${selectedUnit.consortiumId}/liquidaciones/${obligation.id}`}>Ver PDF</Link><button className="btn btn-outline-secondary" type="button" onClick={() => setSelectedPeriodId(obligation.periodId)}>Comprobantes</button>{Number(obligation.balanceMinor || 0) > 0 && <button className="btn btn-success" type="button" onClick={() => selectReport(obligation)}>Informar pago</button>}</div></td></tr>; })}{!obligations.length && <tr><td className="text-center text-muted py-4" colSpan="7">Todavía no hay expensas emitidas.</td></tr>}</tbody></table></div>}</div></section>
+          <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Estado de cuenta</h2>{detailLoading ? <p className="text-muted">Cargando movimientos...</p> : <div className="table-responsive"><table className="table table-hover align-middle"><thead><tr><th>Período</th><th>Vencimiento</th><th>Total</th><th>Pagado</th><th>Saldo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead><tbody>{obligations.map((obligation) => { const status = getConsortiumObligationStatus(obligation); const state = getConsortiumObligationStatusLabel(status); return <tr key={obligation.id}><td>{getConsortiumAccountingPeriodLabel(obligation)}</td><td>{obligation.dueDate}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/mi-consorcio/${selectedUnit.inmobiliariaId}/${selectedUnit.consortiumId}/liquidaciones/${obligation.id}`}>Ver PDF</Link><button className="btn btn-outline-secondary" type="button" onClick={() => setSelectedPeriodId(obligation.periodId)}>Comprobantes</button>{Number(obligation.balanceMinor || 0) > 0 && (obligation.currency || selectedUnit.currency || "ARS") === "ARS" && <button className="btn btn-success" type="button" disabled={operation === `online-${obligation.id}`} onClick={() => payOnline(obligation.id)}>{operation === `online-${obligation.id}` ? "Abriendo..." : "Pagar online"}</button>}{Number(obligation.balanceMinor || 0) > 0 && <button className="btn btn-outline-success" type="button" onClick={() => selectReport(obligation)}>Informar otro pago</button>}</div></td></tr>; })}{!obligations.length && <tr><td className="text-center text-muted py-4" colSpan="7">Todavía no hay expensas emitidas.</td></tr>}</tbody></table></div>}</div></section>
 
           {selectedPeriod && <ConsortiumExpenseDocumentsPanel inmobiliariaId={selectedUnit.inmobiliariaId} consortiumId={selectedUnit.consortiumId} period={selectedPeriod} expenses={selectedPeriod.expenses || []} documents={expenseDocuments} />}
 

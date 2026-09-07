@@ -6,7 +6,9 @@ import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActive
 import {
   getConsortiumById,
   getConsortiumObligationById,
+  getConsortiumObligations,
   getConsortiumPeriodById,
+  getConsortiumUnitById,
 } from "../services/consorcio.service";
 import {
   buildConsortiumLiquidationLines,
@@ -47,6 +49,8 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
   const [consortium, setConsortium] = useState(null);
   const [period, setPeriod] = useState(null);
   const [obligation, setObligation] = useState(null);
+  const [accountObligations, setAccountObligations] = useState([]);
+  const [unitDetails, setUnitDetails] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -61,9 +65,14 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
         if (!obligationData || obligationData.consortiumId !== consortiumId) {
           throw new Error("La liquidación no existe para este consorcio.");
         }
-        const [consortiumData, periodData] = await Promise.all([
+        const [consortiumData, periodData, obligationDataList, unitData] = await Promise.all([
           getConsortiumById(inmobiliariaId, consortiumId),
           getConsortiumPeriodById(inmobiliariaId, obligationData.periodId),
+          getConsortiumObligations(inmobiliariaId, {
+            consortiumId,
+            unitId: obligationData.unitId,
+          }),
+          getConsortiumUnitById(inmobiliariaId, obligationData.unitId),
         ]);
         if (!consortiumData || !periodData || periodData.consortiumId !== consortiumId) {
           throw new Error("No se pudo reconstruir la liquidación emitida.");
@@ -72,6 +81,8 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
           setConsortium(consortiumData);
           setPeriod(periodData);
           setObligation(obligationData);
+          setAccountObligations(obligationDataList);
+          setUnitDetails(unitData);
         }
       } catch (loadError) {
         if (mounted) setError(loadError.message || "No se pudo cargar la liquidación.");
@@ -99,6 +110,13 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
     ? "Liquidación de multa / penalidad"
     : "Liquidación de expensas";
   const backTo = portalMode ? "/mi-consorcio" : `/admin/consorcios/${consortiumId}`;
+  const otherOpenMinor = accountObligations
+    .filter((item) => item.id !== obligation?.id && item.voided !== true)
+    .reduce((sum, item) => sum + Math.max(0, Number(item.balanceMinor) || 0), 0);
+  const creditBalanceMinor = Math.max(0, Number(unitDetails?.creditBalanceMinor) || 0);
+  const grossAccountBalanceMinor = Math.max(0, Number(obligation?.balanceMinor) || 0)
+    + otherOpenMinor;
+  const netAccountBalanceMinor = grossAccountBalanceMinor - creditBalanceMinor;
 
   if (loading || (!portalMode && agencyLoading)) {
     return <main className="container py-5 text-center">Cargando liquidación...</main>;
@@ -178,9 +196,11 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
 
         <section className="rounded border p-3 mb-4">
           <div className="row g-3 align-items-center">
-            <div className="col-md-4"><small className="text-muted text-uppercase">Pagos aplicados</small><strong className="d-block consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, currency)}</strong></div>
-            <div className="col-md-4"><small className="text-muted text-uppercase">Saldo actual</small><strong className={`d-block fs-5 consortium-money ${Number(obligation.balanceMinor || 0) > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(obligation.balanceMinor, currency)}</strong></div>
-            <div className="col-md-4 text-md-end"><span className={`badge fs-6 ${statusMeta.badge}`}>{statusMeta.label}</span></div>
+            <div className="col-sm-6 col-xl-3"><small className="text-muted text-uppercase">Pagos de este período</small><strong className="d-block consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, currency)}</strong></div>
+            <div className="col-sm-6 col-xl-3"><small className="text-muted text-uppercase">Saldo de este período</small><strong className={`d-block consortium-money ${Number(obligation.balanceMinor || 0) > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(obligation.balanceMinor, currency)}</strong></div>
+            <div className="col-sm-6 col-xl-3"><small className="text-muted text-uppercase">Otros períodos pendientes</small><strong className="d-block consortium-money">{formatConsortiumMoney(otherOpenMinor, currency)}</strong></div>
+            <div className="col-sm-6 col-xl-3"><small className="text-muted text-uppercase">Saldo a favor</small><strong className="d-block text-success consortium-money">{formatConsortiumMoney(creditBalanceMinor, currency)}</strong></div>
+            <div className="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2 border-top pt-3"><span><strong>Estado de cuenta actualizado:</strong> {netAccountBalanceMinor >= 0 ? "a cargo de la unidad" : "a favor de la unidad"}</span><strong className={`fs-5 consortium-money ${netAccountBalanceMinor > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(Math.abs(netAccountBalanceMinor), currency)}</strong><span className={`badge ${statusMeta.badge}`}>{statusMeta.label}</span></div>
           </div>
         </section>
 
