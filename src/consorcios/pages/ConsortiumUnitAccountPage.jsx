@@ -283,7 +283,7 @@ const ConsortiumUnitAccountPage = () => {
               </tbody>
             </table>
           </div>
-          <h2 className="h5 mt-4">Saldos iniciales y rectificaciones</h2>
+          <h2 className="h5 mt-4">Ajustes e intereses</h2>
           <div className="table-responsive">
             <table className="table table-sm align-middle">
               <thead><tr><th>Fecha</th><th>Movimiento</th><th>Período</th><th>Motivo</th><th className="text-end">Impacto</th></tr></thead>
@@ -292,7 +292,7 @@ const ConsortiumUnitAccountPage = () => {
                   const isCredit = adjustment.direction === "credit";
                   return <tr key={adjustment.id}><td>{adjustment.effectiveDate}</td><td>{getConsortiumAdjustmentTypeLabel(adjustment.type)}</td><td>{getConsortiumAccountingPeriodLabel(adjustment)}</td><td>{adjustment.reason || "—"}</td><td className={`text-end consortium-money ${isCredit ? "text-success" : "text-danger"}`}>{isCredit ? "− " : "+ "}{formatConsortiumMoney(adjustment.amountMinor, adjustment.currency)}</td></tr>;
                 })}
-                {!adjustments.length && <tr><td className="text-center text-muted py-4" colSpan="5">No hay saldos iniciales ni rectificaciones.</td></tr>}
+                {!adjustments.length && <tr><td className="text-center text-muted py-4" colSpan="5">No hay saldos iniciales, rectificaciones ni intereses.</td></tr>}
               </tbody>
             </table>
           </div>

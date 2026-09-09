@@ -140,13 +140,36 @@ const Footer = () => {
             aria-label="Información legal"
           >
             {isPortalDomain && (
-              <Link
-                to="/donar"
-                className="text-decoration-none"
-                style={{ color: "rgba(255,255,255,0.72)" }}
-              >
-                Apoyar ONO Prop
-              </Link>
+              <>
+                <Link
+                  to="/publicar-inmueble-gratis"
+                  className="text-decoration-none"
+                  style={{ color: "rgba(255,255,255,0.72)" }}
+                >
+                  Publicar gratis
+                </Link>
+                <Link
+                  to="/software-para-inmobiliarias"
+                  className="text-decoration-none"
+                  style={{ color: "rgba(255,255,255,0.72)" }}
+                >
+                  Para inmobiliarias
+                </Link>
+                <Link
+                  to="/guias"
+                  className="text-decoration-none"
+                  style={{ color: "rgba(255,255,255,0.72)" }}
+                >
+                  Guías y ayuda
+                </Link>
+                <Link
+                  to="/donar"
+                  className="text-decoration-none"
+                  style={{ color: "rgba(255,255,255,0.72)" }}
+                >
+                  Apoyar ONO Prop
+                </Link>
+              </>
             )}
             <a
               href="https://onoprop.com/privacidad"

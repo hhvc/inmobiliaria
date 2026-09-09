@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 
 import SEO from "../components/SEO";
 import "./guides.css";
@@ -55,6 +56,7 @@ const ArcaDelegationGuidePage = () => {
             <button className="btn btn-outline-light btn-lg" type="button" onClick={copyCuit}>
               {copied ? "CUIT copiado" : "Copiar CUIT de ONO Prop"}
             </button>
+            <Link className="btn btn-outline-light btn-lg" to="/guias">Todas las guías</Link>
           </div>
         </div>
       </section>

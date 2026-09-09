@@ -32,7 +32,17 @@ const ConsortiumFormPage = () => {
         setLoading(true);
         const data = await getConsortiumById(activeInmobiliariaId, id);
         if (!data) throw new Error("El consorcio no existe.");
-        if (mounted) setForm({ ...createEmptyConsortium(), ...data });
+        if (mounted) {
+          const empty = createEmptyConsortium();
+          setForm({
+            ...empty,
+            ...data,
+            interestPolicy: {
+              ...empty.interestPolicy,
+              ...(data.interestPolicy || {}),
+            },
+          });
+        }
       } catch (loadError) {
         if (mounted) setError(loadError.message || "No se pudo cargar el consorcio.");
       } finally {
@@ -44,6 +54,10 @@ const ConsortiumFormPage = () => {
   }, [activeInmobiliariaId, id]);
 
   const update = (field, value) => setForm((current) => ({ ...current, [field]: value }));
+  const updateInterestPolicy = (field, value) => setForm((current) => ({
+    ...current,
+    interestPolicy: { ...current.interestPolicy, [field]: value },
+  }));
 
   const submit = async (event) => {
     event.preventDefault();
@@ -141,6 +155,42 @@ const ConsortiumFormPage = () => {
             <div className="col-md-4">
               <label className="form-label" htmlFor="consortium-bank-account">CBU, CVU o alias</label>
               <input id="consortium-bank-account" className="form-control" value={form.bankAccount} onChange={(e) => update("bankAccount", e.target.value)} />
+            </div>
+            <div className="col-12">
+              <div className="rounded border bg-light p-3">
+                <div className="form-check form-switch mb-3">
+                  <input
+                    id="consortium-interest-enabled"
+                    className="form-check-input"
+                    type="checkbox"
+                    checked={form.interestPolicy.enabled}
+                    onChange={(e) => updateInterestPolicy("enabled", e.target.checked)}
+                  />
+                  <label className="form-check-label fw-semibold" htmlFor="consortium-interest-enabled">Aplicar intereses por mora</label>
+                </div>
+                <div className="row g-3">
+                  <div className="col-md-4">
+                    <label className="form-label" htmlFor="consortium-interest-rate">Tasa nominal anual (TNA)</label>
+                    <div className="input-group"><input id="consortium-interest-rate" className="form-control" type="number" min="0" max="1000" step="0.01" disabled={!form.interestPolicy.enabled} value={form.interestPolicy.annualRatePercent} onChange={(e) => updateInterestPolicy("annualRatePercent", e.target.value)} /><span className="input-group-text">%</span></div>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label" htmlFor="consortium-interest-mode">Cálculo diario</label>
+                    <select id="consortium-interest-mode" className="form-select" disabled={!form.interestPolicy.enabled} value={form.interestPolicy.calculationMode} onChange={(e) => updateInterestPolicy("calculationMode", e.target.value)}><option value="simple">Interés simple</option><option value="compound">Capitalización diaria</option></select>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label" htmlFor="consortium-interest-grace">Días de gracia</label>
+                    <input id="consortium-interest-grace" className="form-control" type="number" min="0" max="365" step="1" disabled={!form.interestPolicy.enabled} value={form.interestPolicy.graceDays} onChange={(e) => updateInterestPolicy("graceDays", e.target.value)} />
+                    <div className="form-text">El último día de gracia funciona como segundo vencimiento sin recargo.</div>
+                  </div>
+                  <div className="col-12">
+                    <div className="form-check">
+                      <input id="consortium-interest-retroactive" className="form-check-input" type="checkbox" disabled={!form.interestPolicy.enabled || !Number(form.interestPolicy.graceDays)} checked={form.interestPolicy.retroactiveFromDueDate} onChange={(e) => updateInterestPolicy("retroactiveFromDueDate", e.target.checked)} />
+                      <label className="form-check-label" htmlFor="consortium-interest-retroactive">Si vence la gracia, calcular desde el primer vencimiento</label>
+                    </div>
+                  </div>
+                </div>
+                <p className="small text-muted mb-0 mt-3">La configuración no genera cargos por sí sola. En Cobranzas se muestra el cálculo previo y el administrador confirma cada liquidación de intereses.</p>
+              </div>
             </div>
             <div className="col-12">
               <label className="form-label" htmlFor="consortium-notes">Notas internas</label>

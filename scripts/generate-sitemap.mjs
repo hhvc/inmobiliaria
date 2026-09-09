@@ -3,6 +3,13 @@ import path from "node:path";
 
 import admin from "firebase-admin";
 
+import {
+    buildAgencySeoRoute,
+    buildDevelopmentSeoRoute,
+    buildPropertySeoRoute,
+    buildStaticSeoRoute,
+} from "./seo-prerender.helpers.mjs";
+
 const DEFAULT_SITE_URL = "https://onoprop.com";
 
 const getSiteUrl = () => {
@@ -14,6 +21,11 @@ const getSiteUrl = () => {
 };
 
 const OUTPUT_PATH = path.resolve("public", "sitemap.xml");
+const SEO_MANIFEST_PATH = path.resolve(
+    "node_modules",
+    ".cache",
+    "onoprop-seo-routes.json",
+);
 
 const STATIC_ROUTES = [
     {
@@ -42,9 +54,24 @@ const STATIC_ROUTES = [
         priority: "0.8",
     },
     {
+        path: "/publicar-inmueble-gratis",
+        changefreq: "weekly",
+        priority: "0.9",
+    },
+    {
+        path: "/software-para-inmobiliarias",
+        changefreq: "weekly",
+        priority: "0.9",
+    },
+    {
         path: "/donar",
         changefreq: "monthly",
         priority: "0.5",
+    },
+    {
+        path: "/guias",
+        changefreq: "monthly",
+        priority: "0.6",
     },
     {
         path: "/sobre-onoprop",
@@ -315,6 +342,30 @@ const writeSitemap = (entries) => {
     return uniqueEntries.length;
 };
 
+const writeSeoManifest = (routes) => {
+    const uniqueRoutes = Array.from(
+        new Map(
+            routes
+                .filter((route) => route?.path)
+                .map((route) => [route.path, route]),
+        ).values(),
+    );
+    const manifest = {
+        generatedAt: new Date().toISOString(),
+        siteUrl: normalizeBaseUrl(getSiteUrl()),
+        routes: uniqueRoutes,
+    };
+
+    fs.mkdirSync(path.dirname(SEO_MANIFEST_PATH), { recursive: true });
+    fs.writeFileSync(
+        SEO_MANIFEST_PATH,
+        `${JSON.stringify(manifest, null, 2)}\n`,
+        "utf8",
+    );
+
+    return uniqueRoutes.length;
+};
+
 const main = async () => {
     loadEnvFiles();
     initializeFirebaseAdmin();
@@ -328,18 +379,26 @@ const main = async () => {
         changefreq: route.changefreq,
         priority: route.priority,
     }));
+    const seoRoutes = STATIC_ROUTES
+        .map((route) => buildStaticSeoRoute(route.path))
+        .filter(Boolean);
 
     const inmobiliarias = await getInmobiliariasPublicas(db);
 
     for (const inmobiliaria of inmobiliarias) {
         const slug = normalizeSlug(inmobiliaria.slug);
+        const agencyRoutePath = `/inmobiliaria/${slug}`;
 
         entries.push({
-            loc: buildUrl(`/inmobiliaria/${slug}`),
+            loc: buildUrl(agencyRoutePath),
             lastmod: toLastmod(inmobiliaria.updatedAt || inmobiliaria.createdAt),
             changefreq: "weekly",
             priority: "0.8",
         });
+        seoRoutes.push(buildAgencySeoRoute({
+            agency: inmobiliaria,
+            routePath: agencyRoutePath,
+        }));
 
         const inmuebles = await getInmueblesPublicosByInmobiliaria(
             db,
@@ -348,13 +407,19 @@ const main = async () => {
 
         inmuebles.forEach((inmueble) => {
             const inmuebleSlug = normalizeSlug(inmueble.slug);
+            const propertyRoutePath = `/inmueble/${inmuebleSlug}`;
 
             entries.push({
-                loc: buildUrl(`/inmueble/${inmuebleSlug}`),
+                loc: buildUrl(propertyRoutePath),
                 lastmod: toLastmod(inmueble.updatedAt || inmueble.createdAt),
                 changefreq: "weekly",
                 priority: inmueble.destacado ? "0.8" : "0.7",
             });
+            seoRoutes.push(buildPropertySeoRoute({
+                property: inmueble,
+                agency: inmobiliaria,
+                routePath: propertyRoutePath,
+            }));
         });
 
         const emprendimientos =
@@ -365,23 +430,31 @@ const main = async () => {
 
         emprendimientos.forEach((emprendimiento) => {
             const emprendimientoSlug = normalizeSlug(emprendimiento.slug);
+            const developmentRoutePath = `/emprendimiento/${emprendimientoSlug}`;
 
             entries.push({
-                loc: buildUrl(`/emprendimiento/${emprendimientoSlug}`),
+                loc: buildUrl(developmentRoutePath),
                 lastmod: toLastmod(
                     emprendimiento.updatedAt || emprendimiento.createdAt,
                 ),
                 changefreq: "weekly",
                 priority: emprendimiento.destacado ? "0.8" : "0.7",
             });
+            seoRoutes.push(buildDevelopmentSeoRoute({
+                development: emprendimiento,
+                agency: inmobiliaria,
+                routePath: developmentRoutePath,
+            }));
         });
     }
 
     const total = writeSitemap(entries);
+    const seoTotal = writeSeoManifest(seoRoutes);
 
     console.log(`✅ Sitemap generado en ${OUTPUT_PATH}`);
     console.log(`🏢 Inmobiliarias incluidas: ${inmobiliarias.length}`);
     console.log(`🔗 URLs incluidas: ${total}`);
+    console.log(`🤖 Rutas con HTML SEO: ${seoTotal}`);
 };
 
 main().catch((error) => {

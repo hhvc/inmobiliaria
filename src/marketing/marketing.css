@@ -1,0 +1,231 @@
+.marketing-page {
+  background: #fff;
+  color: #16302b;
+}
+
+.marketing-hero {
+  color: #fff;
+  overflow: hidden;
+  position: relative;
+}
+
+.marketing-hero::after {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  content: "";
+  height: 34rem;
+  position: absolute;
+  right: -15rem;
+  top: -19rem;
+  width: 34rem;
+}
+
+.marketing-hero--owners {
+  background: linear-gradient(135deg, #0d664d 0%, #15966f 58%, #0b4a3b 100%);
+}
+
+.marketing-hero--agencies {
+  background: linear-gradient(135deg, #153c34 0%, #0d664d 52%, #0a8f78 100%);
+}
+
+.marketing-eyebrow {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.marketing-hero-note {
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.marketing-summary-card {
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 1.5rem;
+  box-shadow: 0 1.5rem 4rem rgba(0, 36, 27, 0.24);
+  padding: 2rem;
+  position: relative;
+  z-index: 1;
+}
+
+.marketing-summary-price {
+  display: block;
+  font-size: clamp(3rem, 8vw, 5.5rem);
+  font-weight: 800;
+  letter-spacing: -0.06em;
+  line-height: 0.95;
+  margin-bottom: 1rem;
+}
+
+.marketing-summary-kicker {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.marketing-check-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.marketing-check-list li {
+  border-top: 1px solid rgba(255, 255, 255, 0.17);
+  padding: 0.75rem 0 0.75rem 1.75rem;
+  position: relative;
+}
+
+.marketing-check-list li::before {
+  content: "✓";
+  font-weight: 800;
+  left: 0;
+  position: absolute;
+}
+
+.marketing-heading {
+  max-width: 52rem;
+}
+
+.marketing-card {
+  background: #fff;
+  border: 1px solid #e2eee9;
+  border-radius: 1.25rem;
+  box-shadow: 0 0.9rem 2.5rem rgba(16, 72, 59, 0.08);
+  padding: 1.75rem;
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.marketing-card:hover {
+  box-shadow: 0 1.2rem 3rem rgba(16, 72, 59, 0.13);
+  transform: translateY(-3px);
+}
+
+.marketing-card-number {
+  color: #0d805f;
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  margin-bottom: 1.5rem;
+}
+
+.marketing-soft-section {
+  background: #f2f8f5;
+}
+
+.marketing-step-list {
+  counter-reset: steps;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.marketing-step-list li {
+  align-items: flex-start;
+  border-bottom: 1px solid #d9e9e2;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 2.6rem 1fr;
+  padding: 1rem 0;
+}
+
+.marketing-step-list li:first-child {
+  padding-top: 0;
+}
+
+.marketing-step-list li > span {
+  align-items: center;
+  background: #0d664d;
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  font-weight: 800;
+  height: 2.4rem;
+  justify-content: center;
+  width: 2.4rem;
+}
+
+.marketing-step-list p {
+  font-size: 1.05rem;
+  margin: 0.4rem 0 0;
+}
+
+.marketing-proof-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.marketing-proof-grid > div {
+  background: #fff;
+  border: 1px solid #dbeae4;
+  border-radius: 1rem;
+  min-height: 9rem;
+  padding: 1.4rem;
+}
+
+.marketing-proof-grid strong,
+.marketing-proof-grid span {
+  display: block;
+}
+
+.marketing-proof-grid strong {
+  color: #0d664d;
+  font-size: 1.15rem;
+  margin-bottom: 0.5rem;
+}
+
+.marketing-proof-grid span {
+  color: #667b75;
+}
+
+.marketing-faq-list {
+  border-top: 1px solid #dbe9e3;
+}
+
+.marketing-faq {
+  border-bottom: 1px solid #dbe9e3;
+  padding: 1.1rem 0;
+}
+
+.marketing-faq summary {
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 700;
+  padding-right: 1.5rem;
+}
+
+.marketing-faq p {
+  color: #667b75;
+  margin: 0.9rem 0 0;
+}
+
+.marketing-final-cta {
+  background: #103e34;
+  color: #fff;
+}
+
+@media (max-width: 767.98px) {
+  .marketing-hero .display-4,
+  .marketing-page .display-6 {
+    letter-spacing: -0.025em;
+  }
+
+  .marketing-summary-card {
+    padding: 1.4rem;
+  }
+
+  .marketing-proof-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing-card {
+    transition: none;
+  }
+}

@@ -301,7 +301,11 @@ const PublicPlansPage = () => {
                 </div>
             </section>
 
-            <section className="plans-contact-section py-5" ref={formRef}>
+            <section
+                className="plans-contact-section py-5"
+                id="contacto-comercial"
+                ref={formRef}
+            >
                 <div className="container py-lg-4">
                     <div className="row g-4 align-items-start">
                         <div className="col-lg-5">

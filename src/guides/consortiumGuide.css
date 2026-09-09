@@ -39,6 +39,13 @@
   line-height: 1.65;
 }
 
+.consortium-guide-version {
+  margin: 0.75rem 0 0;
+  color: #d9ecff;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
 .consortium-guide-content { max-width: 1080px; }
 
 .consortium-guide-principle {
@@ -67,6 +74,7 @@
 .consortium-guide-index,
 .consortium-guide-workflow,
 .consortium-guide-section,
+.consortium-guide-launch,
 .consortium-guide-faq,
 .consortium-guide-help {
   border: 1px solid #dce3ed;
@@ -84,7 +92,7 @@
 .consortium-guide-workflow h2,
 .consortium-guide-faq h2,
 .consortium-guide-help h2 { margin: 0; font-size: clamp(1.45rem, 3vw, 1.9rem); font-weight: 850; }
-.consortium-guide-workflow > div { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 0.7rem; margin-top: 1.35rem; }
+.consortium-guide-workflow > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.7rem; margin-top: 1.35rem; }
 .consortium-guide-workflow article { padding: 0.85rem; border: 1px solid #e1e7f0; border-radius: 0.85rem; background: #f9fbfe; }
 .consortium-guide-workflow article > span { display: grid; width: 1.8rem; height: 1.8rem; margin-bottom: 0.65rem; place-items: center; border-radius: 50%; background: #0d6efd; color: #fff; font-weight: 850; }
 .consortium-guide-workflow h3 { margin: 0 0 0.35rem; font-size: 1rem; font-weight: 800; }
@@ -123,6 +131,10 @@
 .consortium-guide-close-grid span { display: block; }
 .consortium-guide-close-grid span { margin-top: 0.35rem; color: #5d687d; font-size: 0.9rem; line-height: 1.45; }
 
+.consortium-guide-launch { padding: clamp(1.4rem, 4vw, 2rem); }
+.consortium-guide-launch h2 { margin: 0; font-size: clamp(1.45rem, 3vw, 1.9rem); font-weight: 850; }
+.consortium-guide-launch-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem; margin-top: 1.25rem; }
+
 .consortium-guide-faq,
 .consortium-guide-help { padding: clamp(1.4rem, 4vw, 2rem); }
 .consortium-guide-faq details { padding: 1rem 0; border-bottom: 1px solid #e8ecf2; }
@@ -135,7 +147,8 @@
 @media (max-width: 991.98px) {
   .consortium-guide-workflow > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .consortium-guide-columns,
-  .consortium-guide-close-grid { grid-template-columns: 1fr; }
+  .consortium-guide-close-grid,
+  .consortium-guide-launch-grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 575.98px) {

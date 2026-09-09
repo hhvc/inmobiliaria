@@ -1,7 +1,21 @@
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /admin/
+Disallow: /perfil
+Disallow: /mis-publicaciones
+Disallow: /pagos/
+
+User-agent: ChatGPT-User
+Allow: /
+
 User-agent: *
 Allow: /
 
 Disallow: /admin/
 Disallow: /perfil
+Disallow: /mis-publicaciones
+Disallow: /pagos/
+Disallow: /login
+Disallow: /verificar-email
 
 Sitemap: https://onoprop.com/sitemap.xml

@@ -285,10 +285,10 @@ const PortalSearchHomePage = () => {
                     </form>
 
                     <div className="d-flex flex-wrap justify-content-center gap-2 mt-4">
-                        <Link to="/publicar" className="btn btn-primary">
+                        <Link to="/publicar-inmueble-gratis" className="btn btn-primary">
                             Publicar como particular
                         </Link>
-                        <Link to="/inmobiliarias" className="btn btn-outline-primary">
+                        <Link to="/software-para-inmobiliarias" className="btn btn-outline-primary">
                             Publicar como inmobiliaria
                         </Link>
                     </div>
@@ -339,7 +339,7 @@ const PortalSearchHomePage = () => {
                                     Publicación, sitio propio, red de colegas y módulos de gestión
                                     en una misma plataforma.
                                 </p>
-                                <Link to="/inmobiliarias" className="btn btn-outline-primary">
+                                <Link to="/software-para-inmobiliarias" className="btn btn-outline-primary">
                                     Ver soluciones
                                 </Link>
                             </div>

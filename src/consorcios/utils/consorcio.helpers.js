@@ -67,6 +67,7 @@ export const getConsortiumAdjustmentTypeLabel = (type = "") => ({
   rectification_credit: "Nota de crédito",
   penalty_debit: "Multa / penalidad",
   penalty_credit: "Anulación de multa",
+  interest_debit: "Interés por mora",
 }[type] || type || "Ajuste");
 
 export const getConsortiumPenaltyAuthorityLabel = (authority = "") => ({
@@ -159,6 +160,9 @@ export const validateConsortium = (value = {}) => {
   if (!value.address?.trim()) errors.push("Ingresá el domicilio del consorcio.");
   if (Number(value.dueDay || 0) < 1 || Number(value.dueDay || 0) > 31) {
     errors.push("El día habitual de vencimiento debe estar entre 1 y 31.");
+  }
+  if (value.interestPolicy?.enabled && Number(value.interestPolicy.annualRatePercent || 0) <= 0) {
+    errors.push("Ingresá una TNA mayor a cero para aplicar intereses por mora.");
   }
   return errors;
 };
@@ -851,6 +855,8 @@ export const isConsortiumClaimOpen = (claim = {}) => ![
 export const getConsortiumExpenseCategoryLabel = (category = "ordinary") => (
   category === "penalty"
     ? "Multa / penalidad"
+    : category === "interest"
+      ? "Interés por mora"
     : category === "extraordinary" ? "Extraordinaria" : "Ordinaria"
 );
 
@@ -880,7 +886,9 @@ export const buildConsortiumLiquidationLines = ({ period = {}, obligation = {} }
       concept: line.concept || expense?.concept || "Gasto",
       category: line.category === "penalty"
         ? "penalty"
-        : line.category === "extraordinary" ? "extraordinary" : "ordinary",
+        : line.category === "interest"
+          ? "interest"
+          : line.category === "extraordinary" ? "extraordinary" : "ordinary",
       distributionMode: line.distributionMode || expense?.distributionMode || "coefficient",
       expenseTotalMinor: expense ? Number(expense.amountMinor || 0) : Math.abs(unitAmountMinor),
       unitAmountMinor,

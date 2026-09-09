@@ -13,6 +13,13 @@ export const createEmptyConsortium = () => ({
   bankAccount: "",
   currency: "ARS",
   dueDay: 10,
+  interestPolicy: {
+    enabled: false,
+    annualRatePercent: 0,
+    calculationMode: "simple",
+    graceDays: 0,
+    retroactiveFromDueDate: false,
+  },
   notes: "",
   ownerPortalEmails: [],
   occupantPortalEmails: [],

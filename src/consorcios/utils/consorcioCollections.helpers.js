@@ -9,6 +9,90 @@ const parseDateKey = (value = "") => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const dateDiffDays = (fromKey = "", toKey = "") => {
+  const from = parseDateKey(fromKey);
+  const to = parseDateKey(toKey);
+  if (!from || !to) return 0;
+  return Math.max(0, Math.floor((to.getTime() - from.getTime()) / DAY_MS));
+};
+
+const addDays = (dateKey = "", days = 0) => {
+  const source = parseDateKey(dateKey);
+  if (!source) return "";
+  source.setUTCDate(source.getUTCDate() + Math.trunc(Number(days) || 0));
+  return source.toISOString().slice(0, 10);
+};
+
+export const normalizeConsortiumInterestPolicy = (value = {}) => ({
+  enabled: value?.enabled === true,
+  annualRatePercent: Math.min(1000, Math.max(0, Number(value?.annualRatePercent) || 0)),
+  calculationMode: value?.calculationMode === "compound" ? "compound" : "simple",
+  graceDays: Math.min(365, Math.max(0, Math.trunc(Number(value?.graceDays) || 0))),
+  retroactiveFromDueDate: value?.retroactiveFromDueDate === true,
+});
+
+export const buildConsortiumInterestPreview = ({
+  obligations = [],
+  obligationIds = [],
+  policy = {},
+  cutoffDate = new Date().toISOString().slice(0, 10),
+} = {}) => {
+  const normalizedPolicy = normalizeConsortiumInterestPolicy(policy);
+  const selectedIds = new Set(
+    (Array.isArray(obligationIds) ? obligationIds : []).filter(Boolean),
+  );
+  const annualRate = normalizedPolicy.annualRatePercent / 100;
+  const dailyRate = annualRate / 365;
+  const items = (Array.isArray(obligations) ? obligations : [])
+    .filter((item) => item?.voided !== true && safeInteger(item?.balanceMinor) > 0)
+    .filter((item) => !selectedIds.size || selectedIds.has(item.id))
+    .map((obligation) => {
+      const dueDate = obligation.dueDate || "";
+      const graceEndsOn = addDays(dueDate, normalizedPolicy.graceDays);
+      const previousCutoff = obligation.interestAssessedThrough || "";
+      const firstCalculationFrom = normalizedPolicy.retroactiveFromDueDate
+        && dateDiffDays(graceEndsOn, cutoffDate) > 0
+        ? dueDate
+        : graceEndsOn;
+      const calculationFrom = previousCutoff && previousCutoff > firstCalculationFrom
+        ? previousCutoff
+        : firstCalculationFrom;
+      const days = dateDiffDays(calculationFrom, cutoffDate);
+      const balanceBeforeMinor = safeInteger(obligation.balanceMinor);
+      const rawInterest = normalizedPolicy.calculationMode === "compound"
+        ? balanceBeforeMinor * ((1 + dailyRate) ** days - 1)
+        : balanceBeforeMinor * dailyRate * days;
+      const interestMinor = normalizedPolicy.enabled && annualRate > 0 && days > 0
+        ? Math.max(0, Math.round(rawInterest))
+        : 0;
+      return {
+        obligationId: obligation.id || "",
+        periodId: obligation.periodId || "",
+        periodKey: obligation.periodKey || "",
+        dueDate,
+        graceEndsOn,
+        calculationFrom,
+        cutoffDate,
+        days,
+        balanceBeforeMinor,
+        interestMinor,
+        balanceAfterMinor: balanceBeforeMinor + interestMinor,
+      };
+    })
+    .sort((left, right) => (
+      (left.dueDate || "9999-12-31").localeCompare(right.dueDate || "9999-12-31")
+      || left.obligationId.localeCompare(right.obligationId)
+    ));
+  return {
+    policy: normalizedPolicy,
+    cutoffDate,
+    dailyRate,
+    items,
+    chargeableItems: items.filter((item) => item.interestMinor > 0),
+    totalInterestMinor: items.reduce((sum, item) => sum + item.interestMinor, 0),
+  };
+};
+
 export const getConsortiumDaysPastDue = (dueDate = "", todayKey = new Date().toISOString().slice(0, 10)) => {
   const due = parseDateKey(dueDate);
   const today = parseDateKey(todayKey);

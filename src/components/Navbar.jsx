@@ -186,7 +186,7 @@ const Navbar = () => {
       },
       {
         label: "Inmobiliarias",
-        to: "/inmobiliarias",
+        to: "/software-para-inmobiliarias",
       },
       {
         label: "Planes",
@@ -194,7 +194,7 @@ const Navbar = () => {
       },
       {
         label: "Publicar",
-        to: "/publicar",
+        to: "/publicar-inmueble-gratis",
       },
       {
         label: "Contacto",

@@ -35,6 +35,13 @@ const formatTimestamp = (value) => {
     : "Sin fecha registrada";
 };
 
+const addDays = (dateKey = "", days = 0) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + Math.trunc(Number(days) || 0));
+  return date.toISOString().slice(0, 10);
+};
+
 const ConsortiumAssessmentPage = ({ portalMode = false }) => {
   const {
     id: consortiumId = "",
@@ -167,6 +174,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
             <div className="rounded border p-3 h-100">
               <small className="text-muted text-uppercase">Pago</small>
               <p className="mb-1"><strong>Vencimiento:</strong> {formatDate(obligation.dueDate)}</p>
+              {consortium.interestPolicy?.enabled && Number(consortium.interestPolicy.graceDays || 0) > 0 && <p className="mb-1"><strong>Segundo vencimiento sin recargo:</strong> {formatDate(addDays(obligation.dueDate, consortium.interestPolicy.graceDays))}</p>}
               <p className="mb-1"><strong>CBU, CVU o alias:</strong> {consortium.bankAccount || "Consultar con la administración"}</p>
               <p className="mb-0"><strong>Estado actual:</strong> <span className={`badge ${statusMeta.badge}`}>{statusMeta.label}</span></p>
             </div>
@@ -188,10 +196,11 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
         </section>
 
         <section className="row g-3 mb-4">
-          <div className="col-sm-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas ordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, currency)}</strong></div></div>
-          <div className="col-sm-6 col-xl-3"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas extraordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, currency)}</strong></div></div>
-          <div className="col-sm-6 col-xl-3"><div className="rounded bg-danger-subtle p-3 h-100"><small className="text-muted text-uppercase">Multas / penalidades</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.penaltyMinor, currency)}</strong></div></div>
-          <div className="col-sm-6 col-xl-3"><div className="rounded bg-primary-subtle p-3 h-100"><small className="text-muted text-uppercase">Total del período</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas ordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl"><div className="rounded bg-light p-3 h-100"><small className="text-muted text-uppercase">Expensas extraordinarias</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl"><div className="rounded bg-danger-subtle p-3 h-100"><small className="text-muted text-uppercase">Multas / penalidades</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.penaltyMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl"><div className="rounded bg-warning-subtle p-3 h-100"><small className="text-muted text-uppercase">Intereses por mora</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.interestMinor, currency)}</strong></div></div>
+          <div className="col-sm-6 col-xl"><div className="rounded bg-primary-subtle p-3 h-100"><small className="text-muted text-uppercase">Total actualizado</small><strong className="fs-5 d-block consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, currency)}</strong></div></div>
         </section>
 
         <section className="rounded border p-3 mb-4">
@@ -206,7 +215,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
 
         <footer className="small text-muted border-top pt-3">
           <p className="mb-1">Documento de gestión emitido por ONO Prop a partir de la liquidación aprobada. No reemplaza el recibo de pago ni un comprobante fiscal.</p>
-          <p className="mb-0">El detalle conserva los conceptos emitidos y agrega las rectificaciones auditadas; pagos y saldo reflejan el estado actual registrado.</p>
+          <p className="mb-0">El detalle conserva los conceptos emitidos y agrega las rectificaciones e intereses auditados; pagos y saldo reflejan el estado actual registrado.</p>
         </footer>
       </article>
     </main>

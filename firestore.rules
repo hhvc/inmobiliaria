@@ -1553,7 +1553,7 @@ allow delete: if isRoot();
           && request.resource.data.unitId is string
           && request.resource.data.type in [
             "opening_debit", "opening_credit", "rectification_debit", "rectification_credit",
-            "penalty_debit", "penalty_credit"
+            "penalty_debit", "penalty_credit", "interest_debit"
           ]
           && request.resource.data.amountMinor is int
           && request.resource.data.amountMinor > 0;

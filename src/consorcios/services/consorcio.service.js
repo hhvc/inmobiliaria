@@ -33,6 +33,8 @@ import {
 import {
   buildConsortiumPaymentAllocations,
   buildConsortiumPaymentAgreementSchedule,
+  buildConsortiumInterestPreview,
+  normalizeConsortiumInterestPolicy,
 } from "../utils/consorcioCollections.helpers";
 import {
   isConsortiumDocumentFileValid,
@@ -113,6 +115,7 @@ const sanitizeConsortium = (value = {}) => ({
   bankAccount: cleanText(value.bankAccount, 120),
   currency: cleanText(value.currency, 10) || "ARS",
   dueDay: Math.min(31, Math.max(1, Math.trunc(Number(value.dueDay) || 10))),
+  interestPolicy: normalizeConsortiumInterestPolicy(value.interestPolicy),
   notes: cleanText(value.notes, 4000),
   portalEmails: normalizeConsortiumEmails(value.portalEmails),
   status: value.status === "archived" ? "archived" : "active",
@@ -1015,7 +1018,12 @@ export const adjustConsortiumObligation = async ({
   const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
   const normalizedReason = cleanText(reason, 1000);
   if (!["debit", "credit"].includes(type)) throw new Error("Seleccioná débito o crédito.");
-  if (!["ordinary", "extraordinary"].includes(category)) throw new Error("Seleccioná el tipo de expensa.");
+  if (!["ordinary", "extraordinary", "interest"].includes(category)) {
+    throw new Error("Seleccioná el tipo de cargo.");
+  }
+  if (category === "interest" && type === "debit") {
+    throw new Error("Los débitos de interés se generan desde Cobranzas con cálculo previo.");
+  }
   if (!amount) throw new Error("Ingresá un importe mayor a cero.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveDate || "")) throw new Error("Ingresá la fecha del ajuste.");
   if (!normalizedReason) throw new Error("Ingresá el motivo del ajuste.");
@@ -1032,7 +1040,9 @@ export const adjustConsortiumObligation = async ({
       throw new Error("Solo se pueden ajustar liquidaciones emitidas.");
     }
     const period = periodSnapshot.data();
-    const categoryField = category === "extraordinary" ? "extraordinaryMinor" : "ordinaryMinor";
+    const categoryField = category === "interest"
+      ? "interestMinor"
+      : category === "extraordinary" ? "extraordinaryMinor" : "ordinaryMinor";
     const categoryAmountMinor = Math.max(0, Number(obligation[categoryField]) || 0);
     const previousTotalMinor = Math.max(0, Number(obligation.totalAmountMinor) || 0);
     const previousBalanceMinor = Math.max(0, Number(obligation.balanceMinor) || 0);
@@ -1076,21 +1086,23 @@ export const adjustConsortiumObligation = async ({
       obligationUpdate.originalBreakdown = Array.isArray(obligation.breakdown) ? obligation.breakdown : [];
     }
     transaction.update(obligationRef, obligationUpdate);
-    const previousAdjustmentNetMinor = Number(period.adjustmentNetMinor) || 0;
-    const adjustmentNetMinor = previousAdjustmentNetMinor + signedAmount;
-    const periodUpdate = {
-      status: type === "debit" && period.status === "closed" ? "issued" : period.status,
-      adjustmentNetMinor,
-      adjustedTotalExpensesMinor: Math.max(0, Number(period.totalExpensesMinor) || 0) + adjustmentNetMinor,
-      updatedBy: user.uid,
-      updatedAt: serverTimestamp(),
-    };
-    if (type === "debit" && period.status === "closed") {
-      periodUpdate.reopenedAt = serverTimestamp();
-      periodUpdate.reopenedBy = user.uid;
-      periodUpdate.reopenReason = normalizedReason;
+    if (category !== "interest") {
+      const previousAdjustmentNetMinor = Number(period.adjustmentNetMinor) || 0;
+      const adjustmentNetMinor = previousAdjustmentNetMinor + signedAmount;
+      const periodUpdate = {
+        status: type === "debit" && period.status === "closed" ? "issued" : period.status,
+        adjustmentNetMinor,
+        adjustedTotalExpensesMinor: Math.max(0, Number(period.totalExpensesMinor) || 0) + adjustmentNetMinor,
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      };
+      if (type === "debit" && period.status === "closed") {
+        periodUpdate.reopenedAt = serverTimestamp();
+        periodUpdate.reopenedBy = user.uid;
+        periodUpdate.reopenReason = normalizedReason;
+      }
+      transaction.update(periodRef, periodUpdate);
     }
-    transaction.update(periodRef, periodUpdate);
     transaction.set(adjustmentRef, {
       id: adjustmentRef.id,
       schemaVersion: 1,
@@ -1120,6 +1132,151 @@ export const adjustConsortiumObligation = async ({
     });
   });
   return adjustmentRef.id;
+};
+
+export const assessConsortiumInterests = async ({
+  inmobiliariaId,
+  consortiumId,
+  obligationIds = [],
+  cutoffDate,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  if (!hasValidDateKey(cutoffDate)) throw new Error("Ingresá una fecha de cálculo válida.");
+  if (cutoffDate > new Date().toISOString().slice(0, 10)) {
+    throw new Error("No se pueden liquidar intereses a una fecha futura.");
+  }
+  const normalizedIds = [...new Set(
+    (Array.isArray(obligationIds) ? obligationIds : []).map((item) => cleanText(item, 128)),
+  )].filter(Boolean);
+  if (!normalizedIds.length) throw new Error("Seleccioná al menos una obligación vencida.");
+  if (normalizedIds.length > 100) {
+    throw new Error("Liquidá hasta 100 obligaciones por operación.");
+  }
+
+  const consortiumRef = agencyDoc(inmobiliariaId, "consortiums", consortiumId);
+  const obligationRefs = normalizedIds.map((id) => (
+    agencyDoc(inmobiliariaId, "obligations", id)
+  ));
+  const adjustmentRefs = new Map(normalizedIds.map((id) => [
+    id,
+    doc(agencyCollection(inmobiliariaId, "adjustments")),
+  ]));
+
+  return runTransaction(db, async (transaction) => {
+    const snapshots = await Promise.all([
+      transaction.get(consortiumRef),
+      ...obligationRefs.map((ref) => transaction.get(ref)),
+    ]);
+    const consortiumSnap = snapshots[0];
+    if (!consortiumSnap.exists() || consortiumSnap.data()?.deleted === true) {
+      throw new Error("El consorcio no existe.");
+    }
+    const consortium = consortiumSnap.data() || {};
+    const policy = normalizeConsortiumInterestPolicy(consortium.interestPolicy);
+    if (!policy.enabled || policy.annualRatePercent <= 0) {
+      throw new Error("Configurá y activá la política de intereses del consorcio.");
+    }
+    const obligations = snapshots.slice(1).map((snapshot) => {
+      if (!snapshot.exists()) throw new Error("Una de las obligaciones seleccionadas no existe.");
+      return { id: snapshot.id, ...(snapshot.data() || {}) };
+    });
+    if (obligations.some((item) => (
+      item.consortiumId !== consortiumId || item.voided === true
+    ))) {
+      throw new Error("Una de las obligaciones no pertenece al consorcio activo.");
+    }
+    const preview = buildConsortiumInterestPreview({
+      obligations,
+      obligationIds: normalizedIds,
+      policy,
+      cutoffDate,
+    });
+    if (!preview.chargeableItems.length) {
+      throw new Error("No hay intereses nuevos para liquidar a la fecha elegida.");
+    }
+
+    preview.chargeableItems.forEach((item) => {
+      const obligation = obligations.find((candidate) => candidate.id === item.obligationId);
+      const obligationRef = agencyDoc(inmobiliariaId, "obligations", item.obligationId);
+      const adjustmentRef = adjustmentRefs.get(item.obligationId);
+      const previousTotalMinor = Math.max(0, Number(obligation.totalAmountMinor) || 0);
+      const nextTotalMinor = previousTotalMinor + item.interestMinor;
+      const previousBalanceMinor = Math.max(0, Number(obligation.balanceMinor) || 0);
+      const nextBalanceMinor = previousBalanceMinor + item.interestMinor;
+      const reason = `Intereses por mora al ${cutoffDate}`;
+      const calculationSnapshot = {
+        annualRatePercent: policy.annualRatePercent,
+        dailyRate: preview.dailyRate,
+        calculationMode: policy.calculationMode,
+        graceDays: policy.graceDays,
+        retroactiveFromDueDate: policy.retroactiveFromDueDate,
+        calculationFrom: item.calculationFrom,
+        cutoffDate,
+        days: item.days,
+        baseMinor: item.balanceBeforeMinor,
+      };
+      transaction.update(obligationRef, {
+        interestMinor: Math.max(0, Number(obligation.interestMinor) || 0) + item.interestMinor,
+        interestAssessedThrough: cutoffDate,
+        lastInterestCalculation: calculationSnapshot,
+        totalAmountMinor: nextTotalMinor,
+        balanceMinor: nextBalanceMinor,
+        status: getConsortiumObligationStatus({
+          ...obligation,
+          totalAmountMinor: nextTotalMinor,
+          balanceMinor: nextBalanceMinor,
+        }),
+        breakdown: [...(Array.isArray(obligation.breakdown) ? obligation.breakdown : []), {
+          expenseId: adjustmentRef.id,
+          concept: reason,
+          category: "interest",
+          distributionMode: "specific",
+          amountMinor: item.interestMinor,
+          source: "interest",
+        }],
+        adjustmentIds: [
+          ...(Array.isArray(obligation.adjustmentIds) ? obligation.adjustmentIds : []),
+          adjustmentRef.id,
+        ],
+        updatedBy: user.uid,
+        updatedAt: serverTimestamp(),
+      });
+      transaction.set(adjustmentRef, {
+        id: adjustmentRef.id,
+        schemaVersion: 1,
+        type: "interest_debit",
+        direction: "debit",
+        category: "interest",
+        consortiumId,
+        unitId: obligation.unitId,
+        unitSnapshot: obligation.unitSnapshot || {},
+        obligationId: item.obligationId,
+        periodId: obligation.periodId,
+        periodKey: obligation.periodKey,
+        source: obligation.source || "monthly_assessment",
+        currency: obligation.currency || consortium.currency || "ARS",
+        amountMinor: item.interestMinor,
+        effectiveDate: cutoffDate,
+        dueDate: obligation.dueDate || "",
+        reason,
+        calculationSnapshot,
+        previousTotalMinor,
+        nextTotalMinor,
+        previousBalanceMinor,
+        nextBalanceMinor,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      });
+    });
+    return {
+      count: preview.chargeableItems.length,
+      totalInterestMinor: preview.totalInterestMinor,
+      cutoffDate,
+    };
+  });
 };
 
 export const getConsortiumPayments = async (

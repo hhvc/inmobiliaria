@@ -4,10 +4,12 @@ import test from "node:test";
 import {
   buildConsortiumCollectionsCsv,
   buildConsortiumCollectionsDashboard,
+  buildConsortiumInterestPreview,
   buildConsortiumPaymentAllocations,
   buildConsortiumPaymentAgreementSchedule,
   getConsortiumAgingBucket,
   getConsortiumDaysPastDue,
+  normalizeConsortiumInterestPolicy,
 } from "../src/consorcios/utils/consorcioCollections.helpers.js";
 
 test("clasifica la mora por días completos", () => {
@@ -76,6 +78,86 @@ test("respeta la selección manual de períodos", () => {
   assert.deepEqual(result.allocations.map((item) => item.obligationId), ["new"]);
   assert.equal(result.appliedAmountMinor, 4000);
   assert.equal(result.creditAmountMinor, 0);
+});
+
+test("normaliza una política de intereses con límites seguros", () => {
+  assert.deepEqual(normalizeConsortiumInterestPolicy({
+    enabled: true,
+    annualRatePercent: 1200,
+    calculationMode: "otro",
+    graceDays: 900,
+    retroactiveFromDueDate: true,
+  }), {
+    enabled: true,
+    annualRatePercent: 1000,
+    calculationMode: "simple",
+    graceDays: 365,
+    retroactiveFromDueDate: true,
+  });
+});
+
+test("previsualiza interés simple diario luego del período de gracia", () => {
+  const preview = buildConsortiumInterestPreview({
+    cutoffDate: "2026-09-10",
+    policy: {
+      enabled: true,
+      annualRatePercent: 36.5,
+      calculationMode: "simple",
+      graceDays: 5,
+    },
+    obligations: [{
+      id: "o1",
+      periodKey: "2026-08",
+      dueDate: "2026-09-01",
+      balanceMinor: 100000,
+    }],
+  });
+  assert.equal(preview.items[0].graceEndsOn, "2026-09-06");
+  assert.equal(preview.items[0].days, 4);
+  assert.equal(preview.totalInterestMinor, 400);
+});
+
+test("permite cálculo retroactivo y evita repetir días ya liquidados", () => {
+  const first = buildConsortiumInterestPreview({
+    cutoffDate: "2026-09-10",
+    policy: {
+      enabled: true,
+      annualRatePercent: 36.5,
+      graceDays: 5,
+      retroactiveFromDueDate: true,
+    },
+    obligations: [{ id: "o1", dueDate: "2026-09-01", balanceMinor: 100000 }],
+  });
+  assert.equal(first.items[0].days, 9);
+  assert.equal(first.totalInterestMinor, 900);
+
+  const subsequent = buildConsortiumInterestPreview({
+    cutoffDate: "2026-09-10",
+    policy: { enabled: true, annualRatePercent: 36.5 },
+    obligations: [{
+      id: "o1",
+      dueDate: "2026-09-01",
+      balanceMinor: 100000,
+      interestAssessedThrough: "2026-09-08",
+    }],
+  });
+  assert.equal(subsequent.items[0].days, 2);
+  assert.equal(subsequent.totalInterestMinor, 200);
+});
+
+test("calcula capitalización diaria y deja en cero una política desactivada", () => {
+  const compound = buildConsortiumInterestPreview({
+    cutoffDate: "2026-09-03",
+    policy: { enabled: true, annualRatePercent: 36.5, calculationMode: "compound" },
+    obligations: [{ id: "o1", dueDate: "2026-09-01", balanceMinor: 100000 }],
+  });
+  assert.equal(compound.totalInterestMinor, 200);
+  const disabled = buildConsortiumInterestPreview({
+    cutoffDate: "2026-09-10",
+    policy: { enabled: false, annualRatePercent: 36.5 },
+    obligations: [{ id: "o1", dueDate: "2026-09-01", balanceMinor: 100000 }],
+  });
+  assert.equal(disabled.totalInterestMinor, 0);
 });
 
 test("exporta un CSV compatible con importes y textos", () => {

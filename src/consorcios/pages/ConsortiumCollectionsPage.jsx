@@ -10,6 +10,7 @@ import {
   isGlobalRoot,
 } from "../../inmobiliaria/utils/inmobiliariaPermissions";
 import {
+  assessConsortiumInterests,
   createConsortiumPaymentAgreement,
   getConsortiumById,
   getConsortiumCollectionActions,
@@ -29,6 +30,7 @@ import {
 import {
   buildConsortiumCollectionsCsv,
   buildConsortiumCollectionsDashboard,
+  buildConsortiumInterestPreview,
   buildConsortiumPaymentAgreementSchedule,
   CONSORTIUM_AGING_LABELS,
 } from "../utils/consorcioCollections.helpers";
@@ -114,6 +116,7 @@ const ConsortiumCollectionsPage = () => {
   const [selectedUnitId, setSelectedUnitId] = useState("");
   const [selectedObligationIds, setSelectedObligationIds] = useState([]);
   const [lastPaymentId, setLastPaymentId] = useState("");
+  const [interestCutoffDate, setInterestCutoffDate] = useState(todayKey);
   const [paymentForm, setPaymentForm] = useState({
     amount: "",
     date: todayKey(),
@@ -244,6 +247,11 @@ const ConsortiumCollectionsPage = () => {
   const selectedDebtMinor = selectedObligations
     .filter((item) => selectedObligationIds.includes(item.id))
     .reduce((sum, item) => sum + Number(item.balanceMinor || 0), 0);
+  const interestPreview = useMemo(() => buildConsortiumInterestPreview({
+    obligations: selectedObligations.filter((item) => selectedObligationIds.includes(item.id)),
+    policy: consortium?.interestPolicy,
+    cutoffDate: interestCutoffDate,
+  }), [consortium?.interestPolicy, interestCutoffDate, selectedObligationIds, selectedObligations]);
   const agreementPreview = useMemo(() => buildConsortiumPaymentAgreementSchedule({
     agreedAmountMinor: majorToMinor(agreementForm.agreedAmount),
     downPaymentMinor: majorToMinor(agreementForm.downPayment),
@@ -333,6 +341,36 @@ const ConsortiumCollectionsPage = () => {
     }
   };
 
+  const handleInterestSubmit = async (event) => {
+    event.preventDefault();
+    if (!interestPreview.totalInterestMinor || !selectedObligationIds.length) return;
+    const confirmed = window.confirm(
+      `Se generarán ${formatConsortiumMoney(interestPreview.totalInterestMinor, currency)} `
+      + `de intereses en ${interestPreview.chargeableItems.length} obligación(es). ¿Confirmar?`,
+    );
+    if (!confirmed) return;
+    try {
+      setOperation("interest");
+      setError("");
+      setSuccess("");
+      const result = await assessConsortiumInterests({
+        inmobiliariaId: activeInmobiliariaId,
+        consortiumId,
+        obligationIds: selectedObligationIds,
+        cutoffDate: interestCutoffDate,
+      });
+      setSuccess(
+        `Se generaron ${formatConsortiumMoney(result.totalInterestMinor, currency)} `
+        + `de intereses en ${result.count} obligación(es).`,
+      );
+      await load();
+    } catch (interestError) {
+      setError(interestError.message || "No se pudieron liquidar los intereses.");
+    } finally {
+      setOperation("");
+    }
+  };
+
   const handleAgreementSubmit = async (event) => {
     event.preventDefault();
     try {
@@ -397,19 +435,32 @@ const ConsortiumCollectionsPage = () => {
           <h1 className="h3 mt-3 mb-1">Cobranzas</h1>
           <p className="text-muted mb-0">{consortium.name} · seguimiento de saldos y gestiones por unidad</p>
         </div>
-        <button
-          className="btn btn-outline-success"
-          type="button"
-          disabled={!visibleRows.length}
-          onClick={() => downloadCsv(buildConsortiumCollectionsCsv({ rows: visibleRows, currency }), consortium.name)}
-        >
-          Exportar vista CSV
-        </button>
+        <div className="d-flex flex-wrap gap-2">
+          <a className="btn btn-outline-primary" href="/guias/administracion-consorcios#cobranzas">Ver manual</a>
+          <button
+            className="btn btn-outline-success"
+            type="button"
+            disabled={!visibleRows.length}
+            onClick={() => downloadCsv(buildConsortiumCollectionsCsv({ rows: visibleRows, currency }), consortium.name)}
+          >
+            Exportar vista CSV
+          </button>
+        </div>
       </header>
 
       {error && <div className="alert alert-danger">{error}</div>}
       {success && <div className="alert alert-success d-flex flex-wrap justify-content-between align-items-center gap-2"><span>{success}</span>{lastPaymentId && <Link className="btn btn-sm btn-success" to={`/admin/consorcios/${consortiumId}/recibos/${lastPaymentId}`}>Abrir recibo</Link>}</div>}
       {!canManage && <div className="alert alert-info">Tu rol permite consultar el tablero y los antecedentes, pero no registrar gestiones ni convenios.</div>}
+
+      <section className={`alert ${interestPreview.policy.enabled ? "alert-light border" : "alert-warning"} d-flex flex-wrap justify-content-between align-items-center gap-3`}>
+        <div>
+          <strong className="d-block">Política de mora</strong>
+          {interestPreview.policy.enabled
+            ? <span>TNA {interestPreview.policy.annualRatePercent.toLocaleString("es-AR")}% · {interestPreview.policy.calculationMode === "compound" ? "capitalización diaria" : "interés simple diario"} · {interestPreview.policy.graceDays ? `${interestPreview.policy.graceDays} días de gracia` : "sin días de gracia"}</span>
+            : <span>No se generan intereses mientras la política esté desactivada.</span>}
+        </div>
+        {canManage && <Link className="btn btn-sm btn-outline-primary" to={`/admin/consorcios/${consortiumId}/editar`}>Configurar</Link>}
+      </section>
 
       <section className="row g-3 mb-4">
         <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><span className="small text-muted text-uppercase">Exposición neta</span><strong className="fs-4 d-block consortium-money">{formatConsortiumMoney(dashboard.summary.netExposureMinor, currency)}</strong><small className="text-muted">Descontando créditos disponibles</small></div></div></div>
@@ -496,7 +547,7 @@ const ConsortiumCollectionsPage = () => {
             <div className="row g-4">
               <div className="col-xl-7">
                 <h3 className="h6">Obligaciones abiertas</h3>
-                <div className="table-responsive mb-4"><table className="table table-sm align-middle"><thead><tr><th></th><th>Período</th><th>Vencimiento</th><th className="text-end">Saldo</th></tr></thead><tbody>{selectedObligations.map((item) => <tr key={item.id}><td>{canManage && <input className="form-check-input" type="checkbox" checked={selectedObligationIds.includes(item.id)} onChange={(event) => setSelectedObligationIds((current) => event.target.checked ? [...new Set([...current, item.id])] : current.filter((id) => id !== item.id))} aria-label={`Seleccionar deuda ${item.periodKey}`} />}</td><td>{item.periodKey || "Sin período"}</td><td>{formatDate(item.dueDate)}</td><td className="text-end consortium-money">{formatConsortiumMoney(item.balanceMinor, currency)}</td></tr>)}</tbody><tfoot><tr className="fw-semibold"><td colSpan="3">Deuda seleccionada</td><td className="text-end consortium-money">{formatConsortiumMoney(selectedDebtMinor, currency)}</td></tr></tfoot></table></div>
+                <div className="table-responsive mb-4"><table className="table table-sm align-middle"><thead><tr><th></th><th>Período</th><th>Vencimiento</th><th>Interés liquidado</th><th className="text-end">Saldo</th></tr></thead><tbody>{selectedObligations.map((item) => <tr key={item.id}><td>{canManage && <input className="form-check-input" type="checkbox" checked={selectedObligationIds.includes(item.id)} onChange={(event) => setSelectedObligationIds((current) => event.target.checked ? [...new Set([...current, item.id])] : current.filter((id) => id !== item.id))} aria-label={`Seleccionar deuda ${item.periodKey}`} />}</td><td>{item.periodKey || "Sin período"}</td><td>{formatDate(item.dueDate)}{interestPreview.policy.enabled && interestPreview.policy.graceDays > 0 && <small className="d-block text-muted">Gracia: {formatDate(addDays(item.dueDate, interestPreview.policy.graceDays))}</small>}</td><td>{Number(item.interestMinor || 0) > 0 ? <><span className="consortium-money">{formatConsortiumMoney(item.interestMinor, currency)}</span><small className="d-block text-muted">hasta {formatDate(item.interestAssessedThrough)}</small></> : <span className="text-muted">—</span>}</td><td className="text-end consortium-money">{formatConsortiumMoney(item.balanceMinor, currency)}</td></tr>)}</tbody><tfoot><tr className="fw-semibold"><td colSpan="4">Deuda seleccionada</td><td className="text-end consortium-money">{formatConsortiumMoney(selectedDebtMinor, currency)}</td></tr></tfoot></table></div>
 
                 <h3 className="h6">Historial de gestiones</h3>
                 <div className="consortium-collection-timeline">
@@ -518,6 +569,16 @@ const ConsortiumCollectionsPage = () => {
                   </div>
                   {majorToMinor(paymentForm.amount) > selectedDebtMinor && <div className="alert alert-info py-2 small my-3">El excedente de {formatConsortiumMoney(majorToMinor(paymentForm.amount) - selectedDebtMinor, currency)} quedará como saldo a favor. Para hacerlo, deben estar seleccionados todos los períodos pendientes.</div>}
                   <button className="btn btn-success w-100 mt-3" type="submit" disabled={Boolean(operation) || !selectedObligationIds.length}>{operation === "payment" ? "Registrando…" : "Confirmar cobro e imputación"}</button>
+                </form>}
+
+                {canManage && interestPreview.policy.enabled && <form className="border border-warning rounded-3 p-3 mb-4" onSubmit={handleInterestSubmit}>
+                  <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3"><div><h3 className="h6 mb-1">Liquidar intereses</h3><p className="small text-muted mb-0">La vista previa usa el saldo vigente. Nada se registra hasta confirmar.</p></div><strong className="consortium-money text-danger">{formatConsortiumMoney(interestPreview.totalInterestMinor, currency)}</strong></div>
+                  <label className="form-label" htmlFor="interest-cutoff-date">Calcular hasta</label>
+                  <input id="interest-cutoff-date" className="form-control mb-3" type="date" max={todayKey()} required value={interestCutoffDate} onChange={(event) => setInterestCutoffDate(event.target.value)} />
+                  {interestPreview.items.length > 0 && <div className="table-responsive"><table className="table table-sm"><thead><tr><th>Período</th><th className="text-end">Días</th><th className="text-end">Interés</th></tr></thead><tbody>{interestPreview.items.map((item) => <tr key={item.obligationId}><td>{item.periodKey || "Sin período"}<small className="d-block text-muted">desde {formatDate(item.calculationFrom)}</small></td><td className="text-end">{item.days}</td><td className="text-end consortium-money">{formatConsortiumMoney(item.interestMinor, currency)}</td></tr>)}</tbody></table></div>}
+                  {!selectedObligationIds.length && <p className="small text-muted">Seleccioná uno o más períodos de la tabla para ver el cálculo.</p>}
+                  {selectedObligationIds.length > 0 && !interestPreview.totalInterestMinor && <div className="alert alert-light border py-2 small">No hay intereses nuevos para la fecha elegida.</div>}
+                  <button className="btn btn-warning w-100" type="submit" disabled={Boolean(operation) || !interestPreview.totalInterestMinor}>{operation === "interest" ? "Generando…" : "Confirmar débitos de interés"}</button>
                 </form>}
 
                 {canManage && <form className="border rounded-3 p-3 mb-4" onSubmit={handleActionSubmit}>

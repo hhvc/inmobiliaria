@@ -13,8 +13,12 @@ import EmailVerificationPage from "./pages/EmailVerificationPage";
 import PrivacyPolicyPage from "./legal/PrivacyPolicyPage";
 import TermsPage from "./legal/TermsPage";
 import DataDeletionPage from "./legal/DataDeletionPage";
+import GuideLibraryPage from "./guides/GuideLibraryPage";
 import ArcaDelegationGuidePage from "./guides/ArcaDelegationGuidePage";
 import ConsortiumAdministrationGuidePage from "./guides/ConsortiumAdministrationGuidePage";
+import RentalAdministrationGuidePage from "./guides/RentalAdministrationGuidePage";
+import FreePublicationLandingPage from "./marketing/pages/FreePublicationLandingPage";
+import RealEstateSoftwareLandingPage from "./marketing/pages/RealEstateSoftwareLandingPage";
 
 // Páginas para usuarios registrados particulares
 import ParticularPublicationRequestPage from "./particular/pages/ParticularPublicationRequestPage";
@@ -167,6 +171,14 @@ function App() {
                 <Route path="/access-denied" element={<AccessDenied />} />
                 <Route path="/galeria" element={<DynamicGallery />} />
                 <Route path="/contacto" element={<Contact />} />
+                <Route
+                  path="/publicar-inmueble-gratis"
+                  element={<FreePublicationLandingPage />}
+                />
+                <Route
+                  path="/software-para-inmobiliarias"
+                  element={<RealEstateSoftwareLandingPage />}
+                />
                 <Route path="/planes" element={<PublicPlansPage />} />
                 <Route path="/donar" element={<DonationPage />} />
                 <Route path="/pagos/resultado" element={<MercadoPagoResultPage />} />
@@ -184,8 +196,16 @@ function App() {
                   element={<DataDeletionPage />}
                 />
                 <Route
+                  path="/guias"
+                  element={<GuideLibraryPage />}
+                />
+                <Route
                   path="/guias/delegacion-arca"
                   element={<ArcaDelegationGuidePage />}
+                />
+                <Route
+                  path="/guias/administracion-alquileres"
+                  element={<RentalAdministrationGuidePage />}
                 />
                 <Route
                   path="/guias/administracion-consorcios"

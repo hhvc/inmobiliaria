@@ -1,0 +1,21 @@
+.rental-guide-hero {
+  background:
+    radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.2), transparent 27%),
+    linear-gradient(135deg, #3d225f 0%, #6f42c1 54%, #0d6efd 100%);
+}
+
+.rental-guide-page .consortium-guide-principle {
+  border-color: #cbb8eb;
+  background: #f3eefb;
+}
+
+.rental-guide-page .consortium-guide-principle > span,
+.rental-guide-page .consortium-guide-section > header > span,
+.rental-guide-page .consortium-guide-workflow article > span {
+  background: #6f42c1;
+}
+
+.rental-guide-page .consortium-guide-kicker { color: #6f42c1; }
+.rental-guide-page .consortium-guide-index a { background: #f1eafb; color: #5c33a1; }
+.rental-guide-page .consortium-guide-index a:hover { background: #e7daf8; }
+
