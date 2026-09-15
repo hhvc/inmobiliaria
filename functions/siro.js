@@ -26,8 +26,18 @@ if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const Timestamp = admin.firestore.Timestamp;
 
-const SIRO_HOMO_USERNAME = defineSecret("SIRO_HOMO_USERNAME");
-const SIRO_HOMO_PASSWORD = defineSecret("SIRO_HOMO_PASSWORD");
+// SIRO is an optional integration. Keeping secret declarations behind this
+// non-secret deployment flag prevents Firebase CLI from asking for credentials
+// before Banco Roela provisions the account.
+const SIRO_INTEGRATION_ENABLED = /^(1|true|yes)$/i.test(
+    String(process.env.SIRO_INTEGRATION_ENABLED || "").trim(),
+);
+const SIRO_HOMO_USERNAME = SIRO_INTEGRATION_ENABLED ?
+    defineSecret("SIRO_HOMO_USERNAME") : null;
+const SIRO_HOMO_PASSWORD = SIRO_INTEGRATION_ENABLED ?
+    defineSecret("SIRO_HOMO_PASSWORD") : null;
+const SIRO_SECRET_BINDINGS = SIRO_INTEGRATION_ENABLED ?
+    [SIRO_HOMO_USERNAME, SIRO_HOMO_PASSWORD] : [];
 
 const REGION = "southamerica-east1";
 const SESSION_URL = "https://apisesionh.bancoroela.com.ar/auth/Sesion";
@@ -122,6 +132,13 @@ const assertConsortiumPortalAccess = async ({
 };
 
 const getCredentials = () => {
+    if (!SIRO_INTEGRATION_ENABLED || !SIRO_HOMO_USERNAME ||
+        !SIRO_HOMO_PASSWORD) {
+        throw new HttpsError(
+            "failed-precondition",
+            "SIRO todavía no está habilitado. ONO Prop lo activará cuando Banco Roela entregue las credenciales.",
+        );
+    }
     const username = SIRO_HOMO_USERNAME.value().trim();
     const password = SIRO_HOMO_PASSWORD.value().trim();
     if (!username || !password) {
@@ -261,7 +278,7 @@ export const siroGetConfiguration = onCall({
 export const siroTestHomologation = onCall({
     region: REGION,
     invoker: "public",
-    secrets: [SIRO_HOMO_USERNAME, SIRO_HOMO_PASSWORD],
+    secrets: SIRO_SECRET_BINDINGS,
 }, async (request) => {
     const inmobiliariaId = cleanSiroText(request.data?.inmobiliariaId, 128);
     const { isRoot } = await assertAgencyManager(
@@ -475,7 +492,7 @@ const resolveSiroCheckoutContext = async ({ request, inmobiliariaId, obligationI
 export const siroCreateCheckout = onCall({
     region: REGION,
     invoker: "public",
-    secrets: [SIRO_HOMO_USERNAME, SIRO_HOMO_PASSWORD],
+    secrets: SIRO_SECRET_BINDINGS,
 }, async (request) => {
     const contextType = cleanSiroText(request.data?.contextType, 60);
     if (contextType !== "consortium_obligation") {
@@ -783,7 +800,7 @@ const queryOrderStatus = async (orderSnap, resultId = "") => {
 export const siroGetOrderStatus = onCall({
     region: REGION,
     invoker: "public",
-    secrets: [SIRO_HOMO_USERNAME, SIRO_HOMO_PASSWORD],
+    secrets: SIRO_SECRET_BINDINGS,
 }, async (request) => {
     const orderId = cleanSiroText(request.data?.orderId, 128);
     const token = cleanSiroText(request.data?.statusToken, 300);
@@ -811,7 +828,7 @@ export const siroGetOrderStatus = onCall({
 export const siroSyncOrder = onCall({
     region: REGION,
     invoker: "public",
-    secrets: [SIRO_HOMO_USERNAME, SIRO_HOMO_PASSWORD],
+    secrets: SIRO_SECRET_BINDINGS,
 }, async (request) => {
     const orderId = cleanSiroText(request.data?.orderId, 128);
     const snap = await db.collection(ORDERS).doc(orderId).get();
@@ -826,7 +843,7 @@ export const siroSyncOrder = onCall({
 export const siroPaymentCallback = onRequest({
     region: REGION,
     invoker: "public",
-    secrets: [SIRO_HOMO_USERNAME, SIRO_HOMO_PASSWORD],
+    secrets: SIRO_SECRET_BINDINGS,
 }, async (request, response) => {
     const callbackToken = cleanSiroText(request.query.c, 100);
     const callbackSnap = await db.collection(CALLBACKS).doc(callbackToken).get();

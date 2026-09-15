@@ -197,6 +197,7 @@ const InmobiliariaDomainsPage = () => {
             await updateDoc(ref, {
                 dominiosPublicos: parsedDomains,
                 updatedAt: serverTimestamp(),
+                updatedBy: user.uid,
             });
 
             setInmobiliarias((prev) =>

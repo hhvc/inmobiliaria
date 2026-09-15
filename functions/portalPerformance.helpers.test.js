@@ -12,6 +12,7 @@ import {
 
 test("normaliza fuentes desconocidas como acceso directo", () => {
     assert.equal(normalizePerformanceSource("map"), "map");
+    assert.equal(normalizePerformanceSource("chatgpt_plugin"), "chatgpt_plugin");
     assert.equal(normalizePerformanceSource("robot"), "direct");
 });
 

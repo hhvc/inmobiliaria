@@ -509,7 +509,11 @@ const InmueblePublicPage = () => {
     const presentationAgencyId =
       inmobiliaria?.id || inmobiliaria?.inmobiliariaId || ownerAgencyId;
     const requestedSource = location.state?.performanceSource;
-    const source = requestedSource || (
+    const attributionParams = new URLSearchParams(location.search);
+    const isChatGptPluginVisit =
+      attributionParams.get("utm_source")?.toLowerCase() === "chatgpt" &&
+      attributionParams.get("utm_medium")?.toLowerCase() === "plugin";
+    const source = requestedSource || (isChatGptPluginVisit ? "chatgpt_plugin" : "") || (
       agencySlug
         ? (presentationAgencyId !== ownerAgencyId ? "friend_agency" : "agency_page")
         : "direct"
@@ -523,7 +527,7 @@ const InmueblePublicPage = () => {
       branchId: presentationBranch?.id || inmueble?.sucursalId || "",
       inmuebleId: inmueble?.id || "",
     };
-  }, [agencySlug, inmueble, inmobiliaria, location.state, presentationBranch]);
+  }, [agencySlug, inmueble, inmobiliaria, location.search, location.state, presentationBranch]);
 
   const recordPerformance = useCallback((eventType) => {
     if (!performanceContext.ownerAgencyId || !performanceContext.inmuebleId) return;

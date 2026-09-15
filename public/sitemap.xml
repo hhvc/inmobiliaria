@@ -2,85 +2,85 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://onoprop.com/</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmuebles</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/mapa</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/emprendimientos</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/planes</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/publicar-inmueble-gratis</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/software-para-inmobiliarias</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://onoprop.com/donar</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://onoprop.com/guias</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://onoprop.com/sobre-onoprop</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/privacidad</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/terminos</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/eliminacion-de-datos</loc>
-    <lastmod>2026-09-09</lastmod>
+    <lastmod>2026-09-15</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmobiliaria/conejeroyasociados</loc>
-    <lastmod>2026-08-16</lastmod>
+    <lastmod>2026-09-10</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -278,19 +278,19 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/departamento-en-san-vicente-0jKk0O3UpVY3lu51SrYl</loc>
-    <lastmod>2026-08-06</lastmod>
+    <lastmod>2026-09-11</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-hasta-7-personas-pileta-y-vistas-a-las-sierras-V07w2d3LA3yyRGujeebm</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-09-11</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://onoprop.com/inmueble/casa-para-5-personas-con-pileta-cochera-y-terraza-con-asador-vistas-a-las-sierras-nXMu4D0qzSqHAQ4RNBWb</loc>
-    <lastmod>2026-08-23</lastmod>
+    <lastmod>2026-09-11</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
@@ -428,7 +428,13 @@
   </url>
   <url>
     <loc>https://onoprop.com/inmobiliaria/signo-servicios-inmobiliarios</loc>
-    <lastmod>2026-09-08</lastmod>
+    <lastmod>2026-09-10</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://onoprop.com/inmueble/san-vicente-corrientes-2BoP8TBw0Rv62ThiPknz</loc>
+    <lastmod>2026-09-14</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>

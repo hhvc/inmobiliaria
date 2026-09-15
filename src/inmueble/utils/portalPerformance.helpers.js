@@ -13,6 +13,7 @@ export const PERFORMANCE_SOURCE_LABELS = Object.freeze({
     agency_page: "Página propia",
     friend_agency: "Inmobiliaria amiga",
     favorites: "Favoritos",
+    chatgpt_plugin: "ChatGPT · ONO Prop",
     direct: "Acceso directo",
 });
 

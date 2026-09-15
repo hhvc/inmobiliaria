@@ -13,6 +13,7 @@ export const PORTAL_PERFORMANCE_SOURCES = Object.freeze([
     "agency_page",
     "friend_agency",
     "favorites",
+    "chatgpt_plugin",
     "direct",
 ]);
 

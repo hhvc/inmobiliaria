@@ -1,0 +1,30 @@
+{
+  "name": "onoprop",
+  "version": "0.8.0",
+  "description": "Búsqueda pública de inmuebles y acceso a servicios de ONO Prop.",
+  "author": {
+    "name": "ONO Prop",
+    "email": "contacto@onoprop.com",
+    "url": "https://onoprop.com"
+  },
+  "homepage": "https://onoprop.com",
+  "keywords": [
+    "inmuebles",
+    "inmobiliarias",
+    "alquileres",
+    "Argentina"
+  ],
+  "interface": {
+    "displayName": "ONO Prop",
+    "shortDescription": "Buscá inmuebles publicados en ONO Prop.",
+    "longDescription": "Encontrá inmuebles en venta, alquiler o alquiler temporal y abrí su ficha actualizada. También podés conocer cómo publicar gratis, sumar una inmobiliaria o solicitar una tasación profesional.",
+    "developerName": "ONO Prop",
+    "category": "Business",
+    "capabilities": [
+      "property-search",
+      "public-listings"
+    ],
+    "defaultPrompt": "Buscá propiedades publicadas en ONO Prop según lo que necesito."
+  },
+  "mcpServers": "./.mcp.json"
+}

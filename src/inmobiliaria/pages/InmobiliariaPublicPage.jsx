@@ -12,6 +12,10 @@ import {
   getPublicBranchBySlug,
 } from "../services/agencyNetwork.service";
 import { buildAgencyPropertyPath } from "../utils/agencyNetwork.helpers";
+import {
+  getHeroMinHeight,
+  normalizeBrandingLayout,
+} from "../utils/brandingLayout.helpers";
 import { getPublicEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
 import {
   getEmprendimientoStatusLabel,
@@ -251,6 +255,101 @@ const getVerificationLabel = (inmobiliaria = {}) => {
     inmobiliaria?.verificacion?.estadoLabel ||
     inmobiliaria?.verificacion?.estado ||
     "Pendiente de validación"
+  );
+};
+
+const AgencyProfileCard = ({
+  inmobiliaria,
+  publicName,
+  logoUrl,
+  publishedCount,
+  featuredCount,
+  cityCount,
+  copySuccess,
+  onCopy,
+  onShare,
+  appearance = "solid",
+}) => {
+  const isSoft = appearance === "soft";
+
+  return (
+    <div
+      className="text-dark rounded-4 p-4 shadow-sm"
+      style={{
+        background: isSoft ? "rgba(255, 255, 255, 0.9)" : "#fff",
+        backdropFilter: isSoft ? "blur(12px)" : undefined,
+        border: isSoft ? "1px solid rgba(255, 255, 255, 0.55)" : undefined,
+      }}
+    >
+      <div className="d-flex align-items-center gap-3 mb-4">
+        {logoUrl ? (
+          <img
+            src={logoUrl}
+            alt={`Logo ${publicName || inmobiliaria?.nombre}`}
+            className="rounded border"
+            style={{
+              width: 88,
+              height: 88,
+              objectFit: "contain",
+              background: "#fff",
+            }}
+          />
+        ) : (
+          <div
+            className="rounded border bg-light d-flex align-items-center justify-content-center fw-bold"
+            style={{ width: 88, height: 88 }}
+          >
+            {publicName?.slice(0, 1) || "I"}
+          </div>
+        )}
+
+        <div>
+          <div className="fw-bold">{publicName}</div>
+          <div className="text-muted small">
+            {isVerifiedAgency(inmobiliaria)
+              ? "Perfil validado por ONO Prop"
+              : "Perfil pendiente de validación"}
+          </div>
+        </div>
+      </div>
+
+      <div className="row g-3 text-center">
+        <div className="col-4">
+          <div className="h3 mb-0">{publishedCount}</div>
+          <div className="small text-muted">Publicadas</div>
+        </div>
+
+        <div className="col-4">
+          <div className="h3 mb-0">{featuredCount}</div>
+          <div className="small text-muted">Destacadas</div>
+        </div>
+
+        <div className="col-4">
+          <div className="h3 mb-0">{cityCount}</div>
+          <div className="small text-muted">Ciudades</div>
+        </div>
+      </div>
+
+      <hr />
+
+      <div className="d-grid gap-2">
+        <button
+          type="button"
+          className="btn btn-outline-primary btn-sm"
+          onClick={onCopy}
+        >
+          {copySuccess ? "Link copiado" : "Copiar perfil"}
+        </button>
+
+        <button
+          type="button"
+          className="btn btn-outline-success btn-sm"
+          onClick={onShare}
+        >
+          Compartir por WhatsApp
+        </button>
+      </div>
+    </div>
   );
 };
 
@@ -1048,11 +1147,25 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
     );
   }
 
-  // Variables de opacidad de la foto de portada
-  // Puede ajustarse este valor (ej: 0.3 para muy suave, 0.6 para intermedio)
-  // O incluso leerlo de la inmobiliaria si existe: inmobiliaria?.branding?.heroOverlayOpacity ?? 0.4
-  const heroOverlayOpacity = inmobiliaria?.branding?.heroOverlayOpacity ?? 0.45;
-  const heroOverlayOpacityEnd = heroOverlayOpacity * 0.6; // Mantiene el degradado hacia la derecha
+  const brandingLayout = normalizeBrandingLayout(inmobiliaria?.branding);
+  const heroOverlayOpacity = brandingLayout.heroOverlayOpacity;
+  const heroOverlayOpacityEnd = heroOverlayOpacity * 0.6;
+  const hasSideProfileCard = brandingLayout.profileCardPosition !== "below";
+  const isCenteredHero = brandingLayout.heroTextAlignment === "center";
+  const agencyProfileCard = (
+    <AgencyProfileCard
+      inmobiliaria={inmobiliaria}
+      publicName={publicName}
+      logoUrl={logoUrl}
+      publishedCount={inmuebles.length}
+      featuredCount={totalDestacados}
+      cityCount={ciudades.length}
+      copySuccess={copySuccess}
+      onCopy={handleCopyProfileLink}
+      onShare={handleShareProfileByWhatsapp}
+      appearance={brandingLayout.profileCardStyle}
+    />
+  );
 
   return (
     <main className="portal-home">
@@ -1072,16 +1185,33 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
           <div
             className="card border-0 shadow-sm overflow-hidden"
             style={{
+              minHeight: getHeroMinHeight(brandingLayout.heroHeight),
               background: heroBackground
-                ? `linear-gradient(90deg, rgba(17, 24, 39, ${heroOverlayOpacity}), rgba(17, 24, 39, ${heroOverlayOpacityEnd})), url(${heroBackground}) center/cover`
+                ? `linear-gradient(90deg, rgba(17, 24, 39, ${heroOverlayOpacity}), rgba(17, 24, 39, ${heroOverlayOpacityEnd})), url(${heroBackground}) ${brandingLayout.heroImagePosition}/cover`
                 : "linear-gradient(135deg, #111827, #0d6efd)",
               color: "#fff",
             }}
           >
-            <div className="card-body p-4 p-lg-5">
-              <div className="row align-items-center g-5">
-                <div className="col-lg-8">
-                  <div className="d-flex flex-wrap gap-2 mb-3">
+            <div className="card-body p-4 p-lg-5 d-flex align-items-center">
+              <div className="row align-items-center g-5 w-100">
+                {hasSideProfileCard && brandingLayout.profileCardPosition === "left" && (
+                  <div className="col-lg-4">{agencyProfileCard}</div>
+                )}
+
+                <div
+                  className={hasSideProfileCard ? "col-lg-8" : "col-12"}
+                  style={
+                    !hasSideProfileCard
+                      ? {
+                        maxWidth: 900,
+                        marginInline: isCenteredHero ? "auto" : undefined,
+                      }
+                      : undefined
+                  }
+                >
+                  <div
+                    className={`d-flex flex-wrap gap-2 mb-3 ${isCenteredHero ? "justify-content-center" : ""}`}
+                  >
                     <span className="badge text-bg-light text-dark">
                       Sitio oficial de inmobiliaria
                     </span>
@@ -1096,12 +1226,14 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                     </span>
                   </div>
 
-                  <h1 className="display-4 fw-bold mb-3">
+                  <h1
+                    className={`display-4 fw-bold mb-3 ${isCenteredHero ? "text-center" : ""}`}
+                  >
                     {publicName}
                   </h1>
 
                   <p
-                    className="lead mb-4"
+                    className={`lead mb-4 ${isCenteredHero ? "text-center" : ""}`}
                     style={{ color: "rgba(255,255,255,0.82)" }}
                   >
                     Propiedades seleccionadas, contacto directo y atención
@@ -1111,14 +1243,16 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
 
                   {inmobiliaria.razonSocial && (
                     <p
-                      className="mb-4"
+                      className={`mb-4 ${isCenteredHero ? "text-center" : ""}`}
                       style={{ color: "rgba(255,255,255,0.72)" }}
                     >
                       {inmobiliaria.razonSocial}
                     </p>
                   )}
 
-                  <div className="d-flex flex-wrap gap-2">
+                  <div
+                    className={`d-flex flex-wrap gap-2 ${isCenteredHero ? "justify-content-center" : ""}`}
+                  >
                     {whatsappUrl && (
                       <a
                         href={whatsappUrl}
@@ -1140,81 +1274,22 @@ export default function InmobiliariaPublicPage({ forcedSlug = null }) {
                   </div>
                 </div>
 
-                <div className="col-lg-4">
-                  <div className="bg-white text-dark rounded-4 p-4 shadow-sm">
-                    <div className="d-flex align-items-center gap-3 mb-4">
-                      {logoUrl ? (
-                        <img
-                          src={logoUrl}
-                          alt={`Logo ${inmobiliaria?.nombre}`}
-                          className="rounded border"
-                          style={{
-                            width: 88,
-                            height: 88,
-                            objectFit: "contain",
-                            background: "#fff",
-                          }}
-                        />
-                      ) : (
-                        <div
-                          className="rounded border bg-light d-flex align-items-center justify-content-center fw-bold"
-                          style={{ width: 88, height: 88 }}
-                        >
-                          {inmobiliaria?.nombre?.slice(0, 1) || "I"}
-                        </div>
-                      )}
-
-                      <div>
-                        <div className="fw-bold">{publicName}</div>
-                        <div className="text-muted small">
-                          {isVerifiedAgency(inmobiliaria)
-                            ? "Perfil validado por ONO Prop"
-                            : "Perfil pendiente de validación"}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="row g-3 text-center">
-                      <div className="col-4">
-                        <div className="h3 mb-0">{inmuebles.length}</div>
-                        <div className="small text-muted">Publicadas</div>
-                      </div>
-
-                      <div className="col-4">
-                        <div className="h3 mb-0">{totalDestacados}</div>
-                        <div className="small text-muted">Destacadas</div>
-                      </div>
-
-                      <div className="col-4">
-                        <div className="h3 mb-0">{ciudades.length}</div>
-                        <div className="small text-muted">Ciudades</div>
-                      </div>
-                    </div>
-
-                    <hr />
-
-                    <div className="d-grid gap-2">
-                      <button
-                        type="button"
-                        className="btn btn-outline-primary btn-sm"
-                        onClick={handleCopyProfileLink}
-                      >
-                        {copySuccess ? "Link copiado" : "Copiar perfil"}
-                      </button>
-
-                      <button
-                        type="button"
-                        className="btn btn-outline-success btn-sm"
-                        onClick={handleShareProfileByWhatsapp}
-                      >
-                        Compartir por WhatsApp
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                {hasSideProfileCard && brandingLayout.profileCardPosition === "right" && (
+                  <div className="col-lg-4">{agencyProfileCard}</div>
+                )}
               </div>
             </div>
           </div>
+
+          {!hasSideProfileCard && (
+            <div
+              className={`d-flex mt-3 ${isCenteredHero ? "justify-content-center" : "justify-content-start"}`}
+            >
+              <div className="w-100" style={{ maxWidth: 430 }}>
+                {agencyProfileCard}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

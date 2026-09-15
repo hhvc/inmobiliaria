@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "onoprop": {
+      "type": "http",
+      "url": "https://onoprop.com/mcp"
+    }
+  }
+}

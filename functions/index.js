@@ -228,3 +228,5 @@ export {
   portalRecordPerformanceEvent,
   portalGetPerformanceDashboard,
 } from "./portalPerformance.js";
+
+export { onopropMcp } from "./onopropMcp.js";

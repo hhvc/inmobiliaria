@@ -7,6 +7,16 @@ import {
     getAllInmobiliarias,
     getInmobiliariasByRole,
 } from "../services/inmobiliaria.service";
+import {
+    HERO_HEIGHT_OPTIONS,
+    HERO_IMAGE_POSITION_OPTIONS,
+    HERO_OVERLAY_OPTIONS,
+    HERO_TEXT_ALIGNMENT_OPTIONS,
+    PROFILE_CARD_POSITION_OPTIONS,
+    PROFILE_CARD_STYLE_OPTIONS,
+    getHeroMinHeight,
+    normalizeBrandingLayout,
+} from "../utils/brandingLayout.helpers";
 
 const DEFAULT_MODULES = ["inmuebles", "consultas"];
 
@@ -18,6 +28,12 @@ const INITIAL_FORM = {
     whatsapp: "",
     logoUrl: "",
     heroUrl: "",
+    heroHeight: "balanced",
+    heroImagePosition: "center",
+    heroOverlayOpacity: "0.45",
+    heroTextAlignment: "left",
+    profileCardPosition: "right",
+    profileCardStyle: "solid",
     publicHeadline: "",
     publicBio: "",
     publicLocation: "",
@@ -83,6 +99,7 @@ const getFormFromInmobiliaria = (inmobiliaria) => {
     const branding = inmobiliaria.branding || {};
     const backgrounds = branding.backgrounds || {};
     const publicProfile = inmobiliaria.publicProfile || {};
+    const layout = normalizeBrandingLayout(branding);
 
     return {
         nombre: inmobiliaria.nombre || "",
@@ -96,6 +113,12 @@ const getFormFromInmobiliaria = (inmobiliaria) => {
             backgrounds.principal?.url ||
             backgrounds.home?.url ||
             "",
+        heroHeight: layout.heroHeight,
+        heroImagePosition: layout.heroImagePosition,
+        heroOverlayOpacity: layout.heroOverlayOpacity.toString(),
+        heroTextAlignment: layout.heroTextAlignment,
+        profileCardPosition: layout.profileCardPosition,
+        profileCardStyle: layout.profileCardStyle,
         publicHeadline: publicProfile.headline || "",
         publicBio: publicProfile.bio || "",
         publicLocation: publicProfile.location || "",
@@ -246,6 +269,16 @@ const InmobiliariaBrandingPage = () => {
                         url: cleanUrl(form.heroUrl),
                     },
                 },
+                layout: {
+                    ...(currentBranding.layout || {}),
+                    heroHeight: form.heroHeight,
+                    heroImagePosition: form.heroImagePosition,
+                    heroOverlayOpacity: Number(form.heroOverlayOpacity),
+                    heroTextAlignment: form.heroTextAlignment,
+                    profileCardPosition: form.profileCardPosition,
+                    profileCardStyle: form.profileCardStyle,
+                },
+                heroOverlayOpacity: Number(form.heroOverlayOpacity),
             };
 
             const nextPublicProfile = {
@@ -297,6 +330,51 @@ const InmobiliariaBrandingPage = () => {
             setSaving(false);
         }
     };
+
+    const renderPreviewProfileCard = () => (
+        <div
+            className="rounded-3 p-3 shadow-sm text-dark"
+            style={{
+                background:
+                    form.profileCardStyle === "soft"
+                        ? "rgba(255, 255, 255, 0.9)"
+                        : "#fff",
+                backdropFilter:
+                    form.profileCardStyle === "soft" ? "blur(10px)" : undefined,
+            }}
+        >
+            <div className="d-flex align-items-center gap-2 mb-3">
+                {form.logoUrl ? (
+                    <img
+                        src={form.logoUrl}
+                        alt="Logo"
+                        className="rounded bg-white border p-1"
+                        style={{ width: 48, height: 48, objectFit: "contain" }}
+                    />
+                ) : (
+                    <div
+                        className="rounded bg-light border d-flex align-items-center justify-content-center fw-bold"
+                        style={{ width: 48, height: 48 }}
+                    >
+                        {form.nombre?.slice(0, 1) || "I"}
+                    </div>
+                )}
+
+                <div className="overflow-hidden">
+                    <div className="fw-bold text-truncate">
+                        {form.nombre || "Nombre inmobiliaria"}
+                    </div>
+                    <div className="small text-muted">Perfil público</div>
+                </div>
+            </div>
+
+            <div className="row g-1 text-center small">
+                <div className="col-4"><strong>12</strong><br />Publicadas</div>
+                <div className="col-4"><strong>3</strong><br />Destacadas</div>
+                <div className="col-4"><strong>2</strong><br />Ciudades</div>
+            </div>
+        </div>
+    );
 
     if (!isRoot && !isAdmin) {
         return (
@@ -482,6 +560,127 @@ const InmobiliariaBrandingPage = () => {
 
                                     <div className="col-12">
                                         <hr className="my-2" />
+                                        <h2 className="h5 mb-1">Diseño de la portada</h2>
+                                        <p className="text-muted small mb-0">
+                                            Elegí una composición adaptable a celulares y
+                                            computadoras. Los cambios se muestran en la vista
+                                            previa antes de guardarlos.
+                                        </p>
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Altura de la portada</label>
+                                        <select
+                                            name="heroHeight"
+                                            className="form-select"
+                                            value={form.heroHeight}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                        >
+                                            {HERO_HEIGHT_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Encuadre de la imagen</label>
+                                        <select
+                                            name="heroImagePosition"
+                                            className="form-select"
+                                            value={form.heroImagePosition}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                        >
+                                            {HERO_IMAGE_POSITION_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">
+                                            Oscurecimiento de la imagen
+                                        </label>
+                                        <select
+                                            name="heroOverlayOpacity"
+                                            className="form-select"
+                                            value={form.heroOverlayOpacity}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                        >
+                                            {HERO_OVERLAY_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div className="form-text">
+                                            Ayuda a que el texto siga siendo legible sobre la foto.
+                                        </div>
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">Alineación del texto</label>
+                                        <select
+                                            name="heroTextAlignment"
+                                            className="form-select"
+                                            value={form.heroTextAlignment}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                        >
+                                            {HERO_TEXT_ALIGNMENT_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">
+                                            Ubicación de la tarjeta institucional
+                                        </label>
+                                        <select
+                                            name="profileCardPosition"
+                                            className="form-select"
+                                            value={form.profileCardPosition}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                        >
+                                            {PROFILE_CARD_POSITION_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="col-md-6">
+                                        <label className="form-label">
+                                            Apariencia de la tarjeta institucional
+                                        </label>
+                                        <select
+                                            name="profileCardStyle"
+                                            className="form-select"
+                                            value={form.profileCardStyle}
+                                            onChange={handleChange}
+                                            disabled={!canUseBrandingModule || saving}
+                                        >
+                                            {PROFILE_CARD_STYLE_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="col-12">
+                                        <hr className="my-2" />
                                         <h2 className="h5 mb-1">Presentación pública</h2>
                                         <p className="text-muted small mb-0">
                                             Se muestra cuando alguien pulsa el nombre de la
@@ -556,37 +755,50 @@ const InmobiliariaBrandingPage = () => {
 
                                 <div className="border rounded-4 overflow-hidden bg-white">
                                     <div
-                                        className="d-flex align-items-center justify-content-center text-white text-center p-4"
+                                        className="d-flex align-items-center text-white p-3"
                                         style={{
-                                            minHeight: 180,
+                                            minHeight: Math.round(
+                                                getHeroMinHeight(form.heroHeight) * 0.48,
+                                            ),
                                             background: form.heroUrl
-                                                ? `linear-gradient(rgba(17,24,39,0.72), rgba(17,24,39,0.72)), url(${form.heroUrl}) center/cover`
+                                                ? `linear-gradient(rgba(17,24,39,${form.heroOverlayOpacity}), rgba(17,24,39,${form.heroOverlayOpacity})), url(${form.heroUrl}) ${form.heroImagePosition}/cover`
                                                 : "linear-gradient(135deg, #111827, #0d6efd)",
                                         }}
                                     >
-                                        <div>
-                                            {form.logoUrl && (
-                                                <img
-                                                    src={form.logoUrl}
-                                                    alt="Logo"
-                                                    className="rounded bg-white p-2 mb-3"
-                                                    style={{
-                                                        width: 84,
-                                                        height: 84,
-                                                        objectFit: "contain",
-                                                    }}
-                                                />
-                                            )}
+                                        <div
+                                            className={`d-flex align-items-center gap-3 w-100 ${
+                                                form.profileCardPosition === "left"
+                                                    ? "flex-row-reverse"
+                                                    : ""
+                                            }`}
+                                        >
+                                            <div
+                                                className={`flex-grow-1 text-${form.heroTextAlignment}`}
+                                            >
+                                                <div className="small opacity-75 mb-1">
+                                                    Sitio oficial de inmobiliaria
+                                                </div>
+                                                <h3 className="h5 mb-1">
+                                                    {form.nombre || "Nombre inmobiliaria"}
+                                                </h3>
+                                                <div className="small opacity-75">
+                                                    Propiedades y atención personalizada.
+                                                </div>
+                                            </div>
 
-                                            <h3 className="h5 mb-1">
-                                                {form.nombre || "Nombre inmobiliaria"}
-                                            </h3>
-
-                                            {form.razonSocial && (
-                                                <div style={{ opacity: 0.82 }}>{form.razonSocial}</div>
+                                            {form.profileCardPosition !== "below" && (
+                                                <div style={{ width: "46%", minWidth: 145 }}>
+                                                    {renderPreviewProfileCard()}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
+
+                                    {form.profileCardPosition === "below" && (
+                                        <div className="p-3 bg-light">
+                                            {renderPreviewProfileCard()}
+                                        </div>
+                                    )}
 
                                     <div className="p-3">
                                         <div className="small text-muted mb-1">Contacto público</div>
