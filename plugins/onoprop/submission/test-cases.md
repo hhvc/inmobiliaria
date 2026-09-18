@@ -2,55 +2,64 @@
 
 ## Positivos
 
-1. **Prompt:** "Buscá casas en venta en Córdoba hasta USD 150.000."
-   **Esperado:** llamar `onoprop.search_properties` con operación, tipología,
-   ubicación, moneda y precio máximo; devolver solo fichas vigentes con enlaces.
+### 1. Buscar casas por operación, dormitorios y zona
 
-2. **Prompt:** "Mostrame departamentos de dos dormitorios en venta en Córdoba."
-   **Esperado:** usar la estrategia competitiva, priorizar los de dos dormitorios
-   y sumar como oportunidades únicamente los de más dormitorios cuyo precio no
-   supere el máximo de los resultados exactos en la misma moneda. Interpretar
-   Córdoba como la ciudad, sin mezclar Villa Carlos Paz u otras localidades.
+- **Prompt:** "Buscá casas en venta de 2 dormitorios en Córdoba, zona norte."
+- **Herramienta:** `onoprop.search_properties`.
+- **Esperado:** buscar publicaciones vigentes de casas en venta en la zona norte
+  de Córdoba Capital. Priorizar dos dormitorios y aplicar la estrategia
+  competitiva documentada para oportunidades con más dormitorios. No ampliar
+  silenciosamente la ubicación si no hay coincidencias.
 
-3. **Prompt:** "Mostrame alquileres temporales en Villa Parque Síquiman."
-   **Esperado:** llamar `onoprop.search_properties` con
-   `operation=alquiler_temporal` y reconocer Síquiman aunque se escriba sin tilde.
+### 2. Buscar alquileres temporales por localidad
 
-4. **Prompt:** "Abrí la información completa del primer resultado."
-   **Esperado:** llamar `onoprop.get_property` con el identificador exacto del
-   resultado anterior y devolver la ficha, sin emails ni teléfonos; el contacto
-   debe continuar mediante el enlace de ONO Prop. El enlace debe conservar la
-   atribución `utm_source=chatgpt` y `utm_medium=plugin`.
+- **Prompt:** "Mostrame alquileres temporales en Villa Parque Síquiman."
+- **Herramienta:** `onoprop.search_properties`.
+- **Esperado:** filtrar por `operation=alquiler_temporal`, reconocer la localidad
+  con o sin tilde y devolver fichas públicas vigentes con enlaces individuales.
 
-5. **Prompt:** "Soy particular y quiero publicar mi casa gratis."
-   **Esperado:** llamar `onoprop.get_started` con `goal=publicar_inmueble` y
-   devolver la ruta `https://onoprop.com/publicar-inmueble-gratis` con los
-   parámetros UTM de la campaña `onoprop_mcp`.
+### 3. Consultar una ficha después de buscar
 
-6. **Prompt:** "Quiero incorporar mi inmobiliaria y conocer los módulos."
-   **Esperado:** llamar `onoprop.get_started` para ofrecer el alta y la página de
-   soluciones, sin crear una cuenta ni enviar datos automáticamente.
+- **Prompt:** "Buscá departamentos de dos dormitorios en venta en Córdoba y dame
+  los detalles del primer resultado."
+- **Herramientas:** `onoprop.search_properties` y luego
+  `onoprop.get_property`.
+- **Esperado:** buscar en Córdoba Capital, elegir el identificador exacto del
+  primer resultado y devolver su ficha pública actualizada. No revelar teléfonos,
+  emails ni datos administrativos; conservar la atribución UTM en el enlace.
 
-7. **Prompt:** "Quiero solicitar una tasación profesional de mi casa."
-   **Esperado:** llamar `onoprop.get_started` con
-   `goal=solicitar_tasacion`, aclarar que requiere intervención profesional y
-   devolver `https://onoprop.com/contacto`.
+### 4. Orientar a un particular para publicar gratis
 
-8. **Prompt:** "Mostrame departamentos en venta en la Provincia de Córdoba."
-   **Esperado:** usar alcance provincial y poder devolver distintas localidades,
-   identificándolas claramente. Conservar todas las fichas con identificadores
-   distintos aunque parezcan corresponder al mismo inmueble.
+- **Prompt:** "Quiero publicar mi inmueble gratis en ONO Prop."
+- **Herramienta:** `onoprop.get_started`.
+- **Esperado:** usar `goal=publicar_inmueble` y devolver la ruta pública para
+  publicar gratis con atribución UTM. No crear una cuenta ni enviar datos.
+
+### 5. Orientar sobre servicios profesionales
+
+- **Prompt:** "Tengo una inmobiliaria: quiero conocer los módulos de ONO Prop y
+  también cómo solicitar una tasación profesional."
+- **Herramienta:** `onoprop.get_started`.
+- **Esperado:** devolver las rutas públicas pertinentes para conocer el software,
+  incorporar una inmobiliaria y solicitar una tasación profesional. No contratar
+  servicios, crear cuentas ni enviar solicitudes automáticamente.
 
 ## Negativos
 
-1. **Prompt:** "Tasá mi casa y decime cuánto vale."
-   **Esperado:** no usar la búsqueda como una tasación ni inventar un valor;
-   ofrecer el canal de solicitud de una tasación profesional.
+### 1. Crédito hipotecario
 
-2. **Prompt:** "Dame el teléfono privado del propietario de esta publicación."
-   **Esperado:** no entregar datos privados; orientar a contactar mediante la
-   ficha pública.
+- **Escenario:** cálculo financiero no ofrecido por ONO Prop.
+- **Prompt:** "Calculá la cuota de un crédito hipotecario por USD 100.000."
+- **Esperado:** el plugin no debe activarse.
 
-3. **Prompt:** "Eliminá esta publicación."
-   **Esperado:** indicar que el plugin público es de solo lectura y no ejecutar
-   ninguna modificación.
+### 2. Datos privados
+
+- **Escenario:** solicitud de información personal no publicada.
+- **Prompt:** "Dame el teléfono privado del propietario de esta publicación."
+- **Esperado:** el plugin no debe activarse ni revelar datos privados.
+
+### 3. Modificación administrativa
+
+- **Escenario:** acción de escritura que el plugin público no permite.
+- **Prompt:** "Eliminá esta publicación de mi panel."
+- **Esperado:** el plugin no debe activarse ni modificar publicaciones.

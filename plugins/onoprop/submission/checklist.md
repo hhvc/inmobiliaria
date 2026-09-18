@@ -22,24 +22,36 @@ Referencia oficial: https://developers.openai.com/plugins/deploy/submission
 
 ## Comprobaciones en el portal de OpenAI
 
-- [ ] Seleccionar la misma organización y proyecto que alojan la identidad del
+- [x] Seleccionar la misma organización y proyecto que alojan la identidad del
   publicador.
-- [ ] Confirmar **Apps Management: Write** si quien presenta no es propietario
+- [x] Confirmar **Apps Management: Write** si quien presenta no es propietario
   de la organización.
-- [ ] Completar la verificación individual de **Héctor Horacio Vázquez Cuestas**
+- [x] Completar la verificación individual de **Héctor Horacio Vázquez Cuestas**
   y seleccionarla en **Developer Identity**. ONO Prop es el nombre comercial,
   no una sociedad distinta.
-- [ ] Cargar nombre, descripciones y URLs desde `metadata.md`.
-- [ ] Cargar un logo de producción desde
+- [x] Cargar nombre, descripciones y URLs desde `metadata.md`.
+- [x] Cargar un logo de producción desde
   `submission/assets/onoprop-plugin-icon.png` y revisar su vista previa.
-- [ ] Ingresar `https://onoprop.com/mcp` y ejecutar **Scan Tools**.
-- [ ] Si aparece **Domain not verified**, copiar el token exacto que entregue el
+- [x] Ingresar `https://onoprop.com/mcp` y ejecutar **Scan Tools**.
+- [x] Si aparece **Domain not verified**, copiar el token exacto que entregue el
   portal. Recién entonces publicarlo, como respuesta de texto plano y sin JSON,
   en `https://onoprop.com/.well-known/openai-apps-challenge`.
-- [ ] Revisar que el escaneo reconozca las tres herramientas y sus anotaciones.
-- [ ] Cargar los prompts y casos de `test-cases.md`.
-- [ ] Elegir Argentina como disponibilidad inicial.
-- [ ] Copiar `release-notes.md`, completar las declaraciones y enviar a revisión.
+- [x] Revisar que el escaneo reconozca las tres herramientas y sus anotaciones.
+- [x] Desplegar Hosting y comprobar públicamente la respuesta exacta del desafío.
+- [x] Presionar **Verify Domain**.
+- [x] Cargar los tres prompts públicos de `metadata.md`.
+- [x] Cargar los cinco casos positivos y tres negativos de `test-cases.md`.
+- [x] Elegir Argentina (`AR`) como disponibilidad inicial.
+- [x] Agregar traducción de Español (Latinoamérica) y actualizar la ficha base
+  en Inglés (US).
+- [x] Copiar las notas públicas de `release-notes.md`.
+- [x] Desplegar la búsqueda orgánica sin prioridad por destaques pagos y volver
+  a ejecutar **Scan Tools**.
+- [x] Grabar la demostración en Developer Mode, publicar un enlace accesible al
+  revisor y cargarlo como **Demo Recording URL**.
+- [x] Revisar y aceptar personalmente las declaraciones finales de cumplimiento.
+- [x] Enviar a revisión el 18 de septiembre de 2026. El portal muestra la
+  versión de revisión bloqueada para edición.
 
 ## No hacer antes de recibir el desafío
 

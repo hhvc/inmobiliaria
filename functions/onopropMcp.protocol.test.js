@@ -43,6 +43,14 @@ test("el servidor MCP anuncia tres herramientas seguras y responde get_started",
             ).sort(),
             ["count", "results"],
         );
+        assert.equal(
+            Object.hasOwn(
+                toolsByName["onoprop.search_properties"]
+                    .outputSchema.properties.results.items.properties,
+                "featured",
+            ),
+            false,
+        );
         assert.deepEqual(
             Object.keys(
                 toolsByName["onoprop.get_property"].outputSchema.properties,

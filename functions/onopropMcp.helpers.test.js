@@ -252,6 +252,31 @@ test("conserva fichas similares y solo evita repetir el mismo identificador", ()
     );
 });
 
+test("no prioriza publicaciones destacadas de pago", () => {
+    const recent = {
+        ...agencyProperty,
+        id: "agency:agency-1:recent",
+        featured: false,
+        updated_at_ms: 20,
+    };
+    const paidFeatured = {
+        ...agencyProperty,
+        id: "agency:agency-1:paid-featured",
+        featured: true,
+        updated_at_ms: 10,
+    };
+
+    const results = filterAndRankMcpProperties(
+        [paidFeatured, recent],
+        { limit: 20 },
+    );
+
+    assert.deepEqual(
+        results.map((property) => property.id),
+        [recent.id, paidFeatured.id],
+    );
+});
+
 test("los resultados particulares no incluyen datos privados de contacto", () => {
     const result = mapParticularListingForMcp({
         id: "particular-1",

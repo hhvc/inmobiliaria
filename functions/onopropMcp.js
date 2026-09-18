@@ -54,7 +54,6 @@ const SearchResultSchema = z.object({
     source: z.enum(["inmobiliaria", "particular"]),
     publisher_name: z.string(),
     image_url: z.string(),
-    featured: z.boolean(),
     summary: z.string(),
 });
 
@@ -111,7 +110,6 @@ const toSearchResult = (property = {}) => ({
     source: property.source,
     publisher_name: property.publisher_name,
     image_url: property.image_url,
-    featured: property.featured,
     summary: buildSearchSummary(property),
 });
 

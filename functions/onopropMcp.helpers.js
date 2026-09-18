@@ -343,7 +343,6 @@ export const mapAgencyListingForMcp = ({
             180,
         ),
         image_url: getImageUrl(listing),
-        featured: listing.destacado === true,
         updated_at_ms: getTimestamp(listing.updatedAt || listing.createdAt),
     };
     result.title = buildPropertyTitle({ ...listing, location });
@@ -394,7 +393,6 @@ export const mapParticularListingForMcp = ({ id, listing = {} } = {}) => {
         source: "particular",
         publisher_name: "Particular verificado por ONO Prop",
         image_url: getImageUrl(listing),
-        featured: false,
         updated_at_ms: getTimestamp(listing.updatedAt || listing.createdAt),
     };
     result.title = buildPropertyTitle({ ...listing, location });
@@ -602,7 +600,6 @@ export const filterAndRankMcpProperties = (properties = [], filters = {}) => {
         if (a.search_score !== b.search_score) {
             return b.search_score - a.search_score;
         }
-        if (a.featured !== b.featured) return a.featured ? -1 : 1;
         return b.updated_at_ms - a.updated_at_ms;
     });
 
