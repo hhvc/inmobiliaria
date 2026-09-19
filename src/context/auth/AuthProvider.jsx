@@ -3,6 +3,7 @@ import {
   signInWithPopup,
   signOut,
   GoogleAuthProvider,
+  getAdditionalUserInfo,
   createUserWithEmailAndPassword,
   reload,
   sendEmailVerification,
@@ -13,6 +14,7 @@ import {
   onAuthStateChanged,
   RecaptchaVerifier,
 } from "firebase/auth";
+import { recordAcquisitionConversion } from "../../analytics/services/acquisitionAttribution.service";
 import { auth, db } from "../../firebase/config";
 import { AuthContext } from "./AuthContext";
 import { doc, setDoc, getDoc, updateDoc } from "firebase/firestore";
@@ -249,6 +251,11 @@ export const AuthProvider = ({ children }) => {
       const result = await signInWithPopup(auth, provider);
       const userWithRole = await getUserWithRole(result.user);
       setUser(userWithRole);
+      if (getAdditionalUserInfo(result)?.isNewUser) {
+        recordAcquisitionConversion("registration_completed", {
+          dedupeKey: "account:google",
+        });
+      }
       return userWithRole;
     } catch (error) {
       throw new Error(
@@ -290,6 +297,9 @@ export const AuthProvider = ({ children }) => {
           verificationEmailSent,
         };
         setUser(userWithRole);
+        recordAcquisitionConversion("registration_completed", {
+          dedupeKey: "account:email",
+        });
         return userWithRole;
       } catch (error) {
         throw new Error(handleError(error, "Error al registrarse."));

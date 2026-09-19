@@ -25,6 +25,7 @@
     "test:portal-search": "node --test tests/portalSearch.helpers.test.js",
     "test:portal-favorites": "node --test tests/portalFavorites.helpers.test.js",
     "test:portal-performance": "node --test tests/portalPerformance.helpers.test.js",
+    "test:acquisition": "node --test tests/onopropAcquisition.helpers.test.js tests/acquisitionAttribution.helpers.test.js",
     "test:seo": "node --test tests/seoPrerender.helpers.test.js",
     "test:emprendimientos": "node --test tests/emprendimientoSchema.test.js",
     "test:unidades": "node --test tests/emprendimientoUnits.test.js",

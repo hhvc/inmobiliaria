@@ -79,6 +79,14 @@ const PrivacyPolicyPage = () => {
             técnica diaria para evitar contar repetidamente la misma acción.
           </li>
           <li>
+            <strong>Atribución de campañas:</strong> cuando llegás mediante un
+            enlace identificado, el navegador puede conservar por hasta 30 días
+            el origen, campaña y contenido UTM para medir en forma agregada si
+            se completó un registro, publicación, alta, consulta o contratación.
+            Esta medición no conserva la conversación, el texto libre, email ni
+            teléfono dentro del panel analítico.
+          </li>
+          <li>
             <strong>Datos de integraciones:</strong> identificadores de cuenta,
             nombre de usuario, tipo de cuenta, permisos concedidos, estado de
             conexión, vencimientos, identificadores de publicaciones,

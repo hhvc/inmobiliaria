@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
 import { useContactForm } from "../hooks/useContactForm";
+import {
+  getActiveAcquisitionAttribution,
+  recordAcquisitionConversion,
+} from "../analytics/services/acquisitionAttribution.service";
 import { buildWhatsappRedirectUrl } from "../utils/whatsappRedirect";
 
 const CONTACT_EMAIL = "contacto@onoprop.com";
@@ -85,6 +89,12 @@ const Contact = () => {
     });
 
     if (wasSent) {
+      const attribution = getActiveAcquisitionAttribution();
+      if (attribution?.content === "solicitar_tasacion") {
+        recordAcquisitionConversion("appraisal_request_completed", {
+          dedupeKey: "contact:appraisal",
+        });
+      }
       setFormData({
         name: "",
         email: "",

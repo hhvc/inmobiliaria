@@ -44,6 +44,8 @@ import UserAdminPage from "./pages/UserAdminPage";
 
 import PortalPublicationsPage from "./admin/pages/PortalPublicationsPage";
 import PortalRankingConfigPage from "./admin/pages/PortalRankingConfigPage";
+import OnopropAcquisitionDashboardPage from "./analytics/pages/OnopropAcquisitionDashboardPage";
+import AcquisitionAttributionTracker from "./analytics/components/AcquisitionAttributionTracker";
 
 import ParticularPublicationRequestsAdminPage from "./particular/pages/ParticularPublicationRequestsAdminPage";
 import ParticularPublicationPublicPage from "./particular/pages/ParticularPublicationPublicPage";
@@ -157,6 +159,7 @@ function App() {
       <AuthProvider>
         <Router>
           <div className="modern">
+            <AcquisitionAttributionTracker />
             <Navbar />
 
             <main className="flex-grow-1">
@@ -490,6 +493,15 @@ function App() {
                   element={
                     <ProtectedRoute role="root">
                       <ParticularPublicationRequestsAdminPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/portal/adquisicion"
+                  element={
+                    <ProtectedRoute role="root">
+                      <OnopropAcquisitionDashboardPage />
                     </ProtectedRoute>
                   }
                 />

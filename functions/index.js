@@ -229,4 +229,9 @@ export {
   portalGetPerformanceDashboard,
 } from "./portalPerformance.js";
 
+export {
+  onopropGetAcquisitionDashboard,
+  onopropRecordAcquisitionConversion,
+} from "./onopropAcquisition.js";
+
 export { onopropMcp } from "./onopropMcp.js";

@@ -13,6 +13,7 @@ import {
     normalizePerformanceSource,
     serializePerformanceRecord,
 } from "./portalPerformance.helpers.js";
+import { recordChatgptPortalInteraction } from "./onopropAcquisition.js";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -245,6 +246,9 @@ export const portalRecordPerformanceEvent = onCall(
         });
 
         await batch.commit();
+        if (source === "chatgpt_plugin") {
+            await recordChatgptPortalInteraction(eventType);
+        }
         return { ok: true };
     },
 );

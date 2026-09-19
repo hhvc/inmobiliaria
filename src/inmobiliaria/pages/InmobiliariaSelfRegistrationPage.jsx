@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import SEO from "../../components/SEO";
 import Login from "../../components/auth/Login";
 import { useAuth } from "../../context/auth/useAuth";
+import { recordAcquisitionConversion } from "../../analytics/services/acquisitionAttribution.service";
 
 import InmobiliariaForm from "../components/InmobiliariaForm";
 import {
@@ -77,6 +78,10 @@ const InmobiliariaSelfRegistrationPage = () => {
                     "La inmobiliaria fue creada, pero no se pudieron actualizar los permisos de la sesión. Volvé a ingresar para continuar.",
                 );
             }
+
+            recordAcquisitionConversion("agency_onboarding_completed", {
+                dedupeKey: `agency:${inmobiliariaId}`,
+            });
 
             alert(
                 "✅ Inmobiliaria creada correctamente. Ya podés operar, aunque quedará pendiente de documentación para validar.",

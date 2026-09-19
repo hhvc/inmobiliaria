@@ -11,6 +11,7 @@ import {
 } from "../../inmueble/helpers/uploadInmuebleImages";
 import { normalizeInmuebleVideos } from "../../inmueble/utils/inmuebleVideos.helpers";
 import { useAuth } from "../../context/auth/useAuth";
+import { recordAcquisitionConversion } from "../../analytics/services/acquisitionAttribution.service";
 import {
     createParticularPublicationRequest,
     getActiveInmobiliariasForPublicationRequest,
@@ -278,10 +279,13 @@ const ParticularPublicationRequestPage = () => {
             setError("");
             setSuccess("");
 
-            await createParticularPublicationRequest({
+            const requestId = await createParticularPublicationRequest({
                 ...formData,
                 images: imageFiles,
                 videos: videoValues,
+            });
+            recordAcquisitionConversion("publication_completed", {
+                dedupeKey: `publication:${requestId}`,
             });
 
             setSuccess(

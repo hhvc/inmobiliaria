@@ -11,6 +11,7 @@ import app, {
     auth,
     storage,
 } from "../../firebase/config";
+import { getActiveAcquisitionAttribution } from "../../analytics/services/acquisitionAttribution.service";
 
 const functions = getFunctions(app, "southamerica-east1");
 
@@ -44,7 +45,10 @@ export const getPublicBillingCatalog = () => {
 };
 
 export const createCommercialLead = (payload) => {
-    return callBillingFunction("billingCreateCommercialLead", payload);
+    return callBillingFunction("billingCreateCommercialLead", {
+        ...payload,
+        acquisitionAttribution: getActiveAcquisitionAttribution(),
+    });
 };
 
 export const updateCommercialLead = (payload) => {
@@ -80,7 +84,10 @@ export const seedInitialBillingCatalog = () => {
 };
 
 export const requestBillingContract = (payload) => {
-    return callBillingFunction("billingRequestContract", payload);
+    return callBillingFunction("billingRequestContract", {
+        ...payload,
+        acquisitionAttribution: getActiveAcquisitionAttribution(),
+    });
 };
 
 export const quoteBillingContract = (payload) => {

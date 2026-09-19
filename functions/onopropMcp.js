@@ -12,6 +12,11 @@ import {
     mapParticularListingForMcp,
     parseMcpPropertyId,
 } from "./onopropMcp.helpers.js";
+import {
+    recordOnopropMcpPropertyDetail,
+    recordOnopropMcpSearch,
+    recordOnopropMcpStart,
+} from "./onopropAcquisition.js";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -357,6 +362,7 @@ export const createOnopropMcpServer = () => {
                 count: results.length,
                 durationMs: Date.now() - startedAt,
             });
+            await recordOnopropMcpSearch(filters, results.length);
             return asToolResponse(
                 { results, count: results.length },
             );
@@ -395,6 +401,7 @@ export const createOnopropMcpServer = () => {
                     text: property.text,
                 },
             };
+            await recordOnopropMcpPropertyDetail();
             return asToolResponse(structuredContent);
         },
     );
@@ -423,6 +430,7 @@ export const createOnopropMcpServer = () => {
         },
         async ({ goal }) => {
             const options = getOnopropStartOptions(goal);
+            await recordOnopropMcpStart(goal);
             return asToolResponse(
                 { options },
             );

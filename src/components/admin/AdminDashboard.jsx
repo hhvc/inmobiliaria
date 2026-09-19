@@ -282,6 +282,15 @@ const AdminDashboard = () => {
             />
 
             <ModuleCard
+              title="📈 Adquisición y conversión"
+              text="Demanda desde ChatGPT, búsquedas sin resultados, aperturas de fichas, contactos y recorridos comerciales."
+              to="/admin/portal/adquisicion"
+              buttonLabel="Ver adquisición"
+              icon="fa fa-chart-line"
+              color="#0d6efd"
+            />
+
+            <ModuleCard
               title="🏠 Publicaciones particulares"
               text="Solicitudes de dueños particulares para aprobar como publicación ONO Prop o derivar a inmobiliarias."
               to="/admin/publicaciones/particulares"

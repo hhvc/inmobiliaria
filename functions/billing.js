@@ -33,6 +33,11 @@ import {
     normalizeTnaMillionths,
     resolveContractFinancialTerms,
 } from "./billing.helpers.js";
+import {
+    isOnopropMcpAttribution,
+    normalizeAcquisitionAttribution,
+} from "./onopropAcquisition.helpers.js";
+import { recordOnopropAcquisitionConversion } from "./onopropAcquisition.js";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -906,6 +911,12 @@ export const billingCreateCommercialLead = onCall(
 
         const now = Timestamp.now();
         const ref = db.collection(COMMERCIAL_LEADS_COLLECTION).doc();
+        const acquisitionAttribution = normalizeAcquisitionAttribution(
+            input.acquisitionAttribution,
+        );
+        const hasAcquisitionAttribution = isOnopropMcpAttribution(
+            acquisitionAttribution,
+        );
         const lead = {
             contactName,
             agencyName,
@@ -924,6 +935,7 @@ export const billingCreateCommercialLead = onCall(
             promotionCode: normalizePromotionCode(input.promotionCode),
             message: cleanBillingText(input.message, 2500),
             source: normalizeCommercialSource(input.source),
+            ...(hasAcquisitionAttribution ? { acquisitionAttribution } : {}),
             status: "new",
             nextActionDateKey: "",
             lastNote: "",
@@ -943,6 +955,11 @@ export const billingCreateCommercialLead = onCall(
             updatedAt: now,
         };
         await ref.set(lead);
+        await recordOnopropAcquisitionConversion({
+            eventType: "commercial_lead_submitted",
+            attribution: acquisitionAttribution,
+            eventId: `commercial-lead:${ref.id}`,
+        });
 
         try {
             const mailRef = await enqueueCommercialLeadNotification(lead);
@@ -1357,6 +1374,12 @@ export const billingRequestContract = onCall(
             uid,
             note: cleanBillingText(request.data?.note, 500),
         });
+        const acquisitionAttribution = normalizeAcquisitionAttribution(
+            request.data?.acquisitionAttribution,
+        );
+        const hasAcquisitionAttribution = isOnopropMcpAttribution(
+            acquisitionAttribution,
+        );
         const contract = {
             inmobiliariaId,
             inmobiliariaNombre:
@@ -1382,6 +1405,7 @@ export const billingRequestContract = onCall(
             termsAcceptedBy: uid,
             requestedAt: now,
             requestedBy: uid,
+            ...(hasAcquisitionAttribution ? { acquisitionAttribution } : {}),
             activityLog: [activity],
             createdAt: now,
             updatedAt: now,
@@ -1460,6 +1484,11 @@ export const billingRequestContract = onCall(
         } else {
             await ref.set(contract);
         }
+        await recordOnopropAcquisitionConversion({
+            eventType: "service_contract_requested",
+            attribution: acquisitionAttribution,
+            eventId: `service-contract-requested:${ref.id}`,
+        });
         return { contract: serializeValue({ id: ref.id, ...contract }) };
     },
 );
@@ -1889,6 +1918,11 @@ export const billingActivateContract = onCall(
             syncBillingModules(contract.inmobiliariaId),
             grantInitialBenefits(activeContract),
         ]);
+        await recordOnopropAcquisitionConversion({
+            eventType: "service_contract_activated",
+            attribution: contract.acquisitionAttribution,
+            eventId: `service-contract-activated:${contractId}`,
+        });
         return { status: "active" };
     },
 );
