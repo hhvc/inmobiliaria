@@ -6,16 +6,19 @@ const cleanText = (value = "", maxLength = 160) => value
     .trim()
     .slice(0, maxLength) || "";
 
-export const normalizeAcquisitionAttribution = (value = {}) => ({
-    source: cleanText(value.source, 40).toLowerCase(),
-    medium: cleanText(value.medium, 40).toLowerCase(),
-    campaign: cleanText(value.campaign, 80).toLowerCase(),
-    content: cleanText(value.content, 80).toLowerCase(),
-    term: cleanText(value.term, 80).toLowerCase(),
-    entryPath: cleanText(value.entryPath || "/", 240),
-    attributionId: cleanText(value.attributionId, 120),
-    capturedAt: Number(value.capturedAt || 0),
-});
+export const normalizeAcquisitionAttribution = (value = {}) => {
+    const attribution = value ?? {};
+    return {
+        source: cleanText(attribution.source, 40).toLowerCase(),
+        medium: cleanText(attribution.medium, 40).toLowerCase(),
+        campaign: cleanText(attribution.campaign, 80).toLowerCase(),
+        content: cleanText(attribution.content, 80).toLowerCase(),
+        term: cleanText(attribution.term, 80).toLowerCase(),
+        entryPath: cleanText(attribution.entryPath || "/", 240),
+        attributionId: cleanText(attribution.attributionId, 120),
+        capturedAt: Number(attribution.capturedAt || 0),
+    };
+};
 
 export const isOnopropMcpAttribution = (value = {}) => {
     const attribution = normalizeAcquisitionAttribution(value);

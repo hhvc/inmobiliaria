@@ -51,6 +51,22 @@
   z-index: 1;
 }
 
+.marketing-lead-card {
+  background: #fff;
+  border: 1px solid #d9e9e2;
+  border-radius: 1.5rem;
+  box-shadow: 0 1.5rem 4rem rgba(0, 36, 27, 0.24);
+  color: #16302b;
+  padding: 2rem;
+  position: relative;
+  scroll-margin-top: 6rem;
+  z-index: 1;
+}
+
+.marketing-lead-card .form-label {
+  font-weight: 600;
+}
+
 .marketing-summary-price {
   display: block;
   font-size: clamp(3rem, 8vw, 5.5rem);
@@ -216,6 +232,10 @@
   }
 
   .marketing-summary-card {
+    padding: 1.4rem;
+  }
+
+  .marketing-lead-card {
     padding: 1.4rem;
   }
 

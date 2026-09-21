@@ -1,6 +1,10 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useLocation } from "react-router-dom";
 
 import SEO from "../../components/SEO";
+import { createCommercialLead } from "../../billing/services/billing.service";
+import { buildCommercialSource } from "../../billing/utils/commercial.helpers";
+import { buildAgencyPlansUrl } from "../utils/marketingCampaign.helpers";
 import "../marketing.css";
 
 const SOLUTIONS = [
@@ -30,7 +34,33 @@ const SOLUTIONS = [
   },
 ];
 
+const DEMO_INTERESTS = [
+  "Publicación y presencia digital",
+  "Administración de alquileres",
+  "Administración de consorcios",
+  "Tasaciones y parcelas",
+  "Integraciones y cobros",
+  "Quiero conocer la plataforma completa",
+];
+
+const INITIAL_DEMO_FORM = {
+  agencyName: "",
+  contactName: "",
+  email: "",
+  phone: "",
+  interest: "Quiero conocer la plataforma completa",
+  website: "",
+  consentAccepted: false,
+};
+
 const RealEstateSoftwareLandingPage = () => {
+  const location = useLocation();
+  const plansUrl = buildAgencyPlansUrl(location.search);
+  const [form, setForm] = useState(INITIAL_DEMO_FORM);
+  const [startedAtMs, setStartedAtMs] = useState(() => Date.now());
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
   const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
   const canonicalUrl = `${siteUrl}/software-para-inmobiliarias`;
   const jsonLd = {
@@ -47,6 +77,43 @@ const RealEstateSoftwareLandingPage = () => {
       name: "ONO Prop",
       url: siteUrl,
     },
+  };
+
+  const updateForm = (field, value) => {
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const submitDemo = async (event) => {
+    event.preventDefault();
+    if (!form.email.trim() && !form.phone.trim()) {
+      setError("Dejanos un email o un teléfono para poder responderte.");
+      return;
+    }
+
+    setSending(true);
+    setError("");
+    try {
+      await createCommercialLead({
+        ...form,
+        countryCode: "AR",
+        preferredContact: form.phone.trim() ? "whatsapp" : "email",
+        message: `Interés principal: ${form.interest}`,
+        startedAtMs,
+        source: buildCommercialSource({
+          href: window.location.href,
+          pathname: location.pathname,
+          search: location.search,
+          referrer: document.referrer,
+        }),
+      });
+      setSuccess(true);
+      setForm(INITIAL_DEMO_FORM);
+      setStartedAtMs(Date.now());
+    } catch (submitError) {
+      setError(submitError.message || "No pudimos enviar la solicitud. Reintentá en unos minutos.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -73,12 +140,9 @@ const RealEstateSoftwareLandingPage = () => {
                 que crece tu operación, conservando tu identidad comercial.
               </p>
               <div className="d-flex flex-wrap gap-2">
-                <Link
-                  className="btn btn-light btn-lg"
-                  to="/planes?origen=software-para-inmobiliarias#contacto-comercial"
-                >
+                <a className="btn btn-light btn-lg" href="#solicitar-demo">
                   Solicitar demostración
-                </Link>
+                </a>
                 <Link className="btn btn-outline-light btn-lg" to="/inmobiliarias/alta">
                   Crear mi inmobiliaria
                 </Link>
@@ -89,16 +153,110 @@ const RealEstateSoftwareLandingPage = () => {
             </div>
 
             <div className="col-lg-5">
-              <div className="marketing-summary-card">
-                <p className="marketing-summary-kicker">Una base, distintos servicios</p>
-                <h2 className="h3">Elegí qué resolver primero</h2>
-                <ul className="marketing-check-list mb-0">
-                  <li>Publicaciones y sitio propio</li>
-                  <li>Alquileres y facturación ARCA</li>
-                  <li>Consorcios y portal de residentes</li>
-                  <li>Tasaciones, mapas y parcelas</li>
-                  <li>Integraciones y medios de cobro</li>
-                </ul>
+              <div className="marketing-lead-card" id="solicitar-demo">
+                <p className="marketing-eyebrow text-success">Demostración sin compromiso</p>
+                <h2 className="h3 mb-2">Conversemos sobre tu inmobiliaria</h2>
+                <p className="text-muted mb-4">
+                  Contanos qué necesitás. Te contactaremos para coordinar una demostración enfocada.
+                </p>
+                {success ? (
+                  <div className="alert alert-success mb-0" role="status">
+                    <strong>Solicitud recibida.</strong> Te contactaremos para coordinar la demostración.
+                  </div>
+                ) : (
+                  <form className="row g-3" onSubmit={submitDemo}>
+                    <div className="col-12">
+                      <label className="form-label" htmlFor="demoAgency">Inmobiliaria</label>
+                      <input
+                        autoComplete="organization"
+                        className="form-control"
+                        id="demoAgency"
+                        onChange={(event) => updateForm("agencyName", event.target.value)}
+                        required
+                        value={form.agencyName}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label" htmlFor="demoContact">Tu nombre</label>
+                      <input
+                        autoComplete="name"
+                        className="form-control"
+                        id="demoContact"
+                        onChange={(event) => updateForm("contactName", event.target.value)}
+                        required
+                        value={form.contactName}
+                      />
+                    </div>
+                    <div className="col-sm-6">
+                      <label className="form-label" htmlFor="demoPhone">WhatsApp</label>
+                      <input
+                        autoComplete="tel"
+                        className="form-control"
+                        id="demoPhone"
+                        onChange={(event) => updateForm("phone", event.target.value)}
+                        type="tel"
+                        value={form.phone}
+                      />
+                    </div>
+                    <div className="col-sm-6">
+                      <label className="form-label" htmlFor="demoEmail">Email</label>
+                      <input
+                        autoComplete="email"
+                        className="form-control"
+                        id="demoEmail"
+                        onChange={(event) => updateForm("email", event.target.value)}
+                        type="email"
+                        value={form.email}
+                      />
+                    </div>
+                    <div className="col-12 small text-muted">Indicá al menos uno de los dos medios de contacto.</div>
+                    <div className="col-12">
+                      <label className="form-label" htmlFor="demoInterest">¿Qué te interesa más?</label>
+                      <select
+                        className="form-select"
+                        id="demoInterest"
+                        onChange={(event) => updateForm("interest", event.target.value)}
+                        value={form.interest}
+                      >
+                        {DEMO_INTERESTS.map((interest) => (
+                          <option key={interest} value={interest}>{interest}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="visually-hidden" aria-hidden="true">
+                      <label htmlFor="demoWebsite">Sitio web</label>
+                      <input
+                        autoComplete="off"
+                        id="demoWebsite"
+                        onChange={(event) => updateForm("website", event.target.value)}
+                        tabIndex="-1"
+                        value={form.website}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <div className="form-check">
+                        <input
+                          checked={form.consentAccepted}
+                          className="form-check-input"
+                          id="demoConsent"
+                          onChange={(event) => updateForm("consentAccepted", event.target.checked)}
+                          required
+                          type="checkbox"
+                        />
+                        <label className="form-check-label small" htmlFor="demoConsent">
+                          Acepto que ONO Prop me contacte por esta solicitud y la{" "}
+                          <Link to="/privacidad" target="_blank" rel="noopener noreferrer">Política de privacidad</Link>.
+                        </label>
+                      </div>
+                    </div>
+                    {error && <div className="col-12"><div className="alert alert-danger mb-0" role="alert">{error}</div></div>}
+                    <div className="col-12 d-grid">
+                      <button className="btn btn-success btn-lg" disabled={sending} type="submit">
+                        {sending ? "Enviando..." : "Pedir demostración"}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           </div>
@@ -165,13 +323,10 @@ const RealEstateSoftwareLandingPage = () => {
             </p>
           </div>
           <div className="col-lg-5 d-grid gap-2">
-            <Link
-              className="btn btn-primary btn-lg"
-              to="/planes?origen=software-para-inmobiliarias#contacto-comercial"
-            >
+            <a className="btn btn-primary btn-lg" href="#solicitar-demo">
               Pedir una demostración
-            </Link>
-            <Link className="btn btn-outline-secondary" to="/planes">
+            </a>
+            <Link className="btn btn-outline-secondary" to={plansUrl}>
               Ver planes y servicios
             </Link>
             <Link className="btn btn-link" to="/guias">
@@ -187,12 +342,9 @@ const RealEstateSoftwareLandingPage = () => {
           <p className="lead mb-4">
             Publicaciones, alquileres, consorcios o tasaciones: armamos una demostración enfocada.
           </p>
-          <Link
-            className="btn btn-light btn-lg"
-            to="/planes?origen=software-para-inmobiliarias#contacto-comercial"
-          >
+          <a className="btn btn-light btn-lg" href="#solicitar-demo">
             Solicitar contacto
-          </Link>
+          </a>
         </div>
       </section>
     </main>

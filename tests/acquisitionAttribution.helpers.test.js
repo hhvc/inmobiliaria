@@ -5,7 +5,24 @@ import {
     ACQUISITION_ATTRIBUTION_MAX_AGE_MS,
     buildAcquisitionAttributionFromLocation,
     isAcquisitionAttributionActive,
+    normalizeAcquisitionAttribution,
 } from "../src/analytics/utils/acquisitionAttribution.helpers.js";
+
+test("una visita sin atribución guardada no impide iniciar el portal", () => {
+    assert.equal(isAcquisitionAttributionActive(null), false);
+    assert.equal(isAcquisitionAttributionActive(undefined), false);
+    assert.equal(isAcquisitionAttributionActive("invalid"), false);
+    assert.deepEqual(normalizeAcquisitionAttribution(null), {
+        source: "",
+        medium: "",
+        campaign: "",
+        content: "",
+        term: "",
+        entryPath: "/",
+        attributionId: "",
+        capturedAt: 0,
+    });
+});
 
 test("captura únicamente la atribución UTM del conector ONO Prop", () => {
     const capturedAt = Date.UTC(2026, 8, 18, 12);

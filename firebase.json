@@ -5,6 +5,13 @@
       "firebase.json",
       "**/node_modules/**"
     ],
+    "redirects": [
+      {
+        "regex": "^/demo/?$",
+        "destination": "/software-para-inmobiliarias",
+        "type": 301
+      }
+    ],
     "rewrites": [
       {
         "source": "/mcp",

@@ -121,6 +121,13 @@ const BillingCommercialLeadsPanel = ({
                                         <div className="small mt-3">
                                             <strong>Interés:</strong> {getCommercialInterestSummary(lead)}
                                         </div>
+                                        {lead.source?.utmSource && (
+                                            <div className="small text-muted mt-1">
+                                                <strong>Origen:</strong> {lead.source.utmSource}
+                                                {lead.source.utmMedium && ` · ${lead.source.utmMedium}`}
+                                                {lead.source.utmCampaign && ` · ${lead.source.utmCampaign}`}
+                                            </div>
+                                        )}
                                         {lead.promotionCode && (
                                             <div className="small"><strong>Promoción:</strong> {lead.promotionCode}</div>
                                         )}
