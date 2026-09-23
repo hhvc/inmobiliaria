@@ -28,6 +28,12 @@
   background: linear-gradient(135deg, #153c34 0%, #0d664d 52%, #0a8f78 100%);
 }
 
+.marketing-hero--consortiums {
+  background:
+    radial-gradient(circle at 82% 18%, rgba(255, 208, 103, 0.22), transparent 26rem),
+    linear-gradient(135deg, #153c34 0%, #0b6654 55%, #0a8f78 100%);
+}
+
 .marketing-eyebrow {
   font-size: 0.78rem;
   font-weight: 800;
@@ -82,6 +88,18 @@
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+}
+
+.marketing-consortium-price-card {
+  isolation: isolate;
+}
+
+.marketing-consortium-price-card .marketing-summary-price {
+  margin-top: 1.1rem;
+}
+
+.marketing-consortium-faq {
+  max-width: 54rem;
 }
 
 .marketing-check-list {

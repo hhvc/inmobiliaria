@@ -64,6 +64,11 @@ const STATIC_ROUTES = [
         priority: "0.9",
     },
     {
+        path: "/software-administracion-consorcios",
+        changefreq: "weekly",
+        priority: "0.9",
+    },
+    {
         path: "/donar",
         changefreq: "monthly",
         priority: "0.5",

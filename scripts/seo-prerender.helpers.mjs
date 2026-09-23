@@ -76,6 +76,31 @@ export const STATIC_SEO_ROUTES = {
       operatingSystem: "Web",
     },
   },
+  "/software-administracion-consorcios": {
+    title: "Software para administración de consorcios | ONO Prop",
+    description:
+      "Liquidá expensas, administrá cobranzas, cuentas corrientes, documentación y comunicación con consorcistas desde ONO Prop.",
+    heading: "Administración de Consorcios con ONO Prop",
+    summary:
+      "Un circuito conectado para liquidaciones, cobranzas, documentación, control económico y comunicación con consorcistas.",
+    facts: ["Expensas y cobranzas", "Portal para consorcistas", "Puesta en marcha acompañada"],
+    links: [
+      { href: "/guias/administracion-consorcios", label: "Consultar manual" },
+      { href: "/software-para-inmobiliarias", label: "Conocer toda la plataforma" },
+    ],
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      name: "Administración de Consorcios ONO Prop",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      offers: {
+        "@type": "Offer",
+        price: 1000,
+        priceCurrency: "ARS",
+      },
+    },
+  },
   "/inmobiliarias": {
     title: "ONO Prop para inmobiliarias | Publicá y administrá",
     description:

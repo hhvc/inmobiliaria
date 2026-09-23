@@ -12,6 +12,7 @@ import app, {
     storage,
 } from "../../firebase/config";
 import { getActiveAcquisitionAttribution } from "../../analytics/services/acquisitionAttribution.service";
+import { trackGoogleAdsLeadConversion } from "../../marketing/services/googleAdsMeasurement.service";
 
 const functions = getFunctions(app, "southamerica-east1");
 
@@ -44,11 +45,15 @@ export const getPublicBillingCatalog = () => {
     return callBillingFunction("billingGetPublicCatalog");
 };
 
-export const createCommercialLead = (payload) => {
-    return callBillingFunction("billingCreateCommercialLead", {
+export const createCommercialLead = async (payload) => {
+    const result = await callBillingFunction("billingCreateCommercialLead", {
         ...payload,
         acquisitionAttribution: getActiveAcquisitionAttribution(),
     });
+    if (result?.leadId) {
+        trackGoogleAdsLeadConversion({ leadId: `commercial:${result.leadId}` });
+    }
+    return result;
 };
 
 export const updateCommercialLead = (payload) => {

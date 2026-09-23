@@ -28,11 +28,11 @@ export const useContactForm = () => {
       // await sendEmailNotification(formData);
 
       setSuccess(true);
-      return true;
+      return { received: true, leadId: docRef.id };
     } catch (err) {
       console.error("Error guardando mensaje:", err);
       setError("Error al enviar el mensaje. Por favor, intente nuevamente.");
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }

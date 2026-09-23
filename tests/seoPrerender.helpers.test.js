@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildStaticSeoRoute,
   buildPropertySeoRoute,
   escapeHtml,
   renderSeoDocument,
@@ -9,6 +10,15 @@ import {
 
 test("escapa contenido aportado por usuarios", () => {
   assert.equal(escapeHtml('<script>alert("x")</script>'), "&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;");
+});
+
+test("publica metadatos específicos para Administración de Consorcios", () => {
+  const route = buildStaticSeoRoute("/software-administracion-consorcios");
+
+  assert.equal(route.path, "/software-administracion-consorcios");
+  assert.match(route.title, /administración de consorcios/i);
+  assert.equal(route.jsonLd?.offers?.price, 1000);
+  assert.equal(route.jsonLd?.offers?.priceCurrency, "ARS");
 });
 
 test("genera metadatos y contenido estático para un inmueble", () => {

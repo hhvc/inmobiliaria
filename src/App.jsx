@@ -19,6 +19,8 @@ import ConsortiumAdministrationGuidePage from "./guides/ConsortiumAdministration
 import RentalAdministrationGuidePage from "./guides/RentalAdministrationGuidePage";
 import FreePublicationLandingPage from "./marketing/pages/FreePublicationLandingPage";
 import RealEstateSoftwareLandingPage from "./marketing/pages/RealEstateSoftwareLandingPage";
+import ConsortiumSoftwareLandingPage from "./marketing/pages/ConsortiumSoftwareLandingPage";
+import GoogleAdsMeasurementInitializer from "./marketing/components/GoogleAdsMeasurementInitializer";
 
 // Páginas para usuarios registrados particulares
 import ParticularPublicationRequestPage from "./particular/pages/ParticularPublicationRequestPage";
@@ -159,6 +161,7 @@ function App() {
       <AuthProvider>
         <Router>
           <div className="modern">
+            <GoogleAdsMeasurementInitializer />
             <AcquisitionAttributionTracker />
             <Navbar />
 
@@ -181,6 +184,10 @@ function App() {
                 <Route
                   path="/software-para-inmobiliarias"
                   element={<RealEstateSoftwareLandingPage />}
+                />
+                <Route
+                  path="/software-administracion-consorcios"
+                  element={<ConsortiumSoftwareLandingPage />}
                 />
                 <Route path="/planes" element={<PublicPlansPage />} />
                 <Route path="/donar" element={<DonationPage />} />

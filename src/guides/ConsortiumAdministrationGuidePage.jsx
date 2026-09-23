@@ -166,7 +166,7 @@ const ConsortiumAdministrationGuidePage = () => (
       </section>
 
       <section className="consortium-guide-help text-center mt-4">
-        <h2>¿Necesitás acompañamiento?</h2><p>Podemos ayudarte a configurar el primer consorcio y revisar su circuito mensual.</p><a className="btn btn-primary" href="mailto:contacto@onoprop.com?subject=Ayuda%20con%20Administraci%C3%B3n%20de%20Consorcios">contacto@onoprop.com</a>
+        <h2>¿Necesitás acompañamiento?</h2><p>Podemos ayudarte a configurar el primer consorcio y revisar su circuito mensual.</p><div className="d-flex flex-wrap justify-content-center gap-2"><Link className="btn btn-primary" to="/software-administracion-consorcios">Solicitar demostración</Link><a className="btn btn-outline-primary" href="mailto:contacto@onoprop.com?subject=Ayuda%20con%20Administraci%C3%B3n%20de%20Consorcios">contacto@onoprop.com</a></div>
       </section>
 
       <p className="consortium-guide-disclaimer text-center">Este manual describe el funcionamiento operativo de ONO Prop. La administración debe aplicar la normativa, el reglamento y los criterios profesionales correspondientes a cada consorcio.</p>

@@ -6,6 +6,7 @@ import {
   getActiveAcquisitionAttribution,
   recordAcquisitionConversion,
 } from "../analytics/services/acquisitionAttribution.service";
+import { trackGoogleAdsLeadConversion } from "../marketing/services/googleAdsMeasurement.service";
 import { buildWhatsappRedirectUrl } from "../utils/whatsappRedirect";
 
 const CONTACT_EMAIL = "contacto@onoprop.com";
@@ -83,12 +84,13 @@ const Contact = () => {
       return;
     }
 
-    const wasSent = await submitContactForm({
+    const result = await submitContactForm({
       ...formData,
       source: "ONO Prop - Página de inicio",
     });
 
-    if (wasSent) {
+    if (result?.received) {
+      trackGoogleAdsLeadConversion({ leadId: `contact:${result.leadId}` });
       const attribution = getActiveAcquisitionAttribution();
       if (attribution?.content === "solicitar_tasacion") {
         recordAcquisitionConversion("appraisal_request_completed", {

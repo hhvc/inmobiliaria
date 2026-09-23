@@ -13,7 +13,11 @@ const getRouteEvent = (pathname, attribution = {}) => {
     if (pathname === "/contacto" && attribution.content === "solicitar_tasacion") {
         return "appraisal_request_started";
     }
-    if (["/software-para-inmobiliarias", "/planes"].includes(pathname)) {
+    if ([
+        "/software-para-inmobiliarias",
+        "/software-administracion-consorcios",
+        "/planes",
+    ].includes(pathname)) {
         return "commercial_interest_started";
     }
     return "";

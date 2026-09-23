@@ -19,6 +19,7 @@ const SOLUTIONS = [
   {
     title: "Administración de consorcios",
     text: "Unidades, expensas, cobranzas, comunicaciones, documentación y portal para consorcistas.",
+    to: "/software-administracion-consorcios",
   },
   {
     title: "Tasaciones y parcelas",
@@ -280,6 +281,11 @@ const RealEstateSoftwareLandingPage = () => {
                 </span>
                 <h3 className="h4">{solution.title}</h3>
                 <p className="text-muted mb-0">{solution.text}</p>
+                {solution.to && (
+                  <Link className="btn btn-link px-0 mt-3" to={solution.to}>
+                    Conocer este módulo
+                  </Link>
+                )}
               </article>
             </div>
           ))}
