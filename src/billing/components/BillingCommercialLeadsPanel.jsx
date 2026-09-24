@@ -4,19 +4,24 @@ import { Link } from "react-router-dom";
 import {
     buildCommercialWhatsappUrl,
     COMMERCIAL_LEAD_STATUS_OPTIONS,
+    getCommercialOfferSummary,
     getCommercialInterestSummary,
     getCommercialLeadStatus,
+    isConsortiumPilotLead,
 } from "../utils/commercial.helpers";
-import { formatBillingDate } from "../utils/billing.helpers";
+import { formatBillingDate, formatMoneyMinor } from "../utils/billing.helpers";
 
 const buildAgencyCreateUrl = (lead) => {
+    const isPilot = isConsortiumPilotLead(lead);
     const params = new URLSearchParams({
         commercialLeadId: lead.id,
+        commercialRequestType: isPilot ? "pilot" : "",
         nombre: lead.agencyName || "",
         email: lead.email || "",
         telefono: lead.phone || "",
         city: lead.city || "",
-        catalogItemId: lead.primaryCatalogItemId || lead.interestIds?.[0] || "",
+        catalogItemId: isPilot ? "" : lead.primaryCatalogItemId ||
+            lead.commercialOffer?.catalogItemId || lead.interestIds?.[0] || "",
     });
     return `/admin/inmobiliarias/nueva?${params.toString()}`;
 };
@@ -65,7 +70,7 @@ const BillingCommercialLeadsPanel = ({
                 <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
                     <div>
                         <p className="text-uppercase text-muted small mb-1">Embudo comercial</p>
-                        <h2 className="h4 mb-1">Oportunidades recibidas desde /planes</h2>
+                        <h2 className="h4 mb-1">Oportunidades recibidas desde las páginas comerciales</h2>
                         <p className="text-muted mb-0">
                             Contactá, programá el seguimiento y vinculá cada oportunidad con una inmobiliaria.
                         </p>
@@ -91,14 +96,19 @@ const BillingCommercialLeadsPanel = ({
                     {visibleLeads.map((lead) => {
                         const draft = drafts[lead.id] || buildInitialDraft(lead);
                         const status = getCommercialLeadStatus(lead.status);
+                        const offerSummary = getCommercialOfferSummary(lead);
+                        const isPilot = isConsortiumPilotLead(lead);
                         const whatsappUrl = buildCommercialWhatsappUrl(
                             lead.phone,
-                            `Hola ${lead.contactName || ""}, te contacto desde ONO Prop por tu consulta sobre ${getCommercialInterestSummary(lead)}.`,
+                            isPilot
+                                ? `Hola ${lead.contactName || ""}, te contacto desde ONO Prop por tu solicitud del piloto de Administración de Consorcios.`
+                                : `Hola ${lead.contactName || ""}, te contacto desde ONO Prop por tu consulta sobre ${getCommercialInterestSummary(lead)}.`,
                         );
-                        const catalogItemId = lead.primaryCatalogItemId || lead.interestIds?.[0] || "";
+                        const catalogItemId = lead.primaryCatalogItemId ||
+                            lead.commercialOffer?.catalogItemId || lead.interestIds?.[0] || "";
                         const accountParams = new URLSearchParams({
                             inmobiliariaId: lead.linkedInmobiliariaId || "",
-                            ...(catalogItemId ? { contratar: catalogItemId } : {}),
+                            ...(!isPilot && catalogItemId ? { contratar: catalogItemId } : {}),
                         });
 
                         return (
@@ -108,6 +118,11 @@ const BillingCommercialLeadsPanel = ({
                                         <div className="d-flex flex-wrap gap-2 align-items-center mb-2">
                                             <h3 className="h5 mb-0">{lead.agencyName}</h3>
                                             <span className={`badge ${status.badge}`}>{status.label}</span>
+                                            {offerSummary && (
+                                                <span className={`badge ${isPilot ? "text-bg-success" : "text-bg-light border text-dark"}`}>
+                                                    {isPilot ? "Piloto Consorcios" : "Demo Consorcios"}
+                                                </span>
+                                            )}
                                         </div>
                                         <div className="small text-muted mb-2">
                                             Recibida {formatBillingDate(lead.createdAt, { withTime: true })}
@@ -132,6 +147,27 @@ const BillingCommercialLeadsPanel = ({
                                             <div className="small"><strong>Promoción:</strong> {lead.promotionCode}</div>
                                         )}
                                         {lead.message && <p className="small bg-light rounded p-2 mt-2 mb-0">{lead.message}</p>}
+                                        {lead.commercialOffer && (
+                                            <div className="small border border-success-subtle bg-success-subtle rounded p-2 mt-2">
+                                                <strong>{offerSummary}</strong>
+                                                <div>
+                                                    Referencia mensual: {formatMoneyMinor(
+                                                        lead.commercialOffer.estimatedMonthlyAmountMinor,
+                                                        lead.commercialOffer.currency || "ARS",
+                                                    )}
+                                                    {lead.commercialOffer.minimumApplied && " · mínimo aplicado"}
+                                                </div>
+                                                <div>
+                                                    {formatMoneyMinor(
+                                                        lead.commercialOffer.unitPriceMinor,
+                                                        lead.commercialOffer.currency || "ARS",
+                                                    )} por unidad · {lead.commercialOffer.durationDays || 30} días
+                                                </div>
+                                                <div className="text-muted">
+                                                    Sujeto a propuesta y disponibilidad. No genera cargos automáticos.
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
 
                                     <div className="col-lg-8">
@@ -172,7 +208,7 @@ const BillingCommercialLeadsPanel = ({
                                             )}
                                             {lead.linkedInmobiliariaId && (
                                                 <Link className="btn btn-sm btn-outline-primary" to={`/admin/inmobiliaria/cuenta-corriente?${accountParams.toString()}`}>
-                                                    Abrir cuenta y contratar
+                                                    {isPilot ? "Abrir cuenta y cotizar piloto" : "Abrir cuenta y contratar"}
                                                 </Link>
                                             )}
                                             <button

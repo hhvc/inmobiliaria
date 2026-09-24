@@ -7,6 +7,7 @@ import {
     addBillingIntervalMs,
     addCalendarDaysToDateKey,
     applyContractDiscount,
+    buildCommercialOfferSnapshot,
     buildBillingSchedules,
     buildBillingPeriodKey,
     buildFifoPaymentAllocation,
@@ -58,6 +59,7 @@ const COMMERCIAL_LEAD_STATUSES = new Set([
     "new",
     "contacted",
     "demo",
+    "pilot",
     "proposal",
     "won",
     "lost",
@@ -327,6 +329,12 @@ const getPublicCatalogItems = async () => (await getCatalogItems({activeOnly: tr
 const enqueueCommercialLeadNotification = async (lead) => {
     const interests = (lead.interestNames || []).join(" · ") || "Demostración general";
     const subjectName = lead.agencyName || lead.contactName;
+    const offer = lead.commercialOffer || null;
+    const offerLines = offer ? [
+        `Solicitud: ${offer.requestType === "pilot" ? "Piloto de 30 días" : "Demostración"}`,
+        `Unidades: ${offer.unitCount || "No informadas"}`,
+        `Estimación mensual: ARS ${Number(offer.estimatedMonthlyAmountMinor || 0) / 100}`,
+    ] : [];
     const text = [
         `Nueva oportunidad comercial: ${subjectName}`,
         `Contacto: ${lead.contactName}`,
@@ -334,6 +342,7 @@ const enqueueCommercialLeadNotification = async (lead) => {
         `Teléfono: ${lead.phone || "No informado"}`,
         `Ciudad: ${lead.city || "No informada"}`,
         `Interés: ${interests}`,
+        ...offerLines,
         `Mensaje: ${lead.message || "Sin mensaje"}`,
     ].join("\n");
     const html = `
@@ -345,6 +354,12 @@ const enqueueCommercialLeadNotification = async (lead) => {
         <p><strong>Teléfono:</strong> ${escapeHtml(lead.phone || "No informado")}</p>
         <p><strong>Ciudad:</strong> ${escapeHtml(lead.city || "No informada")}</p>
         <p><strong>Interés:</strong> ${escapeHtml(interests)}</p>
+        ${offer ? `
+        <p><strong>Solicitud:</strong> ${offer.requestType === "pilot" ? "Piloto de 30 días" : "Demostración"}</p>
+        <p><strong>Unidades:</strong> ${escapeHtml(offer.unitCount || "No informadas")}</p>
+        <p><strong>Estimación mensual:</strong> ARS ${escapeHtml(
+        Number(offer.estimatedMonthlyAmountMinor || 0) / 100,
+    )}</p>` : ""}
         <p><strong>Código promocional:</strong> ${escapeHtml(
         lead.promotionCode || "No informado",
     )}</p>
@@ -356,7 +371,7 @@ const enqueueCommercialLeadNotification = async (lead) => {
         to: ["contacto@onoprop.com"],
         ...(lead.email ? {replyTo: lead.email} : {}),
         message: {
-            subject: `Nueva oportunidad: ${subjectName}`,
+            subject: `${offer?.requestType === "pilot" ? "Solicitud de piloto" : "Nueva oportunidad"}: ${subjectName}`,
             text,
             html,
         },
@@ -909,6 +924,12 @@ export const billingCreateCommercialLead = onCall(
             interestIds.unshift(primaryCatalogItemId);
         }
 
+        const commercialOffer = buildCommercialOfferSnapshot({
+            offerCode: input.offerCode,
+            requestType: input.requestType,
+            unitCount: input.unitCount,
+        });
+
         const now = Timestamp.now();
         const ref = db.collection(COMMERCIAL_LEADS_COLLECTION).doc();
         const acquisitionAttribution = normalizeAcquisitionAttribution(
@@ -932,6 +953,7 @@ export const billingCreateCommercialLead = onCall(
             interestNames: interestIds.map((itemId) => catalogById.get(itemId)?.name)
                 .filter(Boolean),
             primaryCatalogItemId,
+            ...(commercialOffer ? {commercialOffer} : {}),
             promotionCode: normalizePromotionCode(input.promotionCode),
             message: cleanBillingText(input.message, 2500),
             source: normalizeCommercialSource(input.source),
@@ -948,7 +970,9 @@ export const billingCreateCommercialLead = onCall(
                 type: "created",
                 status: "new",
                 uid: cleanBillingText(request.auth?.uid, 128) || "public",
-                note: "Solicitud comercial recibida desde el portal.",
+                note: commercialOffer?.requestType === "pilot"
+                    ? "Solicitud de piloto recibida desde el portal."
+                    : "Solicitud comercial recibida desde el portal.",
                 at: now,
             }],
             createdAt: now,

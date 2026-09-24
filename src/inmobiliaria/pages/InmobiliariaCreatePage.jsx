@@ -56,6 +56,7 @@ export default function InmobiliariaCreatePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const commercialLeadId = searchParams.get("commercialLeadId") || "";
+  const commercialRequestType = searchParams.get("commercialRequestType") || "";
   const requestedCatalogItemId = searchParams.get("catalogItemId") || "";
   const prefillData = useMemo(() => ({
     nombre: searchParams.get("nombre") || "",
@@ -146,10 +147,12 @@ export default function InmobiliariaCreatePage() {
         try {
           await updateCommercialLead({
             leadId: commercialLeadId,
-            status: "won",
+            status: commercialRequestType === "pilot" ? "pilot" : "won",
             linkedInmobiliariaId: inmobiliariaId,
             nextActionDateKey: "",
-            note: "Inmobiliaria creada desde la oportunidad comercial.",
+            note: commercialRequestType === "pilot"
+              ? "Inmobiliaria creada y piloto pendiente de cotización o activación."
+              : "Inmobiliaria creada desde la oportunidad comercial.",
           });
         } catch (leadError) {
           console.error("No se pudo vincular la oportunidad comercial:", leadError);

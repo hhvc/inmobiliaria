@@ -6,6 +6,7 @@ import {
     applyContractDiscount,
     buildBillingSchedules,
     buildBillingPeriodKey,
+    buildCommercialOfferSnapshot,
     buildFifoPaymentAllocation,
     buildInitialBillingCatalog,
     calculateDailyMoratoryInterestMinor,
@@ -24,6 +25,29 @@ import {
 
 test("normaliza códigos comerciales estables", () => {
     assert.equal(normalizeBillingCode(" Integración Instagram Propio "), "integracion-instagram-propio");
+});
+
+test("crea una foto inmutable de la oferta del piloto de consorcios", () => {
+    const offer = buildCommercialOfferSnapshot({
+        offerCode: "consortium-pilot-2026",
+        requestType: "pilot",
+        unitCount: 25,
+    });
+    assert.equal(offer.catalogItemId, "consorcios");
+    assert.equal(offer.unitPriceMinor, 100000);
+    assert.equal(offer.estimatedMonthlyAmountMinor, 2500000);
+    assert.equal(offer.minimumApplied, false);
+    assert.equal(offer.subjectToConfirmation, true);
+
+    const smallOffer = buildCommercialOfferSnapshot({
+        offerCode: "consortium-pilot-2026",
+        requestType: "demo",
+        unitCount: 8,
+    });
+    assert.equal(smallOffer.estimatedMonthlyAmountMinor, 2000000);
+    assert.equal(smallOffer.minimumApplied, true);
+    assert.equal(smallOffer.requestType, "demo");
+    assert.equal(buildCommercialOfferSnapshot({offerCode: "inventada"}), null);
 });
 
 test("normaliza cargos fijos y cotizables en distintas frecuencias", () => {

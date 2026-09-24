@@ -22,6 +22,52 @@ export const cleanBillingText = (value = "", maxLength = 500) => {
     return value?.toString?.().trim().slice(0, maxLength) || "";
 };
 
+const CONSORTIUM_PILOT_OFFER = Object.freeze({
+    code: "consortium-pilot-2026",
+    catalogItemId: "consorcios",
+    title: "Piloto Administración de Consorcios",
+    currency: "ARS",
+    unitPriceMinor: 100000,
+    minimumMonthlyAmountMinor: 2000000,
+    durationDays: 30,
+    setupFeeMinor: 0,
+    priceLockMonths: 6,
+    earlyAdopterSlots: 3,
+    termsVersion: "2026-09-23.1",
+});
+
+export const buildCommercialOfferSnapshot = ({
+    offerCode = "",
+    requestType = "",
+    unitCount = 0,
+} = {}) => {
+    if (cleanBillingText(offerCode, 80) !== CONSORTIUM_PILOT_OFFER.code) {
+        return null;
+    }
+
+    const normalizedUnitCount = Math.min(
+        10000,
+        Math.max(0, Math.trunc(Number(unitCount) || 0)),
+    );
+    const normalizedRequestType = requestType === "demo" ? "demo" : "pilot";
+    const calculatedAmountMinor = normalizedUnitCount *
+        CONSORTIUM_PILOT_OFFER.unitPriceMinor;
+
+    return {
+        ...CONSORTIUM_PILOT_OFFER,
+        requestType: normalizedRequestType,
+        unitCount: normalizedUnitCount,
+        calculatedAmountMinor,
+        estimatedMonthlyAmountMinor: Math.max(
+            calculatedAmountMinor,
+            CONSORTIUM_PILOT_OFFER.minimumMonthlyAmountMinor,
+        ),
+        minimumApplied: calculatedAmountMinor <
+            CONSORTIUM_PILOT_OFFER.minimumMonthlyAmountMinor,
+        subjectToConfirmation: true,
+    };
+};
+
 export const normalizeBillingCode = (value = "") => {
     return cleanBillingText(value, 80)
         .normalize("NFD")

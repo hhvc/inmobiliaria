@@ -2,6 +2,7 @@ export const COMMERCIAL_LEAD_STATUS_OPTIONS = [
     { id: "new", label: "Nuevo", badge: "text-bg-primary" },
     { id: "contacted", label: "Contactado", badge: "text-bg-info" },
     { id: "demo", label: "Demostración", badge: "text-bg-warning" },
+    { id: "pilot", label: "Piloto activo", badge: "text-bg-success" },
     { id: "proposal", label: "Propuesta enviada", badge: "text-bg-secondary" },
     { id: "won", label: "Ganado", badge: "text-bg-success" },
     { id: "lost", label: "Perdido", badge: "text-bg-dark" },
@@ -57,4 +58,21 @@ export const getCommercialInterestSummary = (lead = {}) => {
         ? lead.interestNames.filter(Boolean)
         : [];
     return names.length ? names.join(" · ") : "Demostración general";
+};
+
+export const isConsortiumPilotLead = (lead = {}) => (
+    lead.commercialOffer?.code === "consortium-pilot-2026" &&
+    lead.commercialOffer?.requestType === "pilot"
+);
+
+export const getCommercialOfferSummary = (lead = {}) => {
+    const offer = lead.commercialOffer;
+    if (!offer || offer.code !== "consortium-pilot-2026") return "";
+    const request = offer.requestType === "pilot"
+        ? "Piloto de 30 días"
+        : "Demostración gratuita";
+    const units = Number(offer.unitCount || 0) > 0
+        ? ` · ${offer.unitCount} unidades`
+        : "";
+    return `${request}${units}`;
 };
