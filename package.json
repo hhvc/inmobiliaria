@@ -32,6 +32,7 @@
     "test:importar-unidades": "node --test tests/emprendimientoUnitsCsv.test.js",
     "test:unidades-publicas": "node --test tests/emprendimientoPublicUnits.test.js",
     "test:duplicados": "node --test tests/inmuebleDuplicate.test.js",
+    "test:inmueble-ai": "node --test tests/inmuebleAiDraft.helpers.test.js tests/particularPublicationAi.helpers.test.js",
     "test:mercadolibre": "node --test tests/mercadoLibreDistribution.helpers.test.js tests/mercadoLibreNotifications.helpers.test.js",
     "preview": "vite preview",
     "deploy": "npm run build && firebase deploy",

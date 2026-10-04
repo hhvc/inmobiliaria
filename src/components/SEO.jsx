@@ -1,11 +1,11 @@
 // src/components/SEO.jsx
 import { useEffect } from "react";
 
-const DEFAULT_TITLE = "LaDoctaProp | Portal inmobiliario";
+const DEFAULT_TITLE = "ONO Prop | Portal inmobiliario";
 const DEFAULT_DESCRIPTION =
     "Portal inmobiliario para publicar, administrar y consultar propiedades.";
-const DEFAULT_IMAGE = "/assets/img/Logo.png";
-const DEFAULT_SITE_NAME = "LaDoctaProp";
+const DEFAULT_IMAGE = "/assets/img/logoONOProp3.png";
+const DEFAULT_SITE_NAME = "ONO Prop";
 
 const upsertMeta = (selector, attributes) => {
     let element = document.head.querySelector(selector);

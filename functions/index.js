@@ -235,3 +235,5 @@ export {
 } from "./onopropAcquisition.js";
 
 export { onopropMcp } from "./onopropMcp.js";
+
+export { inmueblePrepareAiDraft } from "./inmuebleAi.js";

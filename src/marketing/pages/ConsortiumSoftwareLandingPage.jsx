@@ -82,6 +82,7 @@ const ConsortiumSoftwareLandingPage = () => {
   const [success, setSuccess] = useState("");
   const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
   const canonicalUrl = `${siteUrl}/software-administracion-consorcios`;
+  const socialImageUrl = `${siteUrl}/assets/img/og/onoprop-administracion-consorcios.png?v=20260924`;
   const pilotEstimate = calculateConsortiumPilotEstimate(form.unitCount);
 
   useEffect(() => {
@@ -184,6 +185,7 @@ const ConsortiumSoftwareLandingPage = () => {
       <SEO
         title="Software para administración de consorcios | ONO Prop"
         description="Liquidá expensas, administrá cobranzas, cuentas corrientes, documentación y comunicación con consorcistas desde ONO Prop."
+        image={socialImageUrl}
         url={canonicalUrl}
         type="website"
         siteName="ONO Prop"

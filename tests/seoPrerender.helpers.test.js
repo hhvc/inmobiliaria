@@ -17,6 +17,7 @@ test("publica metadatos específicos para Administración de Consorcios", () => 
 
   assert.equal(route.path, "/software-administracion-consorcios");
   assert.match(route.title, /administración de consorcios/i);
+  assert.match(route.image, /onoprop-administracion-consorcios\.png/);
   assert.equal(route.jsonLd?.offers?.price, 1000);
   assert.equal(route.jsonLd?.offers?.priceCurrency, "ARS");
 });

@@ -21,6 +21,7 @@ import PublicationRequestImages from "../../particular/components/PublicationReq
 import InmuebleVideoSection from "../components/InmuebleVideoSection";
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 import { buildInmuebleDuplicateValues } from "../utils/inmuebleDuplicate.helpers";
+import { mergeAiDraftIntoInmuebleValues } from "../utils/inmuebleAiDraft.helpers";
 import {
   DEFAULT_AMENITIES,
   DEFAULT_CARACTERISTICAS,
@@ -736,6 +737,26 @@ const InmuebleCreatePage = () => {
     setError(null);
   };
 
+  const handleApplyAiDraft = ({
+    draft,
+    detectedFields,
+    preserveExisting,
+  }) => {
+    const merged = mergeAiDraftIntoInmuebleValues({
+      values,
+      draft,
+      detectedFields,
+      preserveExisting,
+    });
+
+    setValues(merged.values);
+    setError(null);
+    return {
+      appliedCount: merged.appliedCount,
+      preservedCount: merged.preservedCount,
+    };
+  };
+
   /* =========================
      Aprobar como particular
      ========================= */
@@ -1311,6 +1332,7 @@ const InmuebleCreatePage = () => {
           inmuebleId={null}
           inmobiliariaId={values.inmobiliariaId || activeInmobiliariaId}
           forceDraft={Boolean(duplicateSource)}
+          onApplyAiDraft={handleApplyAiDraft}
         />
       )}
     </section>

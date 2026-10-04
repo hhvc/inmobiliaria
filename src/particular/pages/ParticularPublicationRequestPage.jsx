@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import Login from "../../components/auth/Login";
 import SEO from "../../components/SEO";
+import InmuebleAiAssistant from "../../inmueble/components/InmuebleAiAssistant";
 import InmuebleVideos from "../../inmueble/components/InmuebleVideos";
 import {
     ACCEPTED_IMAGE_INPUT,
@@ -16,6 +17,7 @@ import {
     createParticularPublicationRequest,
     getActiveInmobiliariasForPublicationRequest,
 } from "../services/particularPublication.service";
+import { mergeAiDraftIntoParticularPublication } from "../utils/particularPublicationAi.helpers";
 
 const MIN_DESCRIPTION_LENGTH = 20;
 const MAX_DESCRIPTION_LENGTH = 1000;
@@ -269,6 +271,25 @@ const ParticularPublicationRequestPage = () => {
         setImageError("");
     };
 
+    const handleApplyAiDraft = ({
+        draft,
+        detectedFields,
+        preserveExisting,
+    }) => {
+        const mergeResult = mergeAiDraftIntoParticularPublication({
+            values: formData,
+            draft,
+            detectedFields,
+            preserveExisting,
+        });
+
+        setFormData(mergeResult.values);
+        setError("");
+        setSuccess("");
+
+        return mergeResult;
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
 
@@ -487,6 +508,21 @@ const ParticularPublicationRequestPage = () => {
                                             </div>
                                         )}
 
+                                        <InmuebleAiAssistant
+                                            onApplyDraft={handleApplyAiDraft}
+                                            previewFieldPaths={[
+                                                "operacion",
+                                                "tipo",
+                                                "precio",
+                                                "moneda",
+                                                "direccion.barrio",
+                                                "direccion.ciudad",
+                                                "direccion.provincia",
+                                                "descripcion",
+                                            ]}
+                                            scrollTargetId="particular-property-data"
+                                        />
+
                                         <div className="row g-3">
                                             <div className="col-12">
                                                 <label className="form-label">
@@ -631,7 +667,10 @@ const ParticularPublicationRequestPage = () => {
                                                 </div>
                                             </div>
 
-                                            <div className="col-md-6">
+                                            <div
+                                                id="particular-property-data"
+                                                className="col-md-6"
+                                            >
                                                 <label className="form-label">Operación</label>
 
                                                 <select

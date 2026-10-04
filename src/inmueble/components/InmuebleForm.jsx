@@ -14,6 +14,7 @@ import { db } from "../../firebase/config";
 import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
 import InmuebleVideos from "./InmuebleVideos";
+import InmuebleAiAssistant from "./InmuebleAiAssistant";
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 import { getEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
 import {
@@ -136,6 +137,7 @@ const InmuebleForm = ({
   inmuebleId = null,
   inmobiliariaId = null,
   forceDraft = false,
+  onApplyAiDraft = null,
 }) => {
   const { user, activeInmobiliariaId } = useContext(AuthContext);
 
@@ -834,10 +836,17 @@ const InmuebleForm = ({
         </div>
       </div>
 
+      {!isEditMode && typeof onApplyAiDraft === "function" && (
+        <InmuebleAiAssistant
+          inmobiliariaId={selectedInmobiliariaId}
+          onApplyDraft={onApplyAiDraft}
+        />
+      )}
+
       {/* =========================
           Información básica
          ========================= */}
-      <div className="card mb-4">
+      <div className="card mb-4" id="inmueble-basic-info">
         <div className="card-header fw-semibold">Información básica</div>
         <div className="card-body row g-3">
           <div className="col-12">
