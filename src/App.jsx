@@ -47,6 +47,7 @@ import UserAdminPage from "./pages/UserAdminPage";
 import PortalPublicationsPage from "./admin/pages/PortalPublicationsPage";
 import PortalRankingConfigPage from "./admin/pages/PortalRankingConfigPage";
 import OnopropAcquisitionDashboardPage from "./analytics/pages/OnopropAcquisitionDashboardPage";
+import InmuebleAiDashboardPage from "./analytics/pages/InmuebleAiDashboardPage";
 import AcquisitionAttributionTracker from "./analytics/components/AcquisitionAttributionTracker";
 
 import ParticularPublicationRequestsAdminPage from "./particular/pages/ParticularPublicationRequestsAdminPage";
@@ -509,6 +510,15 @@ function App() {
                   element={
                     <ProtectedRoute role="root">
                       <OnopropAcquisitionDashboardPage />
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/portal/ia"
+                  element={
+                    <ProtectedRoute role="root">
+                      <InmuebleAiDashboardPage />
                     </ProtectedRoute>
                   }
                 />

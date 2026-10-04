@@ -12,6 +12,11 @@ import {
     redactPrivateContactDetails,
     sanitizePropertyDraftResponse,
 } from "./inmuebleAi.helpers.js";
+import {
+    aggregateAiDraftEvents,
+    getAiAnalyticsRangeDays,
+    normalizeAiAnalyticsDateKey,
+} from "./inmuebleAiAnalytics.helpers.js";
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -35,6 +40,9 @@ const DEFAULT_MODEL = "gpt-6-luna";
 const MAX_SOURCE_LENGTH = 6000;
 const MIN_SOURCE_LENGTH = 20;
 const USAGE_COLLECTION = "ai_property_draft_usage";
+const EVENT_COLLECTION = "ai_property_draft_events";
+const MAX_DASHBOARD_DAYS = 366;
+const MAX_DASHBOARD_EVENTS = 5000;
 
 const cleanId = (value, maxLength = 160) => (
     typeof value === "string" ? value.trim().slice(0, maxLength) : ""
@@ -54,6 +62,9 @@ const userHasRole = (user = {}, role) => {
 };
 
 const getUserProfile = async (uid) => {
+    if (!uid) {
+        throw new HttpsError("unauthenticated", "Tenés que iniciar sesión.");
+    }
     const snap = await db.collection("users").doc(uid).get();
     if (!snap.exists) {
         throw new HttpsError(
@@ -62,6 +73,17 @@ const getUserProfile = async (uid) => {
         );
     }
     return snap.data() || {};
+};
+
+const assertRoot = async (uid) => {
+    const user = await getUserProfile(uid);
+    if (!userHasRole(user, "root")) {
+        throw new HttpsError(
+            "permission-denied",
+            "Solo la administración ROOT puede consultar estas métricas.",
+        );
+    }
+    return user;
 };
 
 const assertCanPrepareDraft = async (uid, inmobiliariaId) => {
@@ -96,12 +118,12 @@ const assertCanPrepareDraft = async (uid, inmobiliariaId) => {
     return {user, isRoot, agencyMode: true};
 };
 
-const getArgentinaDayKey = () => new Intl.DateTimeFormat("en-CA", {
+const getArgentinaDayKey = (date = new Date()) => new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Argentina/Buenos_Aires",
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-}).format(new Date());
+}).format(date);
 
 const reserveDailyAttempt = async ({uid, isRoot, agencyMode}) => {
     const dayKey = getArgentinaDayKey();
@@ -309,31 +331,97 @@ export const inmueblePrepareAiDraft = onCall({
         isRoot: access.isRoot,
         agencyMode: access.agencyMode,
     });
+    const eventRef = db.collection(EVENT_COLLECTION).doc();
+    const startedAt = Date.now();
+    const dayKey = getArgentinaDayKey();
 
     try {
+        await eventRef.set({
+            actorHash: buildSafetyIdentifier(uid),
+            inmobiliariaId,
+            mode: access.agencyMode ? "agency" : "particular",
+            dayKey,
+            status: "processing",
+            sourceLength: sourceText.length,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+
         const {result, usage, model} = await callOpenAi({
             apiKey,
             sourceText: redactPrivateContactDetails(sourceText),
             uid,
         });
+        const inputTokens = Number(usage.input_tokens || 0);
+        const outputTokens = Number(usage.output_tokens || 0);
+        const latencyMs = Date.now() - startedAt;
+        const batch = db.batch();
 
-        await quota.usageRef.set({
+        batch.set(quota.usageRef, {
             successes: FieldValue.increment(1),
-            inputTokens: FieldValue.increment(Number(usage.input_tokens || 0)),
-            outputTokens: FieldValue.increment(Number(usage.output_tokens || 0)),
+            inputTokens: FieldValue.increment(inputTokens),
+            outputTokens: FieldValue.increment(outputTokens),
+            latencyTotalMs: FieldValue.increment(latencyMs),
             lastModel: model,
             lastSuccessAt: FieldValue.serverTimestamp(),
             updatedAt: FieldValue.serverTimestamp(),
         }, {merge: true});
+        batch.set(eventRef, {
+            status: "success",
+            model,
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            latencyMs,
+            detectedFieldCount: Array.isArray(result.detectedFields) ?
+                result.detectedFields.length : 0,
+            missingFieldCount: Array.isArray(result.missingFields) ?
+                result.missingFields.length : 0,
+            warningCount: Array.isArray(result.warnings) ?
+                result.warnings.length : 0,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await batch.commit();
 
         return {
             ...result,
+            generationId: eventRef.id,
             quota: {
                 dailyLimit: quota.dailyLimit,
                 remainingAttempts: quota.remainingAttempts,
             },
         };
     } catch (error) {
+        const latencyMs = Date.now() - startedAt;
+        const failureType = cleanId(error?.type || error?.name || "unknown", 80);
+        const failureStatus = cleanId(error?.status?.toString() || "", 20);
+        const batch = db.batch();
+        batch.set(quota.usageRef, {
+            failures: FieldValue.increment(1),
+            latencyTotalMs: FieldValue.increment(latencyMs),
+            lastFailureAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        batch.set(eventRef, {
+            actorHash: buildSafetyIdentifier(uid),
+            inmobiliariaId,
+            mode: access.agencyMode ? "agency" : "particular",
+            dayKey,
+            status: "failure",
+            sourceLength: sourceText.length,
+            latencyMs,
+            failureType,
+            failureStatus,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await batch.commit().catch((telemetryError) => {
+            console.warn("No se pudo registrar la telemetría de IA", {
+                message: telemetryError?.message || "",
+            });
+        });
+
         console.error("Error preparando borrador inmobiliario con IA", {
             uid,
             inmobiliariaId,
@@ -344,5 +432,131 @@ export const inmueblePrepareAiDraft = onCall({
         });
         throw toHttpsError(error);
     }
+});
+
+const clampOutcomeCount = (value) => {
+    const numeric = Math.round(Number(value || 0));
+    return Number.isFinite(numeric) ? Math.max(0, Math.min(200, numeric)) : 0;
+};
+
+export const inmuebleRecordAiDraftOutcome = onCall({
+    region: REGION,
+    timeoutSeconds: 30,
+}, async (request) => {
+    const uid = request.auth?.uid || "";
+    await getUserProfile(uid);
+
+    const generationId = cleanId(request.data?.generationId);
+    const rating = cleanId(request.data?.rating, 40);
+    const applied = request.data?.applied === true;
+
+    if (!generationId) {
+        throw new HttpsError("invalid-argument", "Falta identificar el borrador.");
+    }
+    if (rating && !["useful", "needs_improvement"].includes(rating)) {
+        throw new HttpsError("invalid-argument", "La valoración no es válida.");
+    }
+    if (!applied && !rating) {
+        throw new HttpsError("invalid-argument", "No hay un resultado para registrar.");
+    }
+
+    const eventRef = db.collection(EVENT_COLLECTION).doc(generationId);
+    const eventSnap = await eventRef.get();
+    const eventData = eventSnap.data() || {};
+    const ownsEvent = eventData.actorHash === buildSafetyIdentifier(uid) ||
+        eventData.uid === uid;
+    if (!eventSnap.exists || !ownsEvent) {
+        throw new HttpsError(
+            "permission-denied",
+            "No podés actualizar el resultado de este borrador.",
+        );
+    }
+    if (eventSnap.data()?.status !== "success") {
+        throw new HttpsError(
+            "failed-precondition",
+            "El borrador todavía no tiene un resultado válido.",
+        );
+    }
+
+    const update = {updatedAt: FieldValue.serverTimestamp()};
+    if (applied) {
+        update.applied = true;
+        update.appliedFieldCount = clampOutcomeCount(
+            request.data?.appliedFieldCount,
+        );
+        update.preservedFieldCount = clampOutcomeCount(
+            request.data?.preservedFieldCount,
+        );
+        update.appliedAt = FieldValue.serverTimestamp();
+    }
+    if (rating) {
+        update.feedback = rating;
+        update.feedbackAt = FieldValue.serverTimestamp();
+    }
+
+    await eventRef.set(update, {merge: true});
+    return {ok: true};
+});
+
+export const inmuebleGetAiDraftDashboard = onCall({
+    region: REGION,
+    timeoutSeconds: 60,
+}, async (request) => {
+    await assertRoot(request.auth?.uid);
+
+    const today = getArgentinaDayKey();
+    const defaultFrom = getArgentinaDayKey(
+        new Date(Date.now() - (29 * 86400000)),
+    );
+    const dateFrom = normalizeAiAnalyticsDateKey(request.data?.dateFrom) ||
+        defaultFrom;
+    const dateTo = normalizeAiAnalyticsDateKey(request.data?.dateTo) || today;
+    const rangeDays = getAiAnalyticsRangeDays(dateFrom, dateTo);
+
+    if (rangeDays <= 0 || rangeDays > MAX_DASHBOARD_DAYS) {
+        throw new HttpsError(
+            "invalid-argument",
+            `Elegí un período de entre 1 y ${MAX_DASHBOARD_DAYS} días.`,
+        );
+    }
+
+    const snapshot = await db.collection(EVENT_COLLECTION)
+        .where("dayKey", ">=", dateFrom)
+        .where("dayKey", "<=", dateTo)
+        .orderBy("dayKey", "asc")
+        .limit(MAX_DASHBOARD_EVENTS + 1)
+        .get();
+    const truncated = snapshot.size > MAX_DASHBOARD_EVENTS;
+    const events = snapshot.docs
+        .slice(0, MAX_DASHBOARD_EVENTS)
+        .map((item) => item.data() || {});
+    const analytics = aggregateAiDraftEvents(events);
+    const agencyIds = analytics.agencies
+        .map((item) => item.inmobiliariaId)
+        .filter((id) => id && id !== "particular");
+    const agencySnapshots = agencyIds.length > 0 ? await db.getAll(
+        ...agencyIds.map((id) => db.collection("inmobiliarias").doc(id)),
+    ) : [];
+    const agencyNames = new Map(agencySnapshots.map((item) => [
+        item.id,
+        cleanId(
+            item.data()?.nombre || item.data()?.name ||
+            item.data()?.razonSocial || item.id,
+            160,
+        ),
+    ]));
+
+    return {
+        dateFrom,
+        dateTo,
+        truncated,
+        ...analytics,
+        agencies: analytics.agencies.map((item) => ({
+            ...item,
+            inmobiliariaNombre: item.inmobiliariaId === "particular" ?
+                "Particulares / sin inmobiliaria" :
+                agencyNames.get(item.inmobiliariaId) || item.inmobiliariaId,
+        })),
+    };
 });
 

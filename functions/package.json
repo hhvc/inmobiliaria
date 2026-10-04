@@ -19,7 +19,7 @@
     "test:portal-demand": "node --test portalDemand.helpers.test.js",
     "test:portal-performance": "node --test portalPerformance.helpers.test.js",
     "test:onoprop-mcp": "node --test onopropMcp.helpers.test.js onopropMcp.protocol.test.js onopropMcp.http.test.js onopropAcquisition.helpers.test.js",
-    "test:inmueble-ai": "node --test inmuebleAi.helpers.test.js"
+    "test:inmueble-ai": "node --test inmuebleAi.helpers.test.js inmuebleAiAnalytics.helpers.test.js"
   },
   "engines": {
     "node": "22"

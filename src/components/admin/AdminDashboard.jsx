@@ -291,6 +291,15 @@ const AdminDashboard = () => {
             />
 
             <ModuleCard
+              title="✨ Uso de IA"
+              text="Borradores generados, adopción, feedback, tokens, tiempos y costo estimado de la carga asistida."
+              to="/admin/portal/ia"
+              buttonLabel="Ver métricas de IA"
+              icon="fa fa-wand-magic-sparkles"
+              color="#6f42c1"
+            />
+
+            <ModuleCard
               title="🏠 Publicaciones particulares"
               text="Solicitudes de dueños particulares para aprobar como publicación ONO Prop o derivar a inmobiliarias."
               to="/admin/publicaciones/particulares"

@@ -1,6 +1,9 @@
 import {useMemo, useState} from "react";
 
-import {prepareInmuebleAiDraft} from "../services/inmuebleAi.service";
+import {
+  prepareInmuebleAiDraft,
+  recordInmuebleAiDraftOutcome,
+} from "../services/inmuebleAi.service";
 import {
   getAiDraftFieldLabel,
   getAiDraftFieldValue,
@@ -29,6 +32,10 @@ const InmuebleAiAssistant = ({
   const [error, setError] = useState("");
   const [preserveExisting, setPreserveExisting] = useState(true);
   const [appliedMessage, setAppliedMessage] = useState("");
+  const [applicationSummary, setApplicationSummary] = useState(null);
+  const [feedback, setFeedback] = useState("");
+  const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [feedbackMessage, setFeedbackMessage] = useState("");
 
   const detectedItems = useMemo(() => {
     const visiblePaths = Array.isArray(previewFieldPaths)
@@ -58,6 +65,9 @@ const InmuebleAiAssistant = ({
       setLoading(true);
       setError("");
       setAppliedMessage("");
+      setApplicationSummary(null);
+      setFeedback("");
+      setFeedbackMessage("");
       const data = await prepareInmuebleAiDraft({
         sourceText: normalizedText,
         inmobiliariaId,
@@ -87,6 +97,18 @@ const InmuebleAiAssistant = ({
     setAppliedMessage(
       `Aplicamos ${appliedCount} datos al formulario.${preservedText} Revisalos antes de guardar.`,
     );
+    setApplicationSummary({appliedCount, preservedCount});
+
+    if (result.generationId) {
+      recordInmuebleAiDraftOutcome({
+        generationId: result.generationId,
+        applied: true,
+        appliedFieldCount: appliedCount,
+        preservedFieldCount: preservedCount,
+      }).catch((outcomeError) => {
+        console.warn("No se pudo registrar la aplicación del borrador", outcomeError);
+      });
+    }
 
     window.setTimeout(() => {
       document.getElementById(scrollTargetId)?.scrollIntoView({
@@ -94,6 +116,28 @@ const InmuebleAiAssistant = ({
         block: "start",
       });
     }, 80);
+  };
+
+  const handleFeedback = async (rating) => {
+    if (!result?.generationId || feedbackSaving) return;
+
+    try {
+      setFeedbackSaving(true);
+      setFeedbackMessage("");
+      await recordInmuebleAiDraftOutcome({
+        generationId: result.generationId,
+        applied: Boolean(applicationSummary),
+        appliedFieldCount: applicationSummary?.appliedCount || 0,
+        preservedFieldCount: applicationSummary?.preservedCount || 0,
+        rating,
+      });
+      setFeedback(rating);
+      setFeedbackMessage("Gracias. Tu respuesta nos ayuda a mejorar la carga asistida.");
+    } catch {
+      setFeedbackMessage("No pudimos guardar la valoración. El borrador sigue disponible.");
+    } finally {
+      setFeedbackSaving(false);
+    }
   };
 
   return (
@@ -215,6 +259,37 @@ const InmuebleAiAssistant = ({
             >
               Aplicar al formulario
             </button>
+
+            <div className="border-top mt-3 pt-3">
+              <div className="small fw-semibold mb-2">
+                ¿El borrador te resultó útil?
+              </div>
+              <div className="d-flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={feedback === "useful"
+                    ? "btn btn-sm btn-success"
+                    : "btn btn-sm btn-outline-success"}
+                  disabled={feedbackSaving}
+                  onClick={() => handleFeedback("useful")}
+                >
+                  Sí, fue útil
+                </button>
+                <button
+                  type="button"
+                  className={feedback === "needs_improvement"
+                    ? "btn btn-sm btn-warning"
+                    : "btn btn-sm btn-outline-warning"}
+                  disabled={feedbackSaving}
+                  onClick={() => handleFeedback("needs_improvement")}
+                >
+                  Necesita mejorar
+                </button>
+              </div>
+              {feedbackMessage && (
+                <div className="small text-muted mt-2">{feedbackMessage}</div>
+              )}
+            </div>
           </div>
         )}
 
