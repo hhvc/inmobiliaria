@@ -259,6 +259,57 @@ export const useInmuebleImages = (initialImages = []) => {
     [activeImages],
   );
 
+  const applySuggestedOrder = useCallback(
+    async ({ orderedUrls, inmuebleId, inmobiliariaId }) => {
+      const priorities = new Map(
+        (Array.isArray(orderedUrls) ? orderedUrls : [])
+          .filter((url) => typeof url === "string" && url)
+          .map((url, index) => [url, index]),
+      );
+
+      if (priorities.size < 2) {
+        setError("La sugerencia no contiene suficientes imágenes para ordenar");
+        return;
+      }
+      if (!inmuebleId || !inmobiliariaId) {
+        setError("Faltan IDs para ordenar las imágenes");
+        return;
+      }
+
+      const snapshot = activeImages;
+      try {
+        setLoading(true);
+        setError(null);
+        const reordered = [...activeImages].sort((left, right) => {
+          const leftPriority = priorities.get(left.url);
+          const rightPriority = priorities.get(right.url);
+          const leftIncluded = Number.isInteger(leftPriority);
+          const rightIncluded = Number.isInteger(rightPriority);
+
+          if (leftIncluded && rightIncluded) return leftPriority - rightPriority;
+          if (leftIncluded) return -1;
+          if (rightIncluded) return 1;
+          return (left.order ?? 0) - (right.order ?? 0);
+        });
+        const nextImages = normalizeImages(reordered, { sortByOrder: false });
+        setImages(nextImages);
+        await persistImages({
+          inmobiliariaId,
+          inmuebleId,
+          images: nextImages,
+        });
+      } catch (err) {
+        console.error("Error aplicando el orden sugerido:", err);
+        setImages(snapshot);
+        setError(err.message || "No se pudo aplicar el orden sugerido");
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [activeImages],
+  );
+
   return {
     images: activeImages,
     activeImages,
@@ -272,5 +323,6 @@ export const useInmuebleImages = (initialImages = []) => {
     addImages,
     removeImage,
     reorderImages,
+    applySuggestedOrder,
   };
 };

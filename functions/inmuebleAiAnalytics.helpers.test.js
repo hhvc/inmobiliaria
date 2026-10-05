@@ -34,6 +34,7 @@ test("agrega resultados sin conservar contenido del inmueble", () => {
             appliedFieldCount: 8,
             feedback: "useful",
             model: "gpt-6-luna",
+            operationType: "review",
             sourceText: "este texto no debe devolverse",
         },
         {
@@ -53,6 +54,30 @@ test("agrega resultados sin conservar contenido del inmueble", () => {
     assert.equal(analytics.summary.averageLatencyMs, 1500);
     assert.equal(analytics.agencies.length, 2);
     assert.equal(analytics.failures[0].type, "rate_limit");
+    assert.equal(
+        analytics.operations.find((item) => item.operationType === "review")
+            .attempts,
+        1,
+    );
+    assert.equal(
+        analytics.operations.find((item) => item.operationType === "draft")
+            .attempts,
+        1,
+    );
     assert.equal(JSON.stringify(analytics).includes("este texto"), false);
+});
+
+test("distingue las revisiones visuales de los borradores y textos", () => {
+    const analytics = aggregateAiDraftEvents([{
+        dayKey: "2026-10-05",
+        status: "success",
+        operationType: "image_review",
+        inputTokens: 200,
+        outputTokens: 50,
+    }]);
+
+    assert.equal(analytics.operations.length, 1);
+    assert.equal(analytics.operations[0].operationType, "image_review");
+    assert.equal(analytics.operations[0].attempts, 1);
 });
 

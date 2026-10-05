@@ -30,6 +30,41 @@ export const prepareInmuebleAiDraft = async ({
   }
 };
 
+export const reviewInmuebleAiPublication = async ({
+  property,
+  inmobiliariaId = "",
+} = {}) => {
+  try {
+    const callable = httpsCallable(functions, "inmuebleReviewAiPublication", {
+      timeout: 60000,
+    });
+    const response = await callable({property, inmobiliariaId});
+    return response.data || {};
+  } catch (error) {
+    const friendlyError = new Error(getFriendlyError(error));
+    friendlyError.code = error?.code || "";
+    throw friendlyError;
+  }
+};
+
+export const reviewInmuebleAiImages = async ({
+  property,
+  images,
+  inmobiliariaId = "",
+} = {}) => {
+  try {
+    const callable = httpsCallable(functions, "inmuebleReviewAiImages", {
+      timeout: 90000,
+    });
+    const response = await callable({property, images, inmobiliariaId});
+    return response.data || {};
+  } catch (error) {
+    const friendlyError = new Error(getFriendlyError(error));
+    friendlyError.code = error?.code || "";
+    throw friendlyError;
+  }
+};
+
 export const recordInmuebleAiDraftOutcome = async ({
   generationId,
   applied = false,

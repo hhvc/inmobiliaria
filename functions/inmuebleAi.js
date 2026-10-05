@@ -7,10 +7,18 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {
     buildPropertyDraftInstructions,
+    buildPropertyImageReviewInstructions,
+    buildPropertyReviewInstructions,
     extractResponseOutputText,
     PROPERTY_DRAFT_SCHEMA,
+    PROPERTY_IMAGE_REVIEW_SCHEMA,
+    PROPERTY_REVIEW_SCHEMA,
     redactPrivateContactDetails,
     sanitizePropertyDraftResponse,
+    sanitizePropertyImageReviewResponse,
+    sanitizePropertyImageUrls,
+    sanitizePropertyReviewInput,
+    sanitizePropertyReviewResponse,
 } from "./inmuebleAi.helpers.js";
 import {
     aggregateAiDraftEvents,
@@ -40,6 +48,7 @@ const DEFAULT_MODEL = "gpt-6-luna";
 const MAX_SOURCE_LENGTH = 6000;
 const MIN_SOURCE_LENGTH = 20;
 const USAGE_COLLECTION = "ai_property_draft_usage";
+const VISION_USAGE_COLLECTION = "ai_property_vision_usage";
 const EVENT_COLLECTION = "ai_property_draft_events";
 const MAX_DASHBOARD_DAYS = 366;
 const MAX_DASHBOARD_EVENTS = 5000;
@@ -137,7 +146,7 @@ const reserveDailyAttempt = async ({uid, isRoot, agencyMode}) => {
         if (current >= dailyLimit) {
             throw new HttpsError(
                 "resource-exhausted",
-                "Alcanzaste el límite diario de borradores asistidos. Podés continuar la carga manualmente o volver a intentarlo mañana.",
+                "Alcanzaste el límite diario de asistencias con IA. Podés continuar manualmente o volver a intentarlo mañana.",
             );
         }
 
@@ -154,6 +163,44 @@ const reserveDailyAttempt = async ({uid, isRoot, agencyMode}) => {
                 FieldValue.serverTimestamp(),
         }, {merge: true});
 
+        return current + 1;
+    });
+
+    return {
+        usageRef,
+        dailyLimit,
+        remainingAttempts: Math.max(0, dailyLimit - count),
+    };
+};
+
+const reserveDailyVisionAttempt = async ({uid, isRoot, agencyMode}) => {
+    const dayKey = getArgentinaDayKey();
+    const dailyLimit = isRoot ? 20 : agencyMode ? 5 : 1;
+    const usageRef = db.collection(VISION_USAGE_COLLECTION)
+        .doc(`${uid}_${dayKey}`);
+
+    const count = await db.runTransaction(async (transaction) => {
+        const snap = await transaction.get(usageRef);
+        const current = Number(snap.data()?.attempts || 0);
+        if (current >= dailyLimit) {
+            throw new HttpsError(
+                "resource-exhausted",
+                "Alcanzaste el límite diario de revisiones visuales. Podés ordenar las fotos manualmente o volver a intentarlo mañana.",
+            );
+        }
+
+        transaction.set(usageRef, {
+            uid,
+            dayKey,
+            attempts: current + 1,
+            successes: Number(snap.data()?.successes || 0),
+            inputTokens: Number(snap.data()?.inputTokens || 0),
+            outputTokens: Number(snap.data()?.outputTokens || 0),
+            updatedAt: FieldValue.serverTimestamp(),
+            createdAt: snap.exists ?
+                snap.data()?.createdAt || FieldValue.serverTimestamp() :
+                FieldValue.serverTimestamp(),
+        }, {merge: true});
         return current + 1;
     });
 
@@ -239,13 +286,155 @@ const callOpenAi = async ({apiKey, sourceText, uid}) => {
     };
 };
 
+const callOpenAiReview = async ({apiKey, property, uid}) => {
+    const model = getOpenAiModel();
+    const response = await fetch(OPENAI_RESPONSES_URL, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model,
+            store: false,
+            reasoning: {effort: "none"},
+            safety_identifier: buildSafetyIdentifier(uid),
+            max_output_tokens: 4000,
+            input: [
+                {
+                    role: "system",
+                    content: buildPropertyReviewInstructions(),
+                },
+                {
+                    role: "user",
+                    content: JSON.stringify(property),
+                },
+            ],
+            text: {
+                format: {
+                    type: "json_schema",
+                    name: "onoprop_property_review",
+                    strict: true,
+                    schema: PROPERTY_REVIEW_SCHEMA,
+                },
+            },
+        }),
+        signal: AbortSignal.timeout(45000),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const error = new Error("OpenAI rechazó la revisión de la publicación.");
+        error.status = response.status;
+        error.requestId = response.headers.get("x-request-id") || "";
+        error.type = data?.error?.type || "";
+        throw error;
+    }
+
+    const outputText = extractResponseOutputText(data);
+    if (!outputText) {
+        throw new Error("La IA no devolvió una revisión utilizable.");
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(outputText);
+    } catch {
+        throw new Error("La IA devolvió una revisión con formato inválido.");
+    }
+
+    return {
+        result: sanitizePropertyReviewResponse(parsed),
+        usage: data.usage || {},
+        model,
+    };
+};
+
+const callOpenAiImageReview = async ({apiKey, property, imageUrls, uid}) => {
+    const model = getOpenAiModel();
+    const response = await fetch(OPENAI_RESPONSES_URL, {
+        method: "POST",
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            model,
+            store: false,
+            reasoning: {effort: "none"},
+            safety_identifier: buildSafetyIdentifier(uid),
+            max_output_tokens: 3500,
+            input: [
+                {
+                    role: "system",
+                    content: buildPropertyImageReviewInstructions(),
+                },
+                {
+                    role: "user",
+                    content: [
+                        {
+                            type: "input_text",
+                            text: [
+                                `Datos públicos: ${JSON.stringify(property)}`,
+                                "Las imágenes siguientes corresponden, en orden, a los índices 0 en adelante.",
+                            ].join("\n"),
+                        },
+                        ...imageUrls.map((imageUrl) => ({
+                            type: "input_image",
+                            image_url: imageUrl,
+                            detail: "low",
+                        })),
+                    ],
+                },
+            ],
+            text: {
+                format: {
+                    type: "json_schema",
+                    name: "onoprop_property_image_review",
+                    strict: true,
+                    schema: PROPERTY_IMAGE_REVIEW_SCHEMA,
+                },
+            },
+        }),
+        signal: AbortSignal.timeout(60000),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        const error = new Error("OpenAI rechazó la revisión visual.");
+        error.status = response.status;
+        error.requestId = response.headers.get("x-request-id") || "";
+        error.type = data?.error?.type || "";
+        throw error;
+    }
+
+    const outputText = extractResponseOutputText(data);
+    if (!outputText) throw new Error("La IA no devolvió un análisis visual.");
+
+    let parsed;
+    try {
+        parsed = JSON.parse(outputText);
+    } catch {
+        throw new Error("La IA devolvió un análisis visual con formato inválido.");
+    }
+
+    return {
+        result: sanitizePropertyImageReviewResponse(
+            parsed,
+            imageUrls.length,
+        ),
+        usage: data.usage || {},
+        model,
+    };
+};
+
 const toHttpsError = (error) => {
     if (error instanceof HttpsError) return error;
 
     if (error?.name === "TimeoutError" || error?.name === "AbortError") {
         return new HttpsError(
             "deadline-exceeded",
-            "La preparación demoró demasiado. Volvé a intentarlo.",
+            "La asistencia demoró demasiado. Volvé a intentarlo.",
         );
     }
 
@@ -259,7 +448,7 @@ const toHttpsError = (error) => {
     if (error?.status === 401 || error?.status === 403) {
         return new HttpsError(
             "failed-precondition",
-            "La carga asistida todavía no está disponible. Avisá a ONO Prop.",
+            "La asistencia con IA todavía no está disponible. Avisá a ONO Prop.",
         );
     }
 
@@ -272,7 +461,7 @@ const toHttpsError = (error) => {
 
     return new HttpsError(
         "internal",
-        "No pudimos preparar el borrador. Podés continuar la carga manualmente.",
+        "No pudimos completar la asistencia con IA. Podés continuar manualmente.",
     );
 };
 
@@ -340,6 +529,7 @@ export const inmueblePrepareAiDraft = onCall({
             actorHash: buildSafetyIdentifier(uid),
             inmobiliariaId,
             mode: access.agencyMode ? "agency" : "particular",
+            operationType: "draft",
             dayKey,
             status: "processing",
             sourceLength: sourceText.length,
@@ -407,6 +597,7 @@ export const inmueblePrepareAiDraft = onCall({
             actorHash: buildSafetyIdentifier(uid),
             inmobiliariaId,
             mode: access.agencyMode ? "agency" : "particular",
+            operationType: "draft",
             dayKey,
             status: "failure",
             sourceLength: sourceText.length,
@@ -425,6 +616,319 @@ export const inmueblePrepareAiDraft = onCall({
         console.error("Error preparando borrador inmobiliario con IA", {
             uid,
             inmobiliariaId,
+            status: error?.status || null,
+            type: error?.type || "",
+            requestId: error?.requestId || "",
+            message: error?.message || "",
+        });
+        throw toHttpsError(error);
+    }
+});
+
+export const inmuebleReviewAiPublication = onCall({
+    region: REGION,
+    secrets: OPENAI_SECRET_BINDINGS,
+    timeoutSeconds: 60,
+    memory: "256MiB",
+    maxInstances: 10,
+}, async (request) => {
+    const uid = request.auth?.uid || "";
+    if (!uid) {
+        throw new HttpsError(
+            "unauthenticated",
+            "Tenés que iniciar sesión para revisar la publicación.",
+        );
+    }
+
+    const inmobiliariaId = cleanId(request.data?.inmobiliariaId);
+    const property = sanitizePropertyReviewInput(request.data?.property || {});
+    const meaningfulFields = [
+        property.titulo,
+        property.descripcion,
+        property.tipo,
+        property.operacion,
+        property.precio,
+    ].filter(Boolean).length;
+
+    if (meaningfulFields < 2) {
+        throw new HttpsError(
+            "invalid-argument",
+            "Completá al menos dos datos principales antes de revisar la publicación.",
+        );
+    }
+
+    if (!OPENAI_PROPERTY_DRAFT_ENABLED || !OPENAI_API_KEY) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La revisión asistida todavía no está habilitada.",
+        );
+    }
+
+    const access = await assertCanPrepareDraft(uid, inmobiliariaId);
+    const apiKey = OPENAI_API_KEY.value().trim();
+    if (!apiKey) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La revisión asistida todavía no está configurada.",
+        );
+    }
+
+    const quota = await reserveDailyAttempt({
+        uid,
+        isRoot: access.isRoot,
+        agencyMode: access.agencyMode,
+    });
+    const eventRef = db.collection(EVENT_COLLECTION).doc();
+    const startedAt = Date.now();
+    const dayKey = getArgentinaDayKey();
+    const sourceLength = JSON.stringify(property).length;
+
+    try {
+        await eventRef.set({
+            actorHash: buildSafetyIdentifier(uid),
+            inmobiliariaId,
+            mode: access.agencyMode ? "agency" : "particular",
+            operationType: "review",
+            dayKey,
+            status: "processing",
+            sourceLength,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        const {result, usage, model} = await callOpenAiReview({
+            apiKey,
+            property,
+            uid,
+        });
+        const inputTokens = Number(usage.input_tokens || 0);
+        const outputTokens = Number(usage.output_tokens || 0);
+        const latencyMs = Date.now() - startedAt;
+        const issueCount = result.review.issues.length;
+        const missingFieldCount = result.review.missingFields.length;
+        const contradictionCount = result.review.contradictions.length;
+        const batch = db.batch();
+
+        batch.set(quota.usageRef, {
+            successes: FieldValue.increment(1),
+            inputTokens: FieldValue.increment(inputTokens),
+            outputTokens: FieldValue.increment(outputTokens),
+            latencyTotalMs: FieldValue.increment(latencyMs),
+            lastModel: model,
+            lastSuccessAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        batch.set(eventRef, {
+            status: "success",
+            model,
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            latencyMs,
+            reviewScore: result.review.score,
+            reviewReadiness: result.review.readiness,
+            issueCount,
+            missingFieldCount,
+            contradictionCount,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await batch.commit();
+
+        return {
+            ...result,
+            generationId: eventRef.id,
+            quota: {
+                dailyLimit: quota.dailyLimit,
+                remainingAttempts: quota.remainingAttempts,
+            },
+        };
+    } catch (error) {
+        const latencyMs = Date.now() - startedAt;
+        const failureType = cleanId(error?.type || error?.name || "unknown", 80);
+        const failureStatus = cleanId(error?.status?.toString() || "", 20);
+        const batch = db.batch();
+        batch.set(quota.usageRef, {
+            failures: FieldValue.increment(1),
+            latencyTotalMs: FieldValue.increment(latencyMs),
+            lastFailureAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        batch.set(eventRef, {
+            actorHash: buildSafetyIdentifier(uid),
+            inmobiliariaId,
+            mode: access.agencyMode ? "agency" : "particular",
+            operationType: "review",
+            dayKey,
+            status: "failure",
+            sourceLength,
+            latencyMs,
+            failureType,
+            failureStatus,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await batch.commit().catch((telemetryError) => {
+            console.warn("No se pudo registrar la telemetría de revisión IA", {
+                message: telemetryError?.message || "",
+            });
+        });
+
+        console.error("Error revisando publicación inmobiliaria con IA", {
+            uid,
+            inmobiliariaId,
+            status: error?.status || null,
+            type: error?.type || "",
+            requestId: error?.requestId || "",
+            message: error?.message || "",
+        });
+        throw toHttpsError(error);
+    }
+});
+
+export const inmuebleReviewAiImages = onCall({
+    region: REGION,
+    secrets: OPENAI_SECRET_BINDINGS,
+    timeoutSeconds: 90,
+    memory: "256MiB",
+    maxInstances: 5,
+}, async (request) => {
+    const uid = request.auth?.uid || "";
+    if (!uid) {
+        throw new HttpsError(
+            "unauthenticated",
+            "Tenés que iniciar sesión para analizar las fotos.",
+        );
+    }
+
+    const inmobiliariaId = cleanId(request.data?.inmobiliariaId);
+    const imageUrls = sanitizePropertyImageUrls(request.data?.images);
+    if (imageUrls.length < 2) {
+        throw new HttpsError(
+            "invalid-argument",
+            "Cargá al menos dos imágenes públicas para revisar la galería.",
+        );
+    }
+    if (!OPENAI_PROPERTY_DRAFT_ENABLED || !OPENAI_API_KEY) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La revisión visual todavía no está habilitada.",
+        );
+    }
+
+    const access = await assertCanPrepareDraft(uid, inmobiliariaId);
+    const apiKey = OPENAI_API_KEY.value().trim();
+    if (!apiKey) {
+        throw new HttpsError(
+            "failed-precondition",
+            "La revisión visual todavía no está configurada.",
+        );
+    }
+
+    const property = sanitizePropertyReviewInput(request.data?.property || {});
+    const quota = await reserveDailyVisionAttempt({
+        uid,
+        isRoot: access.isRoot,
+        agencyMode: access.agencyMode,
+    });
+    const eventRef = db.collection(EVENT_COLLECTION).doc();
+    const startedAt = Date.now();
+    const dayKey = getArgentinaDayKey();
+
+    try {
+        await eventRef.set({
+            actorHash: buildSafetyIdentifier(uid),
+            inmobiliariaId,
+            mode: access.agencyMode ? "agency" : "particular",
+            operationType: "image_review",
+            dayKey,
+            status: "processing",
+            imageCount: imageUrls.length,
+            createdAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        });
+
+        const {result, usage, model} = await callOpenAiImageReview({
+            apiKey,
+            property,
+            imageUrls,
+            uid,
+        });
+        const inputTokens = Number(usage.input_tokens || 0);
+        const outputTokens = Number(usage.output_tokens || 0);
+        const latencyMs = Date.now() - startedAt;
+        const privacyRiskCount = result.photos.reduce(
+            (total, photo) => total + photo.privacyRisks.length,
+            0,
+        );
+        const batch = db.batch();
+        batch.set(quota.usageRef, {
+            successes: FieldValue.increment(1),
+            inputTokens: FieldValue.increment(inputTokens),
+            outputTokens: FieldValue.increment(outputTokens),
+            latencyTotalMs: FieldValue.increment(latencyMs),
+            lastModel: model,
+            lastSuccessAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        batch.set(eventRef, {
+            status: "success",
+            model,
+            inputTokens,
+            outputTokens,
+            totalTokens: inputTokens + outputTokens,
+            latencyMs,
+            analyzedImageCount: imageUrls.length,
+            privacyRiskCount,
+            coverageGapCount: result.coverageGaps.length,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await batch.commit();
+
+        return {
+            ...result,
+            generationId: eventRef.id,
+            analyzedImageCount: imageUrls.length,
+            quota: {
+                dailyLimit: quota.dailyLimit,
+                remainingAttempts: quota.remainingAttempts,
+            },
+        };
+    } catch (error) {
+        const latencyMs = Date.now() - startedAt;
+        const failureType = cleanId(error?.type || error?.name || "unknown", 80);
+        const failureStatus = cleanId(error?.status?.toString() || "", 20);
+        const batch = db.batch();
+        batch.set(quota.usageRef, {
+            failures: FieldValue.increment(1),
+            latencyTotalMs: FieldValue.increment(latencyMs),
+            lastFailureAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        batch.set(eventRef, {
+            actorHash: buildSafetyIdentifier(uid),
+            inmobiliariaId,
+            mode: access.agencyMode ? "agency" : "particular",
+            operationType: "image_review",
+            dayKey,
+            status: "failure",
+            imageCount: imageUrls.length,
+            latencyMs,
+            failureType,
+            failureStatus,
+            completedAt: FieldValue.serverTimestamp(),
+            updatedAt: FieldValue.serverTimestamp(),
+        }, {merge: true});
+        await batch.commit().catch((telemetryError) => {
+            console.warn("No se pudo registrar la revisión visual IA", {
+                message: telemetryError?.message || "",
+            });
+        });
+        console.error("Error revisando imágenes inmobiliarias con IA", {
+            uid,
+            inmobiliariaId,
+            imageCount: imageUrls.length,
             status: error?.status || null,
             type: error?.type || "",
             requestId: error?.requestId || "",

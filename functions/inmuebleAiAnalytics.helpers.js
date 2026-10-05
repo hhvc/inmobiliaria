@@ -109,6 +109,7 @@ export const aggregateAiDraftEvents = (events = []) => {
     const agencies = new Map();
     const failures = new Map();
     const models = new Map();
+    const operations = new Map();
 
     events.forEach((event = {}) => {
         addEvent(summary, event);
@@ -129,6 +130,14 @@ export const aggregateAiDraftEvents = (events = []) => {
 
         const model = event.model?.toString().trim();
         if (model) models.set(model, (models.get(model) || 0) + 1);
+
+        const operationType = ["review", "image_review"].includes(
+            event.operationType,
+        ) ? event.operationType : "draft";
+        if (!operations.has(operationType)) {
+            operations.set(operationType, emptyCounters());
+        }
+        addEvent(operations.get(operationType), event);
     });
 
     return {
@@ -151,6 +160,12 @@ export const aggregateAiDraftEvents = (events = []) => {
         models: [...models.entries()]
             .map(([model, total]) => ({model, total}))
             .sort((left, right) => right.total - left.total),
+        operations: [...operations.entries()]
+            .map(([operationType, counters]) => ({
+                operationType,
+                ...finalizeAiDraftCounters(counters),
+            }))
+            .sort((left, right) => right.attempts - left.attempts),
     };
 };
 

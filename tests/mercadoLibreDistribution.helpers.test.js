@@ -80,6 +80,28 @@ test("construye el payload inmobiliario con la estructura oficial", () => {
     assert.equal("metadata" in payload, false);
 });
 
+test("reutiliza el texto de Mercado Libre aprobado en la revisión IA", () => {
+    const payload = buildMercadoLibreDraftPayload({
+        inmueble: {
+            ...validInmueble,
+            aiMarketing: {
+                mercadoLibreDescription:
+                    "Texto específico aprobado para Mercado Libre.",
+            },
+        },
+        categoryId: "MLA401685",
+    });
+
+    assert.match(
+        payload.description.plain_text,
+        /Texto específico aprobado para Mercado Libre/,
+    );
+    assert.equal(
+        payload.description.plain_text.includes(validInmueble.descripcion),
+        false,
+    );
+});
+
 test("bloquea categoría y precio faltantes", () => {
     const validation = validateMercadoLibreDraft({
         inmueble: {

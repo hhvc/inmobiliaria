@@ -861,6 +861,7 @@ const InmuebleDistributionPage = () => {
                             legacy.payloadPreview?.caption ||
                             remoteInstagramDistribution.agency?.caption ||
                             remoteInstagramDistribution.onoprop?.caption ||
+                            data.aiMarketing?.instagramCaption ||
                             "",
                         selectedImageUrls:
                             legacy.selectedImageUrls ||

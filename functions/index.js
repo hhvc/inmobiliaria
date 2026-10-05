@@ -240,4 +240,6 @@ export {
   inmuebleGetAiDraftDashboard,
   inmueblePrepareAiDraft,
   inmuebleRecordAiDraftOutcome,
+  inmuebleReviewAiImages,
+  inmuebleReviewAiPublication,
 } from "./inmuebleAi.js";

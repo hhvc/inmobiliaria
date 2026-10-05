@@ -15,6 +15,8 @@ import { useInmuebleImages } from "../hooks/useInmuebleImages";
 import InmuebleGallery from "./InmuebleGallery";
 import InmuebleVideos from "./InmuebleVideos";
 import InmuebleAiAssistant from "./InmuebleAiAssistant";
+import InmuebleAiImageReview from "./InmuebleAiImageReview";
+import InmuebleAiReviewAssistant from "./InmuebleAiReviewAssistant";
 import { normalizeInmuebleVideos } from "../utils/inmuebleVideos.helpers";
 import { getEmprendimientosByInmobiliaria } from "../../emprendimiento/services/emprendimiento.service";
 import {
@@ -165,6 +167,7 @@ const InmuebleForm = ({
     images,
     addImages,
     reorderImages,
+    applySuggestedOrder,
     loading: imagesLoading,
     error: imagesError,
   } = imageManager;
@@ -1759,6 +1762,29 @@ const InmuebleForm = ({
               imágenes desde la edición.
             </div>
           )}
+
+          {isEditMode && inmuebleId && (
+            <InmuebleAiImageReview
+              property={{
+                ...values,
+                images,
+                videos: videoValues,
+                superficie: superficieValues,
+                caracteristicas: caracteristicasValues,
+                amenities: amenitiesValues,
+                servicios: serviciosValues,
+              }}
+              images={images}
+              inmobiliariaId={selectedInmobiliariaId}
+              onApplyOrder={(orderedUrls) =>
+                applySuggestedOrder({
+                  orderedUrls,
+                  inmuebleId,
+                  inmobiliariaId: selectedInmobiliariaId,
+                })
+              }
+            />
+          )}
         </div>
       </div>
 
@@ -2159,6 +2185,65 @@ const InmuebleForm = ({
           )}
         </div>
       </div>
+
+      <InmuebleAiReviewAssistant
+        property={{
+          ...values,
+          images,
+          videos: videoValues,
+          superficie: superficieValues,
+          caracteristicas: caracteristicasValues,
+          amenities: amenitiesValues,
+          servicios: serviciosValues,
+        }}
+        inmobiliariaId={selectedInmobiliariaId}
+        onApplySuggestions={(
+          {
+            title,
+            portalDescription,
+            instagramCaption,
+            mercadoLibreDescription,
+          },
+          metadata = {},
+        ) => {
+          if (title) {
+            handleChange({
+              target: {name: "titulo", value: title, type: "text"},
+            });
+          }
+          if (portalDescription) {
+            handleChange({
+              target: {
+                name: "descripcion",
+                value: portalDescription,
+                type: "text",
+              },
+            });
+          }
+          if (instagramCaption) {
+            handleNestedChange(
+              "aiMarketing",
+              "instagramCaption",
+              instagramCaption,
+            );
+          }
+          if (mercadoLibreDescription) {
+            handleNestedChange(
+              "aiMarketing",
+              "mercadoLibreDescription",
+              mercadoLibreDescription,
+            );
+          }
+          if (instagramCaption || mercadoLibreDescription) {
+            handleNestedChange("aiMarketing", "approvedAt", metadata.approvedAt || "");
+            handleNestedChange(
+              "aiMarketing",
+              "sourceGenerationId",
+              metadata.generationId || "",
+            );
+          }
+        }}
+      />
 
       {/* =========================
           Acciones

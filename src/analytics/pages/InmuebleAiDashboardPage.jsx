@@ -23,6 +23,7 @@ const emptyDashboard = {
   agencies: [],
   failures: [],
   models: [],
+  operations: [],
 };
 
 const formatNumber = (value, maximumFractionDigits = 0) => Number(value || 0)
@@ -85,6 +86,12 @@ const InmuebleAiDashboardPage = () => {
   }, [dateFrom, dateTo]);
 
   const summary = dashboard.summary || {};
+  const operationTotals = Object.fromEntries(
+    (dashboard.operations || []).map((item) => [
+      item.operationType,
+      Number(item.attempts || 0),
+    ]),
+  );
   const feedbackDetail = summary.feedbackTotal > 0
     ? `${formatNumber(summary.usefulFeedback)} útiles de ${formatNumber(summary.feedbackTotal)}`
     : "todavía sin valoraciones";
@@ -105,9 +112,9 @@ const InmuebleAiDashboardPage = () => {
         <header className="d-flex flex-column flex-xl-row justify-content-between gap-3 align-items-xl-end mb-4">
           <div>
             <span className="badge rounded-pill text-bg-dark mb-2">ROOT · ONO Prop</span>
-            <h1 className="h2 mb-2">Carga asistida con IA</h1>
+            <h1 className="h2 mb-2">Asistencia inmobiliaria con IA</h1>
             <p className="text-muted mb-0">
-              Uso, resultados, costos estimados y valoración de los borradores inmobiliarios.
+              Uso, resultados, costos estimados y valoración de borradores y revisiones.
             </p>
           </div>
           <Link className="btn btn-outline-secondary" to="/admin/dashboard">
@@ -172,7 +179,7 @@ const InmuebleAiDashboardPage = () => {
                 detail={`${formatPercent(summary.successRate)} completados`}
               />
               <MetricCard
-                label="Borradores aplicados"
+                label="Propuestas aplicadas"
                 value={formatNumber(summary.appliedDrafts)}
                 detail={`${formatPercent(summary.applicationRate)} de los exitosos`}
                 tone="success"
@@ -231,8 +238,14 @@ const InmuebleAiDashboardPage = () => {
                 <section className="card border-0 shadow-sm h-100">
                   <div className="card-body p-4">
                     <h2 className="h4 mb-1">Calidad y adopción</h2>
-                    <p className="text-muted small">Señales agregadas del uso del borrador.</p>
+                    <p className="text-muted small">Señales agregadas de las asistencias inmobiliarias.</p>
                     <dl className="row mb-0">
+                      <dt className="col-7">Borradores preparados</dt>
+                      <dd className="col-5 text-end">{formatNumber(operationTotals.draft)}</dd>
+                      <dt className="col-7">Publicaciones revisadas</dt>
+                      <dd className="col-5 text-end">{formatNumber(operationTotals.review)}</dd>
+                      <dt className="col-7">Galerías revisadas</dt>
+                      <dd className="col-5 text-end">{formatNumber(operationTotals.image_review)}</dd>
                       <dt className="col-7">Generaciones exitosas</dt>
                       <dd className="col-5 text-end">{formatNumber(summary.successes)}</dd>
                       <dt className="col-7">Errores</dt>

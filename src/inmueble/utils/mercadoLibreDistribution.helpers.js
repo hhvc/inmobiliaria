@@ -23,10 +23,15 @@ const toNumberOrNull = (value) => {
 };
 
 const buildDescription = (inmueble = {}, publicUrl = "") => {
+    const channelDescription = normalizeText(
+        inmueble.aiMarketing?.mercadoLibreDescription ||
+        inmueble.descripcion || "",
+    );
+
     return [
         normalizeText(inmueble.titulo || ""),
         "",
-        normalizeText(inmueble.descripcion || ""),
+        channelDescription,
         "",
         publicUrl ? `Ficha pública: ${publicUrl}` : "",
     ]
@@ -251,7 +256,10 @@ export const validateMercadoLibreDraft = ({
     const images = getImages(inmueble);
     const direccion = getDireccion(inmueble);
     const price = toNumberOrNull(inmueble.precio);
-    const description = normalizeText(inmueble.descripcion || "");
+    const description = normalizeText(
+        inmueble.aiMarketing?.mercadoLibreDescription ||
+        inmueble.descripcion || "",
+    );
 
     if (!categoryId) {
         errors.push("Falta category_id final de Mercado Libre.");

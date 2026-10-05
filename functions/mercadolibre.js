@@ -1044,7 +1044,11 @@ const buildPublicationPayload = ({
     };
 
     const description = [
-        cleanText(inmueble.descripcion, 50000),
+        cleanText(
+            inmueble.aiMarketing?.mercadoLibreDescription ||
+            inmueble.descripcion,
+            50000,
+        ),
         settings.publicUrl ? `Ficha pública: ${settings.publicUrl}` : "",
     ]
         .filter(Boolean)
