@@ -123,6 +123,20 @@ export const getAiDraftFieldLabel = (path = "") => {
 
 export const getAiDraftFieldValue = (draft, path) => getPathValue(draft, path);
 
+export const getDefaultSelectedAiDraftFieldPaths = ({
+  detectedFields = [],
+  fieldAssessments = [],
+} = {}) => {
+  const confidenceByPath = new Map(
+    (Array.isArray(fieldAssessments) ? fieldAssessments : [])
+      .map((item) => [item?.path, item?.confidence]),
+  );
+
+  return Array.from(new Set(
+    Array.isArray(detectedFields) ? detectedFields : [],
+  )).filter((path) => confidenceByPath.get(path) !== "low");
+};
+
 export const mergeAiDraftIntoInmuebleValues = ({
   values = {},
   draft = {},

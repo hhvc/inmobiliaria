@@ -124,6 +124,8 @@ export const AI_PROPERTY_FIELD_PATHS = new Set([
     ...BOOLEAN_FIELD_PATHS,
 ]);
 
+const FIELD_CONFIDENCE_LEVELS = ["high", "medium", "low"];
+
 const stringSchema = (description = "") => ({
     type: "string",
     description,
@@ -222,6 +224,23 @@ export const PROPERTY_DRAFT_SCHEMA = strictObject({
             type: "string",
             enum: Array.from(AI_PROPERTY_FIELD_PATHS),
         },
+    },
+    fieldAssessments: {
+        type: "array",
+        description: "Confianza y evidencia para cada campo detectado.",
+        items: strictObject({
+            path: {
+                type: "string",
+                enum: Array.from(AI_PROPERTY_FIELD_PATHS),
+            },
+            confidence: {
+                type: "string",
+                enum: FIELD_CONFIDENCE_LEVELS,
+            },
+            evidence: stringSchema(
+                "Fragmento o paráfrasis breve que justifica el valor.",
+            ),
+        }),
     },
     missingFields: {
         type: "array",
@@ -685,10 +704,41 @@ export const sanitizePropertyDraftResponse = (payload = {}) => {
         AI_PROPERTY_FIELD_PATHS.has(path) &&
         isSupportedDetectedValue(draft, path)
     ));
+    const detectedFieldSet = new Set(detectedFields);
+    const assessmentByPath = new Map();
+
+    for (const assessment of Array.isArray(payload.fieldAssessments) ?
+        payload.fieldAssessments : []) {
+        const path = cleanText(assessment?.path, 80);
+        if (!detectedFieldSet.has(path) || assessmentByPath.has(path)) continue;
+
+        assessmentByPath.set(path, {
+            path,
+            confidence: enumValue(
+                assessment?.confidence,
+                FIELD_CONFIDENCE_LEVELS,
+            ) || "medium",
+            evidence: stringValue(
+                redactPrivateContactDetails(assessment?.evidence),
+                240,
+            ),
+        });
+    }
+
+    const fieldAssessments = detectedFields.map((path) => (
+        assessmentByPath.get(path) || {
+            path,
+            confidence: "medium",
+            evidence: ["titulo", "descripcion"].includes(path) ?
+                "Redacción generada únicamente a partir del texto ingresado." :
+                "Dato identificado en el texto ingresado.",
+        }
+    ));
 
     return {
         draft,
         detectedFields,
+        fieldAssessments,
         missingFields: uniqueTextList(payload.missingFields),
         warnings: uniqueTextList(payload.warnings),
     };
@@ -720,6 +770,10 @@ export const buildPropertyDraftInstructions = () => [
     "Usá cadenas vacías y booleanos false cuando un dato no esté informado.",
     "Incluí en detectedFields solamente rutas respaldadas explícitamente por el texto,",
     "salvo titulo y descripcion, que podés redactar usando únicamente los datos informados.",
+    "Incluí en fieldAssessments exactamente una evaluación por cada ruta de detectedFields.",
+    "Usá confianza high para datos literales inequívocos, medium para normalizaciones seguras",
+    "o textos redactados con datos informados, y low para datos ambiguos que requieran confirmación.",
+    "La evidencia debe ser una cita o paráfrasis breve del texto que justifique el campo.",
     "No incluyas nombres, teléfonos, emails, matrículas, CUIT, DNI ni instrucciones privadas.",
     "El título debe ser breve. La descripción debe ser profesional, clara y sin exageraciones.",
     "No uses markdown en titulo ni descripcion.",

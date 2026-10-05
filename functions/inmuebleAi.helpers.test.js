@@ -67,7 +67,13 @@ test("the property schema is strict at its root", () => {
     assert.equal(PROPERTY_DRAFT_SCHEMA.additionalProperties, false);
     assert.deepEqual(
         PROPERTY_DRAFT_SCHEMA.required,
-        ["draft", "detectedFields", "missingFields", "warnings"],
+        [
+            "draft",
+            "detectedFields",
+            "fieldAssessments",
+            "missingFields",
+            "warnings",
+        ],
     );
 });
 
@@ -81,6 +87,23 @@ test("sanitizes numeric values and unsupported detected fields", () => {
             "amenities.piscina",
             "private.ownerPhone",
         ],
+        fieldAssessments: [
+            {
+                path: "precio",
+                confidence: "high",
+                evidence: "Precio USD 185.000",
+            },
+            {
+                path: "superficie.cubierta",
+                confidence: "medium",
+                evidence: "180 m² cubiertos",
+            },
+            {
+                path: "private.ownerPhone",
+                confidence: "high",
+                evidence: "WhatsApp 3515551212",
+            },
+        ],
         missingFields: ["Dirección exacta", "Dirección exacta"],
         warnings: ["Confirmar precio"],
     });
@@ -91,7 +114,44 @@ test("sanitizes numeric values and unsupported detected fields", () => {
     assert.ok(result.detectedFields.includes("titulo"));
     assert.ok(result.detectedFields.includes("descripcion"));
     assert.ok(!result.detectedFields.includes("private.ownerPhone"));
+    assert.deepEqual(
+        result.fieldAssessments.find((item) => item.path === "precio"),
+        {
+            path: "precio",
+            confidence: "high",
+            evidence: "Precio USD 185.000",
+        },
+    );
+    assert.equal(
+        result.fieldAssessments.find((item) => item.path === "titulo")
+            .confidence,
+        "medium",
+    );
+    assert.equal(
+        result.fieldAssessments.some((item) =>
+            item.path === "private.ownerPhone"),
+        false,
+    );
     assert.deepEqual(result.missingFields, ["Dirección exacta"]);
+});
+
+test("redacts private contact data from field evidence", () => {
+    const result = sanitizePropertyDraftResponse({
+        draft: baseDraft,
+        detectedFields: ["precio"],
+        fieldAssessments: [{
+            path: "precio",
+            confidence: "high",
+            evidence: "Precio USD 185.000. WhatsApp: +54 9 351 555-1212",
+        }],
+        missingFields: [],
+        warnings: [],
+    });
+
+    const evidence = result.fieldAssessments.find((item) =>
+        item.path === "precio").evidence;
+    assert.equal(evidence.includes("351 555"), false);
+    assert.match(evidence, /dato privado omitido/);
 });
 
 test("redacts labelled contact details before sending or returning text", () => {

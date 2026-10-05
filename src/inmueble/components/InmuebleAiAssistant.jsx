@@ -5,6 +5,7 @@ import {
   recordInmuebleAiDraftOutcome,
 } from "../services/inmuebleAi.service";
 import {
+  getDefaultSelectedAiDraftFieldPaths,
   getAiDraftFieldLabel,
   getAiDraftFieldValue,
 } from "../utils/inmuebleAiDraft.helpers";
@@ -14,6 +15,18 @@ const MAX_DESCRIPTION_LENGTH = 6000;
 const AI_PROPERTY_DRAFT_ENABLED = String(
   import.meta.env.VITE_OPENAI_PROPERTY_DRAFT_ENABLED || "",
 ).toLowerCase() === "true";
+
+const CONFIDENCE_LABELS = {
+  high: "Alta confianza",
+  medium: "Confianza media",
+  low: "Requiere confirmación",
+};
+
+const CONFIDENCE_BADGES = {
+  high: "text-bg-success",
+  medium: "text-bg-primary",
+  low: "text-bg-warning",
+};
 
 const formatDetectedValue = (value) => {
   if (typeof value === "boolean") return value ? "Sí" : "No";
@@ -36,21 +49,36 @@ const InmuebleAiAssistant = ({
   const [feedback, setFeedback] = useState("");
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [selectedFieldPaths, setSelectedFieldPaths] = useState([]);
 
   const detectedItems = useMemo(() => {
     const visiblePaths = Array.isArray(previewFieldPaths)
       ? new Set(previewFieldPaths)
       : null;
 
+    const assessmentByPath = new Map(
+      (result?.fieldAssessments || []).map((item) => [item.path, item]),
+    );
+
     return (result?.detectedFields || [])
       .filter((path) => !visiblePaths || visiblePaths.has(path))
-      .map((path) => ({
-        path,
-        label: getAiDraftFieldLabel(path),
-        value: formatDetectedValue(getAiDraftFieldValue(result?.draft, path)),
-      }))
+      .map((path) => {
+        const assessment = assessmentByPath.get(path) || {};
+        return {
+          path,
+          label: getAiDraftFieldLabel(path),
+          value: formatDetectedValue(getAiDraftFieldValue(result?.draft, path)),
+          confidence: assessment.confidence || "medium",
+          evidence: assessment.evidence || "",
+        };
+      })
       .filter((item) => item.value !== "");
   }, [previewFieldPaths, result]);
+
+  const selectedFieldSet = useMemo(
+    () => new Set(selectedFieldPaths),
+    [selectedFieldPaths],
+  );
 
   if (!AI_PROPERTY_DRAFT_ENABLED) return null;
 
@@ -73,6 +101,13 @@ const InmuebleAiAssistant = ({
         inmobiliariaId,
       });
       setResult(data);
+      const defaultPaths = getDefaultSelectedAiDraftFieldPaths(data);
+      const visiblePaths = Array.isArray(previewFieldPaths)
+        ? new Set(previewFieldPaths)
+        : null;
+      setSelectedFieldPaths(
+        defaultPaths.filter((path) => !visiblePaths || visiblePaths.has(path)),
+      );
     } catch (requestError) {
       setResult(null);
       setError(requestError.message);
@@ -83,9 +118,13 @@ const InmuebleAiAssistant = ({
 
   const handleApply = () => {
     if (!result?.draft || typeof onApplyDraft !== "function") return;
+    if (selectedFieldPaths.length === 0) {
+      setError("Seleccioná al menos un dato para aplicar al formulario.");
+      return;
+    }
     const summary = onApplyDraft({
       draft: result.draft,
-      detectedFields: result.detectedFields || [],
+      detectedFields: selectedFieldPaths,
       preserveExisting,
     });
     const appliedCount = Number(summary?.appliedCount || 0);
@@ -116,6 +155,21 @@ const InmuebleAiAssistant = ({
         block: "start",
       });
     }, 80);
+  };
+
+  const handleFieldSelection = (path, checked) => {
+    setSelectedFieldPaths((current) => checked
+      ? Array.from(new Set([...current, path]))
+      : current.filter((item) => item !== path));
+    setError("");
+  };
+
+  const selectRecommendedFields = () => {
+    setSelectedFieldPaths(
+      detectedItems
+        .filter((item) => item.confidence !== "low")
+        .map((item) => item.path),
+    );
   };
 
   const handleFeedback = async (rating) => {
@@ -169,8 +223,13 @@ const InmuebleAiAssistant = ({
           placeholder="Ej.: Casa en venta en Argüello, Córdoba. Tiene 3 dormitorios, 2 baños, pileta, 180 m² cubiertos sobre terreno de 600 m². Precio USD 185.000..."
           onChange={(event) => {
             setSourceText(event.target.value);
+            setResult(null);
+            setSelectedFieldPaths([]);
             setError("");
             setAppliedMessage("");
+            setApplicationSummary(null);
+            setFeedback("");
+            setFeedbackMessage("");
           }}
         />
         <div className="d-flex flex-wrap justify-content-between gap-2 mt-2">
@@ -197,7 +256,7 @@ const InmuebleAiAssistant = ({
                   Borrador listo: {detectedItems.length} datos identificados
                 </div>
                 <div className="small text-muted">
-                  Revisá el resumen antes de aplicarlo al formulario.
+                  Elegí cuáles querés aplicar. Los datos dudosos quedan desmarcados.
                 </div>
               </div>
               {Number.isFinite(result?.quota?.remainingAttempts) && (
@@ -207,12 +266,69 @@ const InmuebleAiAssistant = ({
               )}
             </div>
 
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-primary"
+                onClick={selectRecommendedFields}
+              >
+                Seleccionar recomendados
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => setSelectedFieldPaths(
+                  detectedItems.map((item) => item.path),
+                )}
+              >
+                Seleccionar todos
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm btn-outline-secondary"
+                onClick={() => setSelectedFieldPaths([])}
+              >
+                Quitar selección
+              </button>
+            </div>
+
             <div className="row g-2 mb-3">
               {detectedItems.map((item) => (
                 <div className="col-md-6" key={item.path}>
-                  <div className="bg-white border rounded p-2 h-100 small">
-                    <span className="text-muted">{item.label}: </span>
-                    <strong>{item.value}</strong>
+                  <div className={`bg-white border rounded p-2 h-100 small ${
+                    selectedFieldSet.has(item.path) ? "border-primary" : ""
+                  }`}>
+                    <div className="form-check">
+                      <input
+                        id={`ai-field-${item.path.replaceAll(".", "-")}`}
+                        className="form-check-input"
+                        type="checkbox"
+                        checked={selectedFieldSet.has(item.path)}
+                        onChange={(event) => handleFieldSelection(
+                          item.path,
+                          event.target.checked,
+                        )}
+                      />
+                      <label
+                        className="form-check-label w-100"
+                        htmlFor={`ai-field-${item.path.replaceAll(".", "-")}`}
+                      >
+                        <span className="text-muted">{item.label}: </span>
+                        <strong>{item.value}</strong>
+                      </label>
+                    </div>
+                    <div className="d-flex flex-wrap gap-2 align-items-center mt-2 ms-4">
+                      <span className={`badge ${
+                        CONFIDENCE_BADGES[item.confidence] || "text-bg-secondary"
+                      }`}>
+                        {CONFIDENCE_LABELS[item.confidence] || "Revisar"}
+                      </span>
+                      {item.evidence && (
+                        <span className="text-muted">
+                          Detectado de: “{item.evidence}”
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -255,9 +371,10 @@ const InmuebleAiAssistant = ({
             <button
               type="button"
               className="btn btn-success"
+              disabled={selectedFieldPaths.length === 0}
               onClick={handleApply}
             >
-              Aplicar al formulario
+              Aplicar {selectedFieldPaths.length} datos al formulario
             </button>
 
             <div className="border-top mt-3 pt-3">

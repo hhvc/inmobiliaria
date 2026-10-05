@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getDefaultSelectedAiDraftFieldPaths,
   getAiDraftFieldLabel,
   mergeAiDraftIntoInmuebleValues,
 } from "../src/inmueble/utils/inmuebleAiDraft.helpers.js";
@@ -75,5 +76,18 @@ test("returns readable field labels", () => {
     getAiDraftFieldLabel("caracteristicas.dormitorios"),
     "Características: Dormitorios",
   );
+});
+
+test("leaves low-confidence fields unselected by default", () => {
+  const selected = getDefaultSelectedAiDraftFieldPaths({
+    detectedFields: ["titulo", "precio", "direccion.barrio"],
+    fieldAssessments: [
+      {path: "titulo", confidence: "medium"},
+      {path: "precio", confidence: "high"},
+      {path: "direccion.barrio", confidence: "low"},
+    ],
+  });
+
+  assert.deepEqual(selected, ["titulo", "precio"]);
 });
 
