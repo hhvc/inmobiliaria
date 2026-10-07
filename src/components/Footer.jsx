@@ -2,12 +2,14 @@ import { Link } from "react-router-dom";
 
 import { useDomainAgency } from "../inmobiliaria/context/useDomainAgency";
 import { isPortalBaseDomain } from "../inmobiliaria/utils/domainRouting";
+import { allowsExternalDigitalCommerce } from "../platform/appDistribution";
 
 const ONO_PROP_LOGO_URL = "/assets/img/logoONOProp3.png";
 const DEFAULT_INMOBILIARIA_LOGO_URL = "/assets/img/Logo.png";
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
+  const canManageDigitalCommerce = allowsExternalDigitalCommerce();
 
   const { inmobiliaria: domainInmobiliaria, slug: domainSlug } =
     useDomainAgency();
@@ -162,13 +164,15 @@ const Footer = () => {
                 >
                   Guías y ayuda
                 </Link>
-                <Link
-                  to="/donar"
-                  className="text-decoration-none"
-                  style={{ color: "rgba(255,255,255,0.72)" }}
-                >
-                  Apoyar ONO Prop
-                </Link>
+                {canManageDigitalCommerce && (
+                  <Link
+                    to="/donar"
+                    className="text-decoration-none"
+                    style={{ color: "rgba(255,255,255,0.72)" }}
+                  >
+                    Apoyar ONO Prop
+                  </Link>
+                )}
               </>
             )}
             <a

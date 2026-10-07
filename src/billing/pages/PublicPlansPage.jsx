@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { useAuth } from "../../context/auth/useAuth";
+import { allowsExternalDigitalCommerce } from "../../platform/appDistribution";
 import {
     createCommercialLead,
     getPublicBillingCatalog,
@@ -46,6 +47,7 @@ const MODULE_LABELS = {
 };
 
 const PublicPlansPage = () => {
+    const canManageDigitalCommerce = allowsExternalDigitalCommerce();
     const { user } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
@@ -127,6 +129,7 @@ const PublicPlansPage = () => {
     };
 
     const selectItem = (item) => {
+        if (!canManageDigitalCommerce) return;
         if (hasAgency) {
             navigate(`/admin/inmobiliaria/cuenta-corriente?contratar=${encodeURIComponent(item.id)}`);
             return;
@@ -145,6 +148,7 @@ const PublicPlansPage = () => {
     };
 
     const requestDemo = () => {
+        if (!canManageDigitalCommerce) return;
         setSuccessId("");
         setError("");
         setStartedAtMs(Date.now());
@@ -212,9 +216,11 @@ const PublicPlansPage = () => {
                                 sin franquicias ni paquetes rígidos.
                             </p>
                             <div className="d-flex flex-wrap gap-2">
-                                <button className="btn btn-light btn-lg" type="button" onClick={requestDemo}>
-                                    Pedir una demostración
-                                </button>
+                                {canManageDigitalCommerce && (
+                                    <button className="btn btn-light btn-lg" type="button" onClick={requestDemo}>
+                                        Pedir una demostración
+                                    </button>
+                                )}
                                 <Link className="btn btn-outline-light btn-lg" to="/inmobiliarias/alta">
                                     Crear mi inmobiliaria
                                 </Link>
@@ -233,6 +239,15 @@ const PublicPlansPage = () => {
                     </div>
                 </div>
             </section>
+
+            {!canManageDigitalCommerce && (
+                <div className="container pt-4">
+                    <div className="alert alert-info mb-0" role="status">
+                        La contratación y el pago de servicios digitales no están
+                        disponibles en esta versión de la aplicación.
+                    </div>
+                </div>
+            )}
 
             <section className="container py-5" id="catalogo-planes">
                 <div className="text-center mx-auto plans-section-heading mb-5">
@@ -265,11 +280,13 @@ const PublicPlansPage = () => {
                                     </span>
                                 </div>
                                 <p className="text-muted">{item.description}</p>
-                                <div className="plan-pricing mb-3">
-                                    {getCatalogPricingSummary(item).map((line) => (
-                                        <div key={line}>{line}</div>
-                                    ))}
-                                </div>
+                                {canManageDigitalCommerce && (
+                                    <div className="plan-pricing mb-3">
+                                        {getCatalogPricingSummary(item).map((line) => (
+                                            <div key={line}>{line}</div>
+                                        ))}
+                                    </div>
+                                )}
                                 {item.inclusions?.length > 0 && (
                                     <ul className="plan-inclusions">
                                         {item.inclusions.map((entry) => <li key={entry}>{entry}</li>)}
@@ -290,18 +307,20 @@ const PublicPlansPage = () => {
                                         {item.requirements.map((entry) => entry.label).join(" · ")}
                                     </p>
                                 )}
-                                <div className="mt-auto d-grid">
-                                    <button className="btn btn-primary" type="button" onClick={() => selectItem(item)}>
-                                        {hasAgency ? "Contratar desde mi cuenta" : "Solicitar contratación"}
-                                    </button>
-                                </div>
+                                {canManageDigitalCommerce && (
+                                    <div className="mt-auto d-grid">
+                                        <button className="btn btn-primary" type="button" onClick={() => selectItem(item)}>
+                                            {hasAgency ? "Contratar desde mi cuenta" : "Solicitar contratación"}
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         </article>
                     ))}
                 </div>
             </section>
 
-            <section
+            {canManageDigitalCommerce && <section
                 className="plans-contact-section py-5"
                 id="contacto-comercial"
                 ref={formRef}
@@ -421,7 +440,7 @@ const PublicPlansPage = () => {
                         </div>
                     </div>
                 </div>
-            </section>
+            </section>}
         </main>
     );
 };

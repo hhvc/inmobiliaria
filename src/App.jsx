@@ -49,6 +49,7 @@ import PortalRankingConfigPage from "./admin/pages/PortalRankingConfigPage";
 import OnopropAcquisitionDashboardPage from "./analytics/pages/OnopropAcquisitionDashboardPage";
 import InmuebleAiDashboardPage from "./analytics/pages/InmuebleAiDashboardPage";
 import AcquisitionAttributionTracker from "./analytics/components/AcquisitionAttributionTracker";
+import PwaInstallPrompt from "./pwa/PwaInstallPrompt";
 
 import ParticularPublicationRequestsAdminPage from "./particular/pages/ParticularPublicationRequestsAdminPage";
 import ParticularPublicationPublicPage from "./particular/pages/ParticularPublicationPublicPage";
@@ -1244,6 +1245,7 @@ function App() {
             </main>
             <Footer />
             <WhatsAppButton />
+            <PwaInstallPrompt />
           </div>
         </Router>
       </AuthProvider>

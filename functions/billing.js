@@ -64,6 +64,36 @@ const COMMERCIAL_LEAD_STATUSES = new Set([
     "won",
     "lost",
 ]);
+const COMMERCIAL_MANAGEMENT_METHODS = new Set([
+    "spreadsheet",
+    "manual",
+    "mixed",
+    "software",
+    "starting",
+]);
+const COMMERCIAL_MAIN_PAINS = new Set([
+    "settlements",
+    "collections",
+    "communication",
+    "documents",
+    "control",
+    "migration",
+]);
+const COMMERCIAL_START_TIMINGS = new Set([
+    "now",
+    "within_30_days",
+    "within_90_days",
+    "exploring",
+]);
+const COMMERCIAL_PILOT_CHECKLIST_KEYS = [
+    "demoCompleted",
+    "consortiumSelected",
+    "unitsImported",
+    "firstSettlement",
+    "portalActivated",
+    "communicationsConfigured",
+    "teamTrained",
+];
 
 const getUserData = async (uid) => {
     if (!uid) {
@@ -187,6 +217,84 @@ const serializeSnap = (snap) => ({
     id: snap.id,
     ...serializeValue(snap.data() || {}),
 });
+
+const normalizeCommercialQualification = ({
+    value = {},
+    commercialOffer = null,
+    hasEmail = false,
+    hasPhone = false,
+} = {}) => {
+    const consortiumCount = Math.min(
+        5000,
+        Math.max(0, Math.trunc(Number(value?.consortiumCount) || 0)),
+    );
+    const currentManagementMethod = COMMERCIAL_MANAGEMENT_METHODS.has(
+        value?.currentManagementMethod,
+    ) ? value.currentManagementMethod : "";
+    const mainPain = COMMERCIAL_MAIN_PAINS.has(value?.mainPain)
+        ? value.mainPain
+        : "";
+    const startTiming = COMMERCIAL_START_TIMINGS.has(value?.startTiming)
+        ? value.startTiming
+        : "";
+    const units = Number(commercialOffer?.unitCount || 0);
+    let score = commercialOffer?.requestType === "pilot" ? 25 : 10;
+
+    if (units >= 50) score += 25;
+    else if (units >= 20) score += 20;
+    else if (units >= 10) score += 10;
+    else if (units > 0) score += 5;
+
+    if (consortiumCount >= 5) score += 15;
+    else if (consortiumCount >= 2) score += 10;
+    else if (consortiumCount === 1) score += 5;
+
+    if (startTiming === "now") score += 15;
+    else if (startTiming === "within_30_days") score += 12;
+    else if (startTiming === "within_90_days") score += 7;
+    else if (startTiming === "exploring") score += 2;
+
+    if (["spreadsheet", "manual", "mixed"].includes(currentManagementMethod)) {
+        score += 10;
+    } else if (currentManagementMethod === "software") {
+        score += 5;
+    }
+    if (mainPain) score += 5;
+    if (hasEmail && hasPhone) score += 5;
+    score = Math.min(100, score);
+
+    return {
+        consortiumCount,
+        currentManagementMethod,
+        mainPain,
+        startTiming,
+        score,
+        level: score >= 70 ? "high" : score >= 45 ? "medium" : "exploratory",
+    };
+};
+
+const normalizeCommercialEconomics = (value = {}) => {
+    const amount = (field) => Math.min(
+        100000000000000,
+        Math.max(0, Math.trunc(Number(value?.[field]) || 0)),
+    );
+    const onboardingHours = Math.min(
+        10000,
+        Math.max(0, Number(value?.onboardingHours) || 0),
+    );
+    return {
+        monthlyRevenueMinor: amount("monthlyRevenueMinor"),
+        monthlyCostMinor: amount("monthlyCostMinor"),
+        onboardingCostMinor: amount("onboardingCostMinor"),
+        setupFeeMinor: amount("setupFeeMinor"),
+        acquisitionCostMinor: amount("acquisitionCostMinor"),
+        onboardingHours: Math.round(onboardingHours * 10) / 10,
+    };
+};
+
+const normalizeCommercialPilotChecklist = (value = {}) => Object.fromEntries(
+    COMMERCIAL_PILOT_CHECKLIST_KEYS.map((key) => [key, value?.[key] === true]),
+);
 
 const appendContractActivity = ({ type, uid, note = "" }) => ({
     type: cleanBillingText(type, 50),
@@ -335,6 +443,14 @@ const enqueueCommercialLeadNotification = async (lead) => {
         `Unidades: ${offer.unitCount || "No informadas"}`,
         `Estimación mensual: ARS ${Number(offer.estimatedMonthlyAmountMinor || 0) / 100}`,
     ] : [];
+    const qualification = lead.qualification || {};
+    const qualificationLines = offer ? [
+        `Consorcios administrados: ${qualification.consortiumCount || "No informado"}`,
+        `Sistema actual: ${qualification.currentManagementMethod || "No informado"}`,
+        `Necesidad principal: ${qualification.mainPain || "No informada"}`,
+        `Inicio esperado: ${qualification.startTiming || "No informado"}`,
+        `Prioridad comercial: ${qualification.score || 0}/100`,
+    ] : [];
     const text = [
         `Nueva oportunidad comercial: ${subjectName}`,
         `Contacto: ${lead.contactName}`,
@@ -343,6 +459,7 @@ const enqueueCommercialLeadNotification = async (lead) => {
         `Ciudad: ${lead.city || "No informada"}`,
         `Interés: ${interests}`,
         ...offerLines,
+        ...qualificationLines,
         `Mensaje: ${lead.message || "Sin mensaje"}`,
     ].join("\n");
     const html = `
@@ -359,6 +476,12 @@ const enqueueCommercialLeadNotification = async (lead) => {
         <p><strong>Unidades:</strong> ${escapeHtml(offer.unitCount || "No informadas")}</p>
         <p><strong>Estimación mensual:</strong> ARS ${escapeHtml(
         Number(offer.estimatedMonthlyAmountMinor || 0) / 100,
+    )}</p>
+        <p><strong>Consorcios administrados:</strong> ${escapeHtml(
+        qualification.consortiumCount || "No informado",
+    )}</p>
+        <p><strong>Prioridad comercial:</strong> ${escapeHtml(
+        `${qualification.score || 0}/100`,
     )}</p>` : ""}
         <p><strong>Código promocional:</strong> ${escapeHtml(
         lead.promotionCode || "No informado",
@@ -929,6 +1052,12 @@ export const billingCreateCommercialLead = onCall(
             requestType: input.requestType,
             unitCount: input.unitCount,
         });
+        const qualification = normalizeCommercialQualification({
+            value: input.qualification,
+            commercialOffer,
+            hasEmail: Boolean(email),
+            hasPhone: Boolean(phone),
+        });
 
         const now = Timestamp.now();
         const ref = db.collection(COMMERCIAL_LEADS_COLLECTION).doc();
@@ -954,6 +1083,7 @@ export const billingCreateCommercialLead = onCall(
                 .filter(Boolean),
             primaryCatalogItemId,
             ...(commercialOffer ? {commercialOffer} : {}),
+            ...(commercialOffer ? {qualification} : {}),
             promotionCode: normalizePromotionCode(input.promotionCode),
             message: cleanBillingText(input.message, 2500),
             source: normalizeCommercialSource(input.source),
@@ -1067,6 +1197,18 @@ export const billingUpdateCommercialLead = onCall(
             updatedAt: now,
             updatedBy: uid,
             ...(status === "won" ? { wonAt: previous.wonAt || now } : {}),
+            ...(request.data?.commercialEconomics && typeof request.data
+                .commercialEconomics === "object" ? {
+                    commercialEconomics: normalizeCommercialEconomics(
+                        request.data.commercialEconomics,
+                    ),
+                } : {}),
+            ...(request.data?.onboardingChecklist && typeof request.data
+                .onboardingChecklist === "object" ? {
+                    onboardingChecklist: normalizeCommercialPilotChecklist(
+                        request.data.onboardingChecklist,
+                    ),
+                } : {}),
         };
         await ref.update(update);
         return { lead: serializeValue({ id: ref.id, ...previous, ...update }) };

@@ -1,17 +1,78 @@
 {
+    "id": "/",
     "name": "ONO Prop",
     "short_name": "ONO Prop",
     "description": "Plataforma inmobiliaria para publicar propiedades, crear sitios propios para inmobiliarias y gestionar consultas comerciales.",
-    "start_url": "/",
+    "lang": "es-AR",
+    "dir": "ltr",
+    "start_url": "/?utm_source=pwa&utm_medium=installed_app&utm_campaign=onoprop_android",
     "scope": "/",
     "display": "standalone",
-    "theme_color": "#111827",
+    "display_override": ["standalone", "minimal-ui"],
+    "orientation": "any",
+    "theme_color": "#0b2f50",
     "background_color": "#ffffff",
+    "categories": ["business", "productivity", "lifestyle"],
+    "prefer_related_applications": false,
     "icons": [
         {
-            "src": "/FaviconONOProp2.ico",
-            "sizes": "any",
-            "type": "image/x-icon"
+            "src": "/pwa/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/pwa/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/pwa/maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "/pwa/maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ],
+    "shortcuts": [
+        {
+            "name": "Buscar inmuebles",
+            "short_name": "Buscar",
+            "description": "Explorar inmuebles publicados en ONO Prop",
+            "url": "/inmuebles?utm_source=pwa&utm_medium=shortcut&utm_campaign=buscar",
+            "icons": [{
+                "src": "/pwa/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png"
+            }]
+        },
+        {
+            "name": "Publicar un inmueble",
+            "short_name": "Publicar",
+            "description": "Iniciar la publicación gratuita de un inmueble",
+            "url": "/publicar?utm_source=pwa&utm_medium=shortcut&utm_campaign=publicar",
+            "icons": [{
+                "src": "/pwa/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png"
+            }]
+        },
+        {
+            "name": "Mi consorcio",
+            "short_name": "Mi consorcio",
+            "description": "Consultar información y comunicaciones del consorcio",
+            "url": "/mi-consorcio?utm_source=pwa&utm_medium=shortcut&utm_campaign=consorcio",
+            "icons": [{
+                "src": "/pwa/icon-192.png",
+                "sizes": "192x192",
+                "type": "image/png"
+            }]
         }
     ]
 }

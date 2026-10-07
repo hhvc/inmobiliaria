@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
+import { allowsExternalDigitalCommerce } from "../../platform/appDistribution";
 import {
     createMercadoPagoCheckout,
     openMercadoPagoCheckout,
@@ -76,6 +77,7 @@ const getObligationStatus = (status) => ({
 }[status] || { label: status || "Pendiente", badge: "text-bg-secondary" });
 
 const BillingAccountPage = () => {
+    const canManageDigitalCommerce = allowsExternalDigitalCommerce();
     const [searchParams] = useSearchParams();
     const {
         activeInmobiliariaId,
@@ -146,6 +148,7 @@ const BillingAccountPage = () => {
     };
 
     const payObligationWithMercadoPago = async (obligationId) => {
+        if (!canManageDigitalCommerce) return;
         try {
             setOperation(`mercadopago-${obligationId}`);
             setError("");
@@ -163,6 +166,7 @@ const BillingAccountPage = () => {
     };
 
     const payAccountBalanceWithMercadoPago = async () => {
+        if (!canManageDigitalCommerce) return;
         try {
             setOperation("mercadopago-account-ARS");
             setError("");
@@ -196,6 +200,7 @@ const BillingAccountPage = () => {
     }, [overview]);
 
     const handleRequest = (item) => {
+        if (!canManageDigitalCommerce) return;
         setRequestItem(item);
         setError("");
         setSuccess("");
@@ -209,6 +214,7 @@ const BillingAccountPage = () => {
 
     useEffect(() => {
         if (
+            !canManageDigitalCommerce ||
             !requestedCatalogItemId ||
             openedCatalogItemRef.current === requestedCatalogItemId ||
             !overview?.catalog?.length
@@ -225,7 +231,7 @@ const BillingAccountPage = () => {
                 block: "start",
             });
         }, 0);
-    }, [overview, requestedCatalogItemId]);
+    }, [canManageDigitalCommerce, overview, requestedCatalogItemId]);
 
     const handleRequestSubmit = (payload) => {
         runOperation(`request-${payload.catalogItemId}`, () => requestBillingContract({
@@ -401,6 +407,13 @@ const BillingAccountPage = () => {
 
             {error && <div className="alert alert-danger">{error}</div>}
             {success && <div className="alert alert-success">{success}</div>}
+            {!canManageDigitalCommerce && (
+                <div className="alert alert-info">
+                    Podés consultar saldos, vencimientos y servicios activos. La
+                    contratación y el pago de servicios digitales no están disponibles
+                    en esta versión de la aplicación.
+                </div>
+            )}
 
             <section className="row g-3 mb-4">
                 {balances.length === 0 ? (
@@ -427,7 +440,7 @@ const BillingAccountPage = () => {
                                             ? "Saldo a favor"
                                             : "Cuenta al día"}
                                 </div>
-                                {currency === "ARS" && Number(amountMinor) > 0 && (
+                                {canManageDigitalCommerce && currency === "ARS" && Number(amountMinor) > 0 && (
                                     <button
                                         className="btn btn-success btn-sm mt-3"
                                         type="button"
@@ -471,7 +484,7 @@ const BillingAccountPage = () => {
                 del vencimiento y luego capitalización diaria.
             </div>
 
-            {requestItem && (
+            {canManageDigitalCommerce && requestItem && (
                 <BillingContractRequestForm
                     key={requestItem.id}
                     item={requestItem}
@@ -535,11 +548,13 @@ const BillingAccountPage = () => {
                                                         ))}
                                                     </div>
                                                 )}
-                                                <ul className="small ps-3">
-                                                    {getCatalogPricingSummary(item).map((line) => (
-                                                        <li key={line}>{line}</li>
-                                                    ))}
-                                                </ul>
+                                                {canManageDigitalCommerce && (
+                                                    <ul className="small ps-3">
+                                                        {getCatalogPricingSummary(item).map((line) => (
+                                                            <li key={line}>{line}</li>
+                                                        ))}
+                                                    </ul>
+                                                )}
                                                 {item.requirements?.length > 0 && (
                                                     <div className="small mb-2">
                                                         <strong>Requiere:</strong>{" "}
@@ -557,7 +572,7 @@ const BillingAccountPage = () => {
                                                         <span className={getContractBadgeClass(currentContract.status)}>
                                                             {getContractStatusLabel(currentContract.status)}
                                                         </span>
-                                                    ) : (
+                                                    ) : canManageDigitalCommerce ? (
                                                         <button
                                                             type="button"
                                                             className="btn btn-primary"
@@ -570,6 +585,10 @@ const BillingAccountPage = () => {
                                                                     ? "Comprar créditos"
                                                                     : "Solicitar contratación"}
                                                         </button>
+                                                    ) : (
+                                                        <span className="badge text-bg-light border">
+                                                            Solo información
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
@@ -679,7 +698,7 @@ const BillingAccountPage = () => {
                                                 </p>
                                             )}
                                             <div className="d-flex flex-wrap gap-2">
-                                                {contract.status === "quoted" && (
+                                                {canManageDigitalCommerce && contract.status === "quoted" && (
                                                     <button
                                                         type="button"
                                                         className="btn btn-primary btn-sm"
@@ -725,7 +744,7 @@ const BillingAccountPage = () => {
                     </div>
                 </div>
 
-                <div className="col-xl-5">
+                {canManageDigitalCommerce && <div className="col-xl-5">
                     <div className="card border-0 shadow-sm h-100">
                         <div className="card-body p-4">
                             <h2 className="h4 mb-1">Informar un pago</h2>
@@ -830,7 +849,7 @@ const BillingAccountPage = () => {
                             </form>
                         </div>
                     </div>
-                </div>
+                </div>}
             </section>
 
             <section className="card border-0 shadow-sm mb-4">
@@ -914,7 +933,7 @@ const BillingAccountPage = () => {
                                                 )}
                                             </td>
                                             <td className="text-end">
-                                                {obligation.status !== "paid" &&
+                                                {canManageDigitalCommerce && obligation.status !== "paid" &&
                                                     (obligation.currency || "ARS") === "ARS" &&
                                                     (Number(obligation.principalOutstandingMinor || 0) +
                                                         Number(obligation.interestOutstandingMinor || 0)) > 0 && (

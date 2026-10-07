@@ -1,0 +1,69 @@
+{
+  "packageId": "com.onoprop.app",
+  "host": "onoprop.com",
+  "name": "ONO Prop",
+  "launcherName": "ONO Prop",
+  "display": "standalone",
+  "themeColor": "#0B2F50",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#FFFFFF",
+  "enableNotifications": false,
+  "startUrl": "/?utm_source=google_play&utm_medium=twa&utm_campaign=onoprop_android&app_distribution=google_play",
+  "iconUrl": "https://onoprop.com/pwa/icon-512.png",
+  "maskableIconUrl": "https://onoprop.com/pwa/maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "..\\.secrets\\onoprop-upload.keystore",
+    "alias": "onoprop-upload"
+  },
+  "appVersionName": "3",
+  "appVersionCode": 3,
+  "shortcuts": [
+    {
+      "name": "Buscar inmuebles",
+      "shortName": "Buscar",
+      "url": "https://onoprop.com/inmuebles?utm_source=google_play&utm_medium=twa_shortcut&utm_campaign=buscar&app_distribution=google_play",
+      "chosenIconUrl": "https://onoprop.com/pwa/icon-192.png"
+    },
+    {
+      "name": "Publicar un inmueble",
+      "shortName": "Publicar",
+      "url": "https://onoprop.com/publicar?utm_source=google_play&utm_medium=twa_shortcut&utm_campaign=publicar&app_distribution=google_play",
+      "chosenIconUrl": "https://onoprop.com/pwa/icon-192.png"
+    },
+    {
+      "name": "Mi consorcio",
+      "shortName": "Mi consorcio",
+      "url": "https://onoprop.com/mi-consorcio?utm_source=google_play&utm_medium=twa_shortcut&utm_campaign=consorcio&app_distribution=google_play",
+      "chosenIconUrl": "https://onoprop.com/pwa/icon-192.png"
+    }
+  ],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://onoprop.com/site-onoprop.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://onoprop.com/",
+  "minSdkVersion": 21,
+  "orientation": "any",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "appVersion": "3"
+}

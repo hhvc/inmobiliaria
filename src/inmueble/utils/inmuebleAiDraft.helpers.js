@@ -123,6 +123,20 @@ export const getAiDraftFieldLabel = (path = "") => {
 
 export const getAiDraftFieldValue = (draft, path) => getPathValue(draft, path);
 
+export const appendAiSourceTranscript = (
+  sourceText = "",
+  transcript = "",
+  maxLength = 6000,
+) => {
+  const current = typeof sourceText === "string" ? sourceText.trimEnd() : "";
+  const addition = typeof transcript === "string"
+    ? transcript.replace(/\s+/g, " ").trim()
+    : "";
+
+  if (!addition) return current.slice(0, maxLength);
+  return `${current}${current ? " " : ""}${addition}`.slice(0, maxLength);
+};
+
 export const getDefaultSelectedAiDraftFieldPaths = ({
   detectedFields = [],
   fieldAssessments = [],

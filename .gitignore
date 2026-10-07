@@ -36,3 +36,14 @@ serviceAccountKey.json
 .firebase/hosting.*
 .secrets/
 .codex-private/
+
+# Android / Trusted Web Activity
+android-twa/.gradle/
+android-twa/build/
+android-twa/app/build/
+android-twa/local.properties
+android-twa/*.apk
+android-twa/*.aab
+*.keystore
+*.jks
+*.idsig

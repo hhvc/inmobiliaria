@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import SEO from "../../components/SEO";
+import { allowsExternalDigitalCommerce } from "../../platform/appDistribution";
 import {
   createMercadoPagoCheckout,
   createMercadoPagoOperationId,
@@ -10,6 +11,7 @@ import {
 const PRESETS = [1000, 2500, 5000, 10000];
 
 const DonationPage = () => {
+  const canDonateInThisDistribution = allowsExternalDigitalCommerce();
   const [amount, setAmount] = useState("2500");
   const [form, setForm] = useState({ name: "", email: "", message: "" });
   const [working, setWorking] = useState(false);
@@ -17,6 +19,7 @@ const DonationPage = () => {
 
   const submit = async (event) => {
     event.preventDefault();
+    if (!canDonateInThisDistribution) return;
     try {
       setWorking(true);
       setError("");
@@ -32,6 +35,23 @@ const DonationPage = () => {
       setWorking(false);
     }
   };
+
+  if (!canDonateInThisDistribution) {
+    return (
+      <main className="container py-5" style={{ maxWidth: 820 }}>
+        <SEO title="Apoyar ONO Prop" description="Información sobre aportes a ONO Prop." />
+        <section className="card border-0 shadow-sm">
+          <div className="card-body p-4 p-lg-5 text-center">
+            <h1 className="h2">Aportes no disponibles en esta aplicación</h1>
+            <p className="text-muted mb-0">
+              Esta versión de ONO Prop no permite iniciar aportes ni pagos de
+              servicios digitales.
+            </p>
+          </div>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="container py-5" style={{ maxWidth: 820 }}>

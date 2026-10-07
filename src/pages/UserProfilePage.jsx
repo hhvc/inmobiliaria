@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { useAuth } from "../context/auth/useAuth";
 import { db } from "../firebase/config";
@@ -421,6 +421,20 @@ const UserProfilePage = () => {
               <div className="small text-muted">
                 Inmobiliarias vinculadas: {meta.inmobiliarias.length}
               </div>
+            </div>
+          </div>
+
+          <div className="card border-0 shadow-sm mt-4">
+            <div className="card-body p-4">
+              <h2 className="h6">Privacidad y control de la cuenta</h2>
+              <p className="small text-muted">
+                Podés solicitar la eliminación integral de tu cuenta y de los
+                datos asociados. Algunas constancias pueden conservarse cuando
+                exista una obligación legal.
+              </p>
+              <Link to="/eliminacion-de-datos" className="btn btn-outline-danger btn-sm">
+                Solicitar eliminación de cuenta y datos
+              </Link>
             </div>
           </div>
         </aside>

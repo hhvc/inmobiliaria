@@ -1,10 +1,11 @@
-import {useMemo, useState} from "react";
+import {useEffect, useMemo, useRef, useState} from "react";
 
 import {
   prepareInmuebleAiDraft,
   recordInmuebleAiDraftOutcome,
 } from "../services/inmuebleAi.service";
 import {
+  appendAiSourceTranscript,
   getDefaultSelectedAiDraftFieldPaths,
   getAiDraftFieldLabel,
   getAiDraftFieldValue,
@@ -50,6 +51,10 @@ const InmuebleAiAssistant = ({
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [selectedFieldPaths, setSelectedFieldPaths] = useState([]);
+  const [speechSupported, setSpeechSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [speechMessage, setSpeechMessage] = useState("");
+  const recognitionRef = useRef(null);
 
   const detectedItems = useMemo(() => {
     const visiblePaths = Array.isArray(previewFieldPaths)
@@ -79,6 +84,80 @@ const InmuebleAiAssistant = ({
     () => new Set(selectedFieldPaths),
     [selectedFieldPaths],
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const SpeechRecognition = window.SpeechRecognition ||
+      window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return undefined;
+
+    setSpeechSupported(true);
+    const recognition = new SpeechRecognition();
+    recognition.lang = "es-AR";
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setSpeechMessage("Escuchando… describí el inmueble con naturalidad.");
+    };
+    recognition.onend = () => {
+      setIsListening(false);
+      setSpeechMessage((current) => current ===
+        "Escuchando… describí el inmueble con naturalidad." ? "" : current);
+    };
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      const messages = {
+        "not-allowed": "Necesitamos permiso para usar el micrófono.",
+        "service-not-allowed": "El navegador bloqueó el servicio de dictado.",
+        "no-speech": "No se detectó voz. Podés intentarlo nuevamente.",
+        network: "El servicio de dictado del navegador no está disponible.",
+      };
+      setSpeechMessage(
+        messages[event.error] || "No pudimos completar el dictado.",
+      );
+    };
+    recognition.onresult = (event) => {
+      let transcript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        if (event.results[index].isFinal) {
+          transcript += ` ${event.results[index][0]?.transcript || ""}`;
+        }
+      }
+
+      if (!transcript.trim()) return;
+      setSourceText((current) => appendAiSourceTranscript(
+        current,
+        transcript,
+        MAX_DESCRIPTION_LENGTH,
+      ));
+      setResult(null);
+      setSelectedFieldPaths([]);
+      setError("");
+      setAppliedMessage("");
+      setApplicationSummary(null);
+      setFeedback("");
+      setFeedbackMessage("");
+      setSpeechMessage("Dictado agregado. Revisalo antes de preparar el borrador.");
+    };
+
+    recognitionRef.current = recognition;
+    return () => {
+      recognition.onstart = null;
+      recognition.onend = null;
+      recognition.onerror = null;
+      recognition.onresult = null;
+      try {
+        recognition.abort();
+      } catch {
+        // El navegador puede rechazar abortar una sesión que nunca comenzó.
+      }
+      recognitionRef.current = null;
+    };
+  }, []);
 
   if (!AI_PROPERTY_DRAFT_ENABLED) return null;
 
@@ -164,6 +243,25 @@ const InmuebleAiAssistant = ({
     setError("");
   };
 
+  const handleToggleDictation = () => {
+    const recognition = recognitionRef.current;
+    if (!recognition) {
+      setSpeechMessage("El dictado no está disponible en este navegador.");
+      return;
+    }
+
+    try {
+      if (isListening) {
+        recognition.stop();
+      } else {
+        setSpeechMessage("");
+        recognition.start();
+      }
+    } catch {
+      setSpeechMessage("Esperá un momento antes de iniciar otro dictado.");
+    }
+  };
+
   const selectRecommendedFields = () => {
     setSelectedFieldPaths(
       detectedItems
@@ -232,6 +330,29 @@ const InmuebleAiAssistant = ({
             setFeedbackMessage("");
           }}
         />
+        {speechSupported && (
+          <div className="d-flex flex-wrap gap-2 align-items-center mt-2">
+            <button
+              type="button"
+              className={isListening
+                ? "btn btn-sm btn-danger"
+                : "btn btn-sm btn-outline-primary"}
+              aria-pressed={isListening}
+              disabled={loading}
+              onClick={handleToggleDictation}
+            >
+              {isListening ? "Detener dictado" : "Dictar descripción"}
+            </button>
+            <span className="small text-muted">
+              Usa el reconocimiento del navegador y no consume el cupo de IA.
+            </span>
+          </div>
+        )}
+        {speechMessage && (
+          <div className="small text-muted mt-2" role="status">
+            {speechMessage}
+          </div>
+        )}
         <div className="d-flex flex-wrap justify-content-between gap-2 mt-2">
           <span className="form-text mt-0">
             {sourceText.length.toLocaleString("es-AR")} de {MAX_DESCRIPTION_LENGTH.toLocaleString("es-AR")} caracteres

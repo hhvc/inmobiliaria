@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.onoprop.app",
+      "sha256_cert_fingerprints": [
+        "22:30:39:5C:6F:6A:97:97:99:F5:82:15:F3:97:40:4A:2D:77:F3:52:2E:CA:F1:2D:B7:94:E4:3F:02:44:A0:1E"
+      ]
+    }
+  }
+]

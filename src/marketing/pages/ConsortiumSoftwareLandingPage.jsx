@@ -6,9 +6,13 @@ import { createCommercialLead } from "../../billing/services/billing.service";
 import { formatMoneyMinor } from "../../billing/utils/billing.helpers";
 import { buildCommercialSource } from "../../billing/utils/commercial.helpers";
 import {
+  buildConsortiumQualificationData,
   buildConsortiumPilotLeadData,
   calculateConsortiumPilotEstimate,
+  CONSORTIUM_CURRENT_MANAGEMENT_OPTIONS,
+  CONSORTIUM_MAIN_PAIN_OPTIONS,
   CONSORTIUM_PILOT_OFFER,
+  CONSORTIUM_START_TIMING_OPTIONS,
 } from "../utils/consortiumPilotOffer.helpers";
 import {
   trackConsortiumContact,
@@ -61,6 +65,10 @@ const INITIAL_FORM = {
   contactName: "",
   city: "",
   unitCount: "",
+  consortiumCount: "",
+  currentManagementMethod: "",
+  mainPain: "",
+  startTiming: "",
   email: "",
   phone: "",
   website: "",
@@ -159,6 +167,7 @@ const ConsortiumSoftwareLandingPage = () => {
           requestType: form.requestType,
           unitCount: pilotEstimate.unitCount,
         }),
+        qualification: buildConsortiumQualificationData(form),
         preferredContact: form.phone.trim() ? "whatsapp" : "email",
         message: `Interés principal: Administración de Consorcios. ${requestText} ${unitText}`,
         startedAtMs,
@@ -285,6 +294,18 @@ const ConsortiumSoftwareLandingPage = () => {
                 <li><span>2</span><p>Recibís y aceptás una propuesta sin cargos automáticos.</p></li>
                 <li><span>3</span><p>Configuramos un consorcio real y te acompañamos durante 30 días.</p></li>
               </ol>
+              <div className="card border-0 shadow-sm mt-4">
+                <div className="card-body p-4">
+                  <h3 className="h5">El piloto se considera exitoso cuando</h3>
+                  <ul className="marketing-check-list text-dark mb-0">
+                    <li>El consorcio y sus unidades quedaron configurados.</li>
+                    <li>Se completó una liquidación mensual real.</li>
+                    <li>Propietarios u ocupantes pudieron ingresar al portal.</li>
+                    <li>La administración registró pagos y consultó cuentas corrientes.</li>
+                    <li>El equipo recibió capacitación para continuar sin depender de ONO Prop.</li>
+                  </ul>
+                </div>
+              </div>
               <div className="d-flex flex-wrap gap-2 mt-4">
                 <Link className="btn btn-outline-primary" to="/guias/administracion-consorcios">
                   Ver manual público
@@ -387,6 +408,71 @@ const ConsortiumSoftwareLandingPage = () => {
                         required={form.requestType === "pilot"}
                         value={form.unitCount}
                       />
+                    </div>
+                    <div className="col-md-4">
+                      <label className="form-label" htmlFor="consortiumCount">
+                        Consorcios administrados
+                      </label>
+                      <input
+                        className="form-control"
+                        id="consortiumCount"
+                        min="1"
+                        onChange={(event) => updateForm("consortiumCount", event.target.value)}
+                        required
+                        type="number"
+                        value={form.consortiumCount}
+                      />
+                    </div>
+                    <div className="col-md-8">
+                      <label className="form-label" htmlFor="consortiumCurrentMethod">
+                        ¿Cómo administrás actualmente?
+                      </label>
+                      <select
+                        className="form-select"
+                        id="consortiumCurrentMethod"
+                        onChange={(event) => updateForm("currentManagementMethod", event.target.value)}
+                        required
+                        value={form.currentManagementMethod}
+                      >
+                        <option value="">Seleccioná una opción</option>
+                        {CONSORTIUM_CURRENT_MANAGEMENT_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" htmlFor="consortiumMainPain">
+                        Principal dificultad a resolver
+                      </label>
+                      <select
+                        className="form-select"
+                        id="consortiumMainPain"
+                        onChange={(event) => updateForm("mainPain", event.target.value)}
+                        required
+                        value={form.mainPain}
+                      >
+                        <option value="">Seleccioná una opción</option>
+                        {CONSORTIUM_MAIN_PAIN_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-md-6">
+                      <label className="form-label" htmlFor="consortiumStartTiming">
+                        ¿Cuándo te gustaría comenzar?
+                      </label>
+                      <select
+                        className="form-select"
+                        id="consortiumStartTiming"
+                        onChange={(event) => updateForm("startTiming", event.target.value)}
+                        required
+                        value={form.startTiming}
+                      >
+                        <option value="">Seleccioná una opción</option>
+                        {CONSORTIUM_START_TIMING_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
                     </div>
                     {form.requestType === "pilot" && pilotEstimate.unitCount > 0 && (
                       <div className="col-12">

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  appendAiSourceTranscript,
   getDefaultSelectedAiDraftFieldPaths,
   getAiDraftFieldLabel,
   mergeAiDraftIntoInmuebleValues,
@@ -89,5 +90,13 @@ test("leaves low-confidence fields unselected by default", () => {
   });
 
   assert.deepEqual(selected, ["titulo", "precio"]);
+});
+
+test("appends a normalized voice transcript without exceeding the limit", () => {
+  assert.equal(
+    appendAiSourceTranscript("Casa en venta.", "  Tiene   tres dormitorios. "),
+    "Casa en venta. Tiene tres dormitorios.",
+  );
+  assert.equal(appendAiSourceTranscript("12345", "6789", 8), "12345 67");
 });
 
