@@ -55,6 +55,7 @@ import {
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
   getConsortiumPaymentSchedule,
+  getConsortiumScheduledAmountForDate,
   getDefaultConsortiumDueDate,
   majorToMinor,
   minorToMajorInput,
@@ -564,11 +565,7 @@ const ConsortiumDetailPage = () => {
       secondDueSurchargePercent: obligation.secondDueSurchargePercent,
     });
     const today = todayKey();
-    const suggestedAmount = schedule.earlyPaymentDate && today <= schedule.earlyPaymentDate
-      ? schedule.earlyPaymentAmountMinor
-      : schedule.secondDueDate && today > schedule.dueDate
-        ? schedule.secondDueAmountMinor
-        : schedule.dueAmountMinor;
+    const suggestedAmount = getConsortiumScheduledAmountForDate({ schedule, paymentDate: today });
     setPaymentForm({
       obligationId: obligation.id,
       amountMajor: minorToMajorInput(suggestedAmount),
@@ -1147,7 +1144,7 @@ const ConsortiumDetailPage = () => {
                 <div className="d-flex justify-content-between align-items-center mb-3"><div><h3 className="h6 mb-0">Registrar cobro</h3>{paymentSchedule && <small className="text-muted">{paymentSchedule.earlyPaymentDate && paymentSchedule.earlyPaymentDiscountMinor > 0 && `Pronto pago: ${formatConsortiumMoney(paymentSchedule.earlyPaymentAmountMinor, paymentObligation.currency)} · `}Primer vencimiento: {formatConsortiumMoney(paymentSchedule.dueAmountMinor, paymentObligation.currency)}{paymentSchedule.secondDueDate && paymentSchedule.secondDueSurchargeMinor > 0 && ` · Segundo: ${formatConsortiumMoney(paymentSchedule.secondDueAmountMinor, paymentObligation.currency)}`}</small>}</div><button className="btn btn-sm btn-link" type="button" onClick={() => setPaymentForm((c) => ({ ...c, obligationId: "" }))}>Cancelar</button></div>
                 <div className="row g-3">
                   <div className="col-md-3"><label className="form-label">Importe</label><input className="form-control" inputMode="decimal" value={paymentForm.amountMajor} onChange={(e) => setPaymentForm((c) => ({ ...c, amountMajor: e.target.value }))} required /></div>
-                  <div className="col-md-3"><label className="form-label">Fecha</label><input className="form-control" type="date" value={paymentForm.date} onChange={(e) => setPaymentForm((c) => ({ ...c, date: e.target.value }))} required /></div>
+                  <div className="col-md-3"><label className="form-label">Fecha</label><input className="form-control" type="date" max={todayKey()} value={paymentForm.date} onChange={(e) => setPaymentForm((current) => ({ ...current, date: e.target.value, amountMajor: paymentSchedule ? minorToMajorInput(getConsortiumScheduledAmountForDate({ schedule: paymentSchedule, paymentDate: e.target.value })) : current.amountMajor }))} required /><small className="text-muted">El importe se ajusta al vencimiento aplicable.</small></div>
                   <div className="col-md-3"><label className="form-label">Medio</label><select className="form-select" value={paymentForm.method} onChange={(e) => setPaymentForm((c) => ({ ...c, method: e.target.value }))}>{CONSORTIUM_PAYMENT_METHODS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
                   <div className="col-md-3"><label className="form-label">Referencia</label><input className="form-control" value={paymentForm.reference} onChange={(e) => setPaymentForm((c) => ({ ...c, reference: e.target.value }))} /></div>
                   <div className="col-md-5"><label className="form-label">Ingresar fondos en</label><select className="form-select" value={paymentForm.treasuryAccountId} onChange={(e) => setPaymentForm((c) => ({ ...c, treasuryAccountId: e.target.value }))}><option value="">No afectar tesorería</option>{treasuryAccounts.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name} · {formatConsortiumMoney(item.currentBalanceMinor, item.currency)}</option>)}</select><small className="text-muted">Si elegís una cuenta, el cobro generará el ingreso automáticamente.</small></div>

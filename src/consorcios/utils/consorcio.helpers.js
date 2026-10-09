@@ -228,6 +228,20 @@ export const getConsortiumPaymentSchedule = ({
   };
 };
 
+export const getConsortiumScheduledAmountForDate = ({
+  schedule = {},
+  paymentDate = "",
+} = {}) => {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(paymentDate) ? paymentDate : "";
+  if (date && schedule.earlyPaymentDate && date <= schedule.earlyPaymentDate) {
+    return Math.max(0, Math.round(Number(schedule.earlyPaymentAmountMinor) || 0));
+  }
+  if (date && schedule.secondDueDate && schedule.dueDate && date > schedule.dueDate) {
+    return Math.max(0, Math.round(Number(schedule.secondDueAmountMinor) || 0));
+  }
+  return Math.max(0, Math.round(Number(schedule.dueAmountMinor) || 0));
+};
+
 export const getConsortiumPaymentTermAdjustment = ({
   obligation = {},
   paymentDate = "",
@@ -1012,12 +1026,14 @@ export const getConsortiumLiquidationNumber = ({ periodKey = "", unitCode = "" }
   return `LIQ-${period}-${unit}`;
 };
 
-export const buildConsortiumLiquidationLines = ({ period = {}, obligation = {} } = {}) => {
+export const buildConsortiumLiquidationLines = ({ period, obligation } = {}) => {
+  const safePeriod = period || {};
+  const safeObligation = obligation || {};
   const expenses = new Map(
-    (Array.isArray(period.expenses) ? period.expenses : [])
+    (Array.isArray(safePeriod.expenses) ? safePeriod.expenses : [])
       .map((expense) => [expense.id, expense]),
   );
-  return (Array.isArray(obligation.breakdown) ? obligation.breakdown : []).map((line) => {
+  return (Array.isArray(safeObligation.breakdown) ? safeObligation.breakdown : []).map((line) => {
     const expense = expenses.get(line.expenseId);
     const unitAmountMinor = Number(line.amountMinor || 0);
     return {

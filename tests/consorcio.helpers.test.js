@@ -9,6 +9,7 @@ import {
   buildConsortiumLiquidationLines,
   calculateConsortiumAssessments,
   getConsortiumPaymentSchedule,
+  getConsortiumScheduledAmountForDate,
   getConsortiumPaymentTermAdjustment,
   normalizeConsortiumCoefficientGroups,
   filterConsortiumSupplierObligations,
@@ -69,6 +70,7 @@ test("reconstruye las líneas de una liquidación desde su snapshot", () => {
     unitAmountMinor: 30000,
   }]);
   assert.equal(getConsortiumLiquidationNumber({ periodKey: "2026-08", unitCode: "2º A" }), "LIQ-202608-2-A");
+  assert.deepEqual(buildConsortiumLiquidationLines({ period: null, obligation: null }), []);
 });
 
 test("habilita el cierre mensual cuando los controles críticos están resueltos", () => {
@@ -235,6 +237,9 @@ test("calcula pronto pago y segundo vencimiento con importes redondeados", () =>
   });
   assert.equal(schedule.earlyPaymentAmountMinor, 95000);
   assert.equal(schedule.secondDueAmountMinor, 110000);
+  assert.equal(getConsortiumScheduledAmountForDate({ schedule, paymentDate: "2026-10-10" }), 95000);
+  assert.equal(getConsortiumScheduledAmountForDate({ schedule, paymentDate: "2026-10-15" }), 100000);
+  assert.equal(getConsortiumScheduledAmountForDate({ schedule, paymentDate: "2026-10-16" }), 110000);
   assert.equal(getConsortiumPaymentTermAdjustment({ obligation: { ...schedule, paidAmountMinor: 0, totalAmountMinor: 100000 }, paymentDate: "2026-10-10", paymentAmountMinor: 95000 }).amountMinor, -5000);
   assert.equal(getConsortiumPaymentTermAdjustment({ obligation: { ...schedule, paidAmountMinor: 0, totalAmountMinor: 100000 }, paymentDate: "2026-10-26", paymentAmountMinor: 110000 }).amountMinor, 10000);
 });
