@@ -19,6 +19,7 @@ import {
   getConsortiumLiquidationNumber,
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
+  getConsortiumPaymentSchedule,
 } from "../utils/consorcio.helpers";
 import "../consorcio.css";
 
@@ -33,13 +34,6 @@ const formatTimestamp = (value) => {
   return date && !Number.isNaN(date.getTime())
     ? new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short" }).format(date)
     : "Sin fecha registrada";
-};
-
-const addDays = (dateKey = "", days = 0) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
-  const date = new Date(`${dateKey}T12:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + Math.trunc(Number(days) || 0));
-  return date.toISOString().slice(0, 10);
 };
 
 const ConsortiumAssessmentPage = ({ portalMode = false }) => {
@@ -113,6 +107,14 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
     periodKey: obligation?.periodKey,
     unitCode: unit.code || obligation?.unitId,
   });
+  const paymentSchedule = getConsortiumPaymentSchedule({
+    amountMinor: obligation?.baseAmountMinor ?? obligation?.totalAmountMinor,
+    dueDate: obligation?.dueDate,
+    earlyPaymentDate: obligation?.earlyPaymentDate,
+    earlyPaymentDiscountPercent: obligation?.earlyPaymentDiscountPercent,
+    secondDueDate: obligation?.secondDueDate,
+    secondDueSurchargePercent: obligation?.secondDueSurchargePercent,
+  });
   const documentTitle = obligation?.source === "penalty"
     ? "Liquidación de multa / penalidad"
     : "Liquidación de expensas";
@@ -166,15 +168,16 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
                 <div className="col-sm-6"><strong>Departamento:</strong> {unit.apartment || "—"}</div>
                 <div className="col-sm-6"><strong>Titular informado:</strong> {unit.ownerName || "—"}</div>
                 <div className="col-sm-6"><strong>Ocupante informado:</strong> {unit.occupantName || "—"}</div>
-                <div className="col-sm-6"><strong>Coeficiente:</strong> {Number(unit.coefficient || 0).toLocaleString("es-AR", { maximumFractionDigits: 6 })}</div>
+                <div className="col-sm-6"><strong>Coeficiente general:</strong> {Number(unit.coefficient || 0).toLocaleString("es-AR", { maximumFractionDigits: 6 })}</div>
               </div>
             </div>
           </div>
           <div className="col-md-5">
             <div className="rounded border p-3 h-100">
               <small className="text-muted text-uppercase">Pago</small>
-              <p className="mb-1"><strong>Vencimiento:</strong> {formatDate(obligation.dueDate)}</p>
-              {consortium.interestPolicy?.enabled && Number(consortium.interestPolicy.graceDays || 0) > 0 && <p className="mb-1"><strong>Segundo vencimiento sin recargo:</strong> {formatDate(addDays(obligation.dueDate, consortium.interestPolicy.graceDays))}</p>}
+              {paymentSchedule.earlyPaymentDate && paymentSchedule.earlyPaymentDiscountMinor > 0 && <p className="mb-1 text-success"><strong>Pronto pago hasta:</strong> {formatDate(paymentSchedule.earlyPaymentDate)} · {formatConsortiumMoney(paymentSchedule.earlyPaymentAmountMinor, currency)}</p>}
+              <p className="mb-1"><strong>Primer vencimiento:</strong> {formatDate(obligation.dueDate)} · {formatConsortiumMoney(paymentSchedule.dueAmountMinor, currency)}</p>
+              {paymentSchedule.secondDueDate && paymentSchedule.secondDueSurchargeMinor > 0 && <p className="mb-1 text-warning"><strong>Segundo vencimiento:</strong> {formatDate(paymentSchedule.secondDueDate)} · {formatConsortiumMoney(paymentSchedule.secondDueAmountMinor, currency)}</p>}
               <p className="mb-1"><strong>CBU, CVU o alias:</strong> {consortium.bankAccount || "Consultar con la administración"}</p>
               <p className="mb-0"><strong>Estado actual:</strong> <span className={`badge ${statusMeta.badge}`}>{statusMeta.label}</span></p>
             </div>
@@ -187,7 +190,7 @@ const ConsortiumAssessmentPage = ({ portalMode = false }) => {
             <table className="table table-sm consortium-assessment-table">
               <thead><tr><th>Concepto</th><th>Tipo</th><th>Distribución</th><th className="text-end">Gasto general</th><th className="text-end">Imputado a la unidad</th></tr></thead>
               <tbody>
-                {lines.map((line, index) => <tr key={`${line.expenseId}_${index}`}><td>{line.concept}</td><td>{getConsortiumExpenseCategoryLabel(line.category)}</td><td>{getConsortiumDistributionLabel(line.distributionMode)}</td><td className="text-end consortium-money">{formatConsortiumMoney(line.expenseTotalMinor, currency)}</td><td className="text-end consortium-money fw-semibold">{formatConsortiumMoney(line.unitAmountMinor, currency)}</td></tr>)}
+                {lines.map((line, index) => <tr key={`${line.expenseId}_${index}`}><td>{line.concept}</td><td>{getConsortiumExpenseCategoryLabel(line.category)}</td><td>{getConsortiumDistributionLabel(line.distributionMode)}{line.coefficientGroupId && line.distributionMode === "coefficient" ? ` · ${(consortium.coefficientGroups || []).find((group) => group.id === line.coefficientGroupId)?.name || "Gastos generales"}` : ""}</td><td className="text-end consortium-money">{formatConsortiumMoney(line.expenseTotalMinor, currency)}</td><td className="text-end consortium-money fw-semibold">{formatConsortiumMoney(line.unitAmountMinor, currency)}</td></tr>)}
                 {!lines.length && <tr><td className="text-center text-muted py-3" colSpan="5">No hay conceptos detallados.</td></tr>}
               </tbody>
               <tfoot><tr><th colSpan="3">Totales actualizados</th><th className="text-end consortium-money">{formatConsortiumMoney(period.adjustedTotalExpensesMinor ?? period.totalExpensesMinor, currency)}</th><th className="text-end consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, currency)}</th></tr></tfoot>

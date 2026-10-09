@@ -502,17 +502,33 @@ const InmuebleListPage = () => {
       <header className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
         <div>
           <p className="text-uppercase text-muted small mb-1">
-            Panel de inmuebles
+            Administración de inmuebles
           </p>
 
-          <h1 className="h3 mb-1">Inmuebles</h1>
+          <h1 className="h3 mb-1">Propiedades</h1>
 
           <p className="text-muted mb-0">
-            Administración de publicaciones de la inmobiliaria activa.
+            Ficha, estado comercial, publicación y difusión de la inmobiliaria activa.
           </p>
         </div>
 
         <div className="d-flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="btn btn-outline-primary"
+            onClick={() => navigate("/guias/administracion-inmuebles")}
+          >
+            Manual
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-outline-success"
+            onClick={() => navigate("/admin/alquileres")}
+          >
+            Administración de alquileres
+          </button>
+
           <button
             type="button"
             className="btn btn-outline-success"
@@ -546,7 +562,7 @@ const InmuebleListPage = () => {
             onClick={() => navigate("/admin/inmuebles/nuevo")}
             disabled={!activeInmobiliariaId}
           >
-            + Nuevo inmueble
+            + Nueva propiedad
           </button>
         </div>
 
@@ -614,7 +630,7 @@ const InmuebleListPage = () => {
 
             <p className="text-muted mb-4">
               {inmuebles.length === 0
-                ? "Creá tu primera publicación para comenzar a mostrar propiedades en el portal."
+                ? "Creá la ficha de tu primera propiedad. Después decidís si querés publicarla."
                 : "Modificá o limpiá los filtros para volver a ver el inventario."}
             </p>
 
@@ -635,7 +651,7 @@ const InmuebleListPage = () => {
                   onClick={() => navigate("/admin/inmuebles/nuevo")}
                   disabled={!activeInmobiliariaId}
                 >
-                  + Nuevo inmueble
+                  + Nueva propiedad
                 </button>
               </>
             ) : (
@@ -844,6 +860,15 @@ const InmuebleListPage = () => {
                           disabled={!canEditThis}
                         >
                           Duplicar como borrador
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-outline-success btn-sm w-100"
+                          onClick={() => navigate(`/admin/alquileres/nuevo?inmuebleId=${encodeURIComponent(inmueble.id)}`)}
+                          disabled={!canEditThis}
+                        >
+                          Crear contrato
                         </button>
 
                         <button

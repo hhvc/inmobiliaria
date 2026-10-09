@@ -7,7 +7,7 @@ import { getInmobiliariasByRole } from "../services/inmobiliaria.service";
 const DEFAULT_MODULES = ["inmuebles", "consultas"];
 
 const MODULE_LABELS = {
-    inmuebles: "Inmuebles",
+    inmuebles: "Administración de inmuebles",
     consultas: "Consultas",
     dominios: "Dominios propios",
     branding: "Branding",

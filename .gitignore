@@ -36,6 +36,7 @@ serviceAccountKey.json
 .firebase/hosting.*
 .secrets/
 .codex-private/
+.codex-tmp/
 
 # Android / Trusted Web Activity
 android-twa/.gradle/

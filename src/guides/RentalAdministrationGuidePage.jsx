@@ -1,8 +1,18 @@
 import { Link } from "react-router-dom";
 
 import SEO from "../components/SEO";
+import GuideCommercialOverview from "./GuideCommercialOverview";
 import "./consortiumGuide.css";
 import "./rentalGuide.css";
+
+const rentalGuideJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: "Administración de alquileres con ONO Prop",
+  description: "Beneficios y guía operativa para administrar contratos, cobranzas, liquidaciones y facturación de alquileres.",
+  author: { "@type": "Organization", name: "ONO Prop", url: "https://onoprop.com" },
+  about: { "@type": "SoftwareApplication", name: "Administración de Alquileres ONO Prop", applicationCategory: "BusinessApplication" },
+};
 
 const workflow = [
   ["1", "Preparar", "Cargá el inmueble y registrá a las personas intervinientes."],
@@ -28,23 +38,36 @@ const RentalAdministrationGuidePage = () => (
   <main className="consortium-guide-page rental-guide-page">
     <SEO
       title="Manual de Administración de Alquileres | ONO Prop"
-      description="Guía para crear contratos, administrar cobros y liquidaciones, rendir fondos al locador y emitir comprobantes ARCA con ONO Prop."
+      description="Conocé cómo ONO Prop organiza contratos, cobranzas, liquidaciones, cuentas corrientes y facturación ARCA, y consultá su manual operativo."
       url="https://onoprop.com/guias/administracion-alquileres"
-      noIndex
+      jsonLd={rentalGuideJsonLd}
     />
 
     <section className="consortium-guide-hero rental-guide-hero">
       <div className="container py-5 py-lg-6">
         <p className="consortium-guide-eyebrow">ONO Prop · Manual operativo</p>
         <h1>Administración de alquileres, paso a paso</h1>
-        <p className="consortium-guide-lead">Del alta del contrato al cobro, la rendición al locador y la facturación, conservando el historial de cada movimiento.</p>
-        <p className="consortium-guide-version">Actualizado en septiembre de 2026</p>
+        <p className="consortium-guide-lead">Centralizá contratos, vencimientos, cobranzas, liquidaciones y facturación sin perder el historial de cada movimiento.</p>
+        <p className="consortium-guide-version">Actualizado en octubre de 2026</p>
         <div className="d-flex flex-wrap gap-2 mt-4"><Link className="btn btn-light btn-lg" to="/admin/alquileres">Abrir Administración de Alquileres</Link><Link className="btn btn-outline-light btn-lg" to="/guias">Ver todas las guías</Link></div>
       </div>
     </section>
 
     <div className="container consortium-guide-content py-5">
-      <aside className="consortium-guide-principle mb-4"><span aria-hidden="true">✓</span><div><h2>Antes de comenzar</h2><p className="mb-0">Confirmá la inmobiliaria activa en la barra superior. Personas, contratos, cobros y comprobantes siempre pertenecen a esa inmobiliaria.</p></div></aside>
+      <GuideCommercialOverview
+        audience="Inmobiliarias, administradores y locadores con cartera activa"
+        title="Menos planillas y más control sobre cada alquiler"
+        description="ONO Prop conecta el contrato con sus vencimientos, cobros, recibos, rendiciones y comprobantes. El equipo trabaja sobre un mismo historial y puede explicar cómo se compone cada saldo."
+        benefits={[
+          { title: "Seguimiento completo", text: "Contratos recurrentes y temporales, obligaciones, ajustes y saldos en un solo circuito." },
+          { title: "Cobranzas y rendiciones", text: "Recibos, gastos, honorarios, liquidaciones y confirmación de recepción del locador." },
+          { title: "Facturación integrada", text: "Preparación y emisión controlada de comprobantes ARCA cuando el perfil está habilitado." },
+        ]}
+        primaryAction={{ to: "/software-para-inmobiliarias#solicitar-demo", label: "Solicitar demostración" }}
+        secondaryAction={{ to: "/planes#catalogo-planes", label: "Consultar planes" }}
+      />
+
+      <aside className="consortium-guide-principle mb-4" id="manual-operativo"><span aria-hidden="true">✓</span><div><h2>Antes de comenzar</h2><p className="mb-0">Confirmá la inmobiliaria activa en la barra superior. <strong>Administración de inmuebles</strong> conserva la ficha técnica y comercial; este módulo conserva personas, contratos, cobros, liquidaciones y comprobantes.</p></div></aside>
 
       <nav className="consortium-guide-index mb-4" aria-label="Índice del manual">
         <strong>Ir directamente a</strong><div><a href="#alta">Alta</a><a href="#contrato">Contrato</a><a href="#obligaciones">Obligaciones</a><a href="#cobros">Cobros</a><a href="#locador">Locador</a><a href="#arca">ARCA</a><a href="#cuentas">Cuentas</a><a href="#controles">Controles</a><a href="#preguntas">Preguntas frecuentes</a></div>
@@ -53,7 +76,7 @@ const RentalAdministrationGuidePage = () => (
       <section className="consortium-guide-workflow mb-4"><p className="consortium-guide-kicker">Vista rápida</p><h2>El circuito completo en ocho etapas</h2><div>{workflow.map(([number, title, text]) => <article key={number}><span>{number}</span><h3>{title}</h3><p>{text}</p></article>)}</div></section>
 
       <GuideSection number="1" id="alta" title="Inmueble y personas" summary="El contrato reutiliza la información ya cargada en la inmobiliaria.">
-        <div className="row g-4"><div className="col-lg-6"><h3>Inmueble</h3><Checklist><li>Cargalo desde Administración de Inmuebles.</li><li>Puede permanecer sin publicar: la publicación comercial y la administración son independientes.</li><li>Revisá dirección y datos básicos antes de vincularlo.</li></Checklist></div><div className="col-lg-6"><h3>Personas</h3><Checklist><li>Registrá locadores, locatarios y garantes desde <strong>Personas</strong>.</li><li>Asigná los roles correspondientes y completá documento, email y teléfono.</li><li>Editá la persona cuando cambien sus datos; el borrador fiscal permite volver a tomar la información actualizada.</li></Checklist></div></div>
+        <div className="row g-4"><div className="col-lg-6"><h3>Inmueble</h3><Checklist><li>Cargalo desde <Link to="/admin/inmuebles/listado">Administración de inmuebles</Link>.</li><li>Puede permanecer sin publicar: la publicación comercial y la administración son independientes.</li><li>Revisá dirección y datos básicos antes de vincularlo.</li><li>Desde el listado de inmuebles podés usar <strong>Crear contrato</strong> para abrir este formulario con el inmueble ya seleccionado.</li></Checklist><p className="mt-3 mb-0"><Link to="/guias/administracion-inmuebles">Consultar el manual de Administración de inmuebles →</Link></p></div><div className="col-lg-6"><h3>Personas</h3><Checklist><li>Registrá locadores, locatarios y garantes desde <strong>Personas</strong>.</li><li>Asigná los roles correspondientes y completá documento, email y teléfono.</li><li>Editá la persona cuando cambien sus datos; el borrador fiscal permite volver a tomar la información actualizada.</li></Checklist></div></div>
       </GuideSection>
 
       <GuideSection number="2" id="contrato" title="Crear y activar el contrato" summary="Usá el borrador para revisar las condiciones antes de generar obligaciones.">
@@ -88,7 +111,7 @@ const RentalAdministrationGuidePage = () => (
 
       <section className="consortium-guide-faq" id="preguntas"><p className="consortium-guide-kicker">Ayuda rápida</p><h2>Preguntas frecuentes</h2><details><summary>¿Por qué no aparece un inmueble o una persona?</summary><p>Verificá la inmobiliaria activa. El inmueble debe estar cargado y la persona activa con el rol correspondiente.</p></details><details><summary>¿Editar el contrato cambia todos los períodos?</summary><p>No necesariamente. Luego debés sincronizar; los períodos con movimientos se conservan para revisión.</p></details><details><summary>¿Puedo facturar un importe renegociado?</summary><p>El borrador fiscal permite ajustar importe y fechas para reflejar lo acordado. Documentá siempre el motivo de la excepción.</p></details><details><summary>¿Cómo corrijo una factura real?</summary><p>No la elimines ni la marques como externa. Prepará la nota de crédito que corresponda y consultá al responsable fiscal si existe alguna duda.</p></details></section>
 
-      <section className="consortium-guide-help text-center mt-4"><h2>¿Necesitás acompañamiento?</h2><p>Podemos ayudarte a configurar el primer contrato y revisar su circuito de cobro y facturación.</p><a className="btn btn-primary" href="mailto:contacto@onoprop.com?subject=Ayuda%20con%20Administraci%C3%B3n%20de%20Alquileres">contacto@onoprop.com</a></section>
+      <section className="consortium-guide-help text-center mt-4"><h2>¿Querés verlo aplicado a tu inmobiliaria?</h2><p>Podemos mostrarte el circuito completo con un contrato de ejemplo y ayudarte a configurar el primero.</p><div className="d-flex flex-wrap justify-content-center gap-2"><Link className="btn btn-primary" to="/software-para-inmobiliarias#solicitar-demo">Solicitar demostración</Link><a className="btn btn-outline-primary" href="mailto:contacto@onoprop.com?subject=Administraci%C3%B3n%20de%20Alquileres">contacto@onoprop.com</a></div></section>
       <p className="consortium-guide-disclaimer text-center">Este manual describe el funcionamiento operativo de ONO Prop. La inmobiliaria y los responsables fiscales deben aplicar la normativa y las condiciones contractuales correspondientes.</p>
     </div>
   </main>

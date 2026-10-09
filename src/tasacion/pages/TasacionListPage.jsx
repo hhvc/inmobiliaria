@@ -133,7 +133,8 @@ const TasacionListPage = () => {
           <h1 className="h3 mb-1">Tasaciones</h1>
           <p className="text-muted mb-0">{activeInmobiliaria?.nombre || "Inmobiliaria activa"} · expedientes y estimaciones técnicas.</p>
         </div>
-        <div className="d-flex gap-2">
+        <div className="d-flex flex-wrap gap-2">
+          <Link className="btn btn-outline-primary" to="/guias/tasaciones">Manual</Link>
           <Link className="btn btn-outline-secondary" to="/admin/inmobiliaria">Panel</Link>
           <Link className="btn btn-primary" to="/admin/tasaciones/nueva">+ Nueva tasación</Link>
         </div>

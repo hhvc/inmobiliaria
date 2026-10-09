@@ -22,6 +22,24 @@ test("publica metadatos específicos para Administración de Consorcios", () => 
   assert.equal(route.jsonLd?.offers?.priceCurrency, "ARS");
 });
 
+test("prerenderiza los manuales comerciales con metadatos propios", () => {
+  const paths = [
+    "/guias/administracion-inmuebles",
+    "/guias/tasaciones",
+    "/guias/administracion-alquileres",
+    "/guias/administracion-consorcios",
+  ];
+
+  paths.forEach((path) => {
+    const route = buildStaticSeoRoute(path);
+    assert.equal(route.path, path);
+    assert.match(route.title, /ONO Prop/i);
+    assert.equal(route.jsonLd?.["@type"], "TechArticle");
+    assert.ok(route.facts.length >= 3);
+    assert.ok(route.links.length >= 1);
+  });
+});
+
 test("genera metadatos y contenido estático para un inmueble", () => {
   const route = buildPropertySeoRoute({
     routePath: "/inmueble/casa-prueba-123",

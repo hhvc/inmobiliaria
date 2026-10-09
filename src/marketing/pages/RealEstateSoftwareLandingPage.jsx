@@ -9,8 +9,8 @@ import "../marketing.css";
 
 const SOLUTIONS = [
   {
-    title: "Publicación y presencia digital",
-    text: "Portal ONO Prop, página propia, dominio personalizado, red de colegas y difusión de inmuebles.",
+    title: "Administración de inmuebles y publicación",
+    text: "Ficha técnica y comercial, portal ONO Prop, página propia, dominio personalizado, red de colegas y difusión.",
   },
   {
     title: "Administración de alquileres",
@@ -36,7 +36,7 @@ const SOLUTIONS = [
 ];
 
 const DEMO_INTERESTS = [
-  "Publicación y presencia digital",
+  "Administración de inmuebles y publicación",
   "Administración de alquileres",
   "Administración de consorcios",
   "Tasaciones y parcelas",

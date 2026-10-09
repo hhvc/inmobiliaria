@@ -304,7 +304,7 @@ const InmuebleBulkImportPage = () => {
       <header className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
         <div>
           <p className="text-uppercase text-muted small mb-1">
-            Panel de inmuebles
+            Administración de inmuebles
           </p>
 
           <h1 className="h3 mb-1">Carga masiva CSV</h1>

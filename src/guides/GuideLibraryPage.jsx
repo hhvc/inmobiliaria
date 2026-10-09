@@ -24,22 +24,26 @@ const GuideLibraryPage = () => (
   <main className="guide-library-page">
     <SEO
       title="Guías y manuales | ONO Prop"
-      description="Manuales y guías prácticas para usar los módulos de ONO Prop, administrar alquileres y consorcios, y configurar integraciones."
+      description="Manuales y guías prácticas para gestionar propiedades, administrar alquileres y consorcios, y configurar integraciones en ONO Prop."
       url="https://onoprop.com/guias"
       jsonLd={libraryJsonLd}
     />
 
     <section className="guide-library-hero">
       <div className="container py-5 py-lg-6">
-        <p className="guide-library-eyebrow">Centro de ayuda ONO Prop</p>
-        <h1>Guías para trabajar con seguridad y autonomía</h1>
-        <p>Manuales operativos, configuraciones paso a paso y, próximamente, videos explicativos reunidos en un solo lugar.</p>
+        <p className="guide-library-eyebrow">Conocé y aprovechá ONO Prop</p>
+        <h1>Descubrí qué puede resolver cada módulo y cómo utilizarlo</h1>
+        <p>Compará beneficios, recorré los circuitos completos y consultá instrucciones operativas antes o después de contratar.</p>
+        <div className="d-flex flex-wrap gap-2 mt-4">
+          <Link className="btn btn-light btn-lg" to="/software-para-inmobiliarias#solicitar-demo">Solicitar demostración</Link>
+          <Link className="btn btn-outline-light btn-lg" to="/planes">Ver productos y servicios</Link>
+        </div>
       </div>
     </section>
 
     <div className="container guide-library-content py-5">
       <header className="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4">
-        <div><p className="guide-library-kicker">Biblioteca</p><h2 className="h3 mb-1">Recursos disponibles</h2><p className="text-muted mb-0">Elegí el módulo o la gestión que necesitás resolver.</p></div>
+        <div><p className="guide-library-kicker">Biblioteca</p><h2 className="h3 mb-1">Recursos disponibles</h2><p className="text-muted mb-0">Conocé primero el beneficio y usá después el instructivo paso a paso.</p></div>
         <span className="badge rounded-pill text-bg-light border px-3 py-2">{GUIDE_CATALOG.length} recursos publicados</span>
       </header>
 
@@ -52,6 +56,7 @@ const GuideLibraryPage = () => (
             </div>
             <div className="guide-library-card-body">
               <h2>{guide.title}</h2>
+              {guide.valueProposition && <p className="guide-library-value">{guide.valueProposition}</p>}
               <p>{guide.description}</p>
               <dl>
                 <div><dt>Dirigido a</dt><dd>{guide.audience}</dd></div>
@@ -67,8 +72,8 @@ const GuideLibraryPage = () => (
       </section>
 
       <aside className="guide-library-help mt-4">
-        <div><strong>¿No encontraste lo que buscabas?</strong><p className="mb-0">Contanos qué tarea necesitás resolver. Las consultas frecuentes se convertirán en nuevas guías o videos.</p></div>
-        <a className="btn btn-outline-primary" href="mailto:contacto@onoprop.com?subject=Sugerencia%20para%20el%20centro%20de%20ayuda">Sugerir un recurso</a>
+        <div><strong>¿Querés evaluar ONO Prop para tu inmobiliaria o administración?</strong><p className="mb-0">Coordinamos una demostración enfocada en tu operación, sin cargos automáticos.</p></div>
+        <Link className="btn btn-primary" to="/software-para-inmobiliarias#solicitar-demo">Solicitar demostración</Link>
       </aside>
     </div>
   </main>

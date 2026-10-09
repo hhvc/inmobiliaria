@@ -322,6 +322,11 @@ const RentalContractDetailPage = () => {
         </div>
         <div className="d-flex flex-wrap gap-2 align-self-start">
           <Link className="btn btn-outline-secondary" to="/admin/alquileres">Volver</Link>
+          {contract.inmuebleId && (
+            <Link className="btn btn-outline-primary" to={`/admin/inmuebles/${encodeURIComponent(contract.inmuebleId)}/editar`}>
+              Ver propiedad
+            </Link>
+          )}
           <Link className="btn btn-outline-success" to={`/admin/alquileres/${contractId}/cuenta-corriente`}>Cuenta corriente</Link>
           {canManage && <Link className="btn btn-outline-primary" to={`/admin/alquileres/${contractId}/editar`}>Editar contrato</Link>}
         </div>

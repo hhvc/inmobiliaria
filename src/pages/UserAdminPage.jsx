@@ -21,8 +21,8 @@ const ROLE_PRIORITY = ["root", "admin", "editor", "viewer", "usuario"];
 const SUBSCRIPTION_MODULES = [
   {
     id: "inmuebles",
-    label: "Inmuebles",
-    description: "Alta, edición, publicación y administración de propiedades.",
+    label: "Administración de inmuebles",
+    description: "Ficha, edición, multimedia, estado comercial y publicación de propiedades.",
   },
   {
     id: "consultas",

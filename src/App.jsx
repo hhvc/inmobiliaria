@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Navigate, Routes, Route } from "react-router-dom";
 
 import { AuthProvider } from "./context/auth/AuthProvider";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -16,7 +16,9 @@ import DataDeletionPage from "./legal/DataDeletionPage";
 import GuideLibraryPage from "./guides/GuideLibraryPage";
 import ArcaDelegationGuidePage from "./guides/ArcaDelegationGuidePage";
 import ConsortiumAdministrationGuidePage from "./guides/ConsortiumAdministrationGuidePage";
+import PropertyManagementGuidePage from "./guides/PropertyManagementGuidePage";
 import RentalAdministrationGuidePage from "./guides/RentalAdministrationGuidePage";
+import AppraisalsGuidePage from "./guides/AppraisalsGuidePage";
 import FreePublicationLandingPage from "./marketing/pages/FreePublicationLandingPage";
 import RealEstateSoftwareLandingPage from "./marketing/pages/RealEstateSoftwareLandingPage";
 import ConsortiumSoftwareLandingPage from "./marketing/pages/ConsortiumSoftwareLandingPage";
@@ -218,6 +220,18 @@ function App() {
                 <Route
                   path="/guias/administracion-alquileres"
                   element={<RentalAdministrationGuidePage />}
+                />
+                <Route
+                  path="/guias/administracion-inmuebles"
+                  element={<PropertyManagementGuidePage />}
+                />
+                <Route
+                  path="/guias/gestion-propiedades"
+                  element={<Navigate to="/guias/administracion-inmuebles" replace />}
+                />
+                <Route
+                  path="/guias/tasaciones"
+                  element={<AppraisalsGuidePage />}
                 />
                 <Route
                   path="/guias/administracion-consorcios"

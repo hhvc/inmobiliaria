@@ -60,6 +60,8 @@ const SiroConfigurationPanel = ({
 
   useEffect(() => { load(); }, [load]);
 
+  const integrationAvailable = configuration?.available === true;
+
   const assignmentsByConsortium = useMemo(() => new Map(
     (configuration?.assignments || []).map((item) => [item.targetId, item]),
   ), [configuration]);
@@ -129,18 +131,33 @@ const SiroConfigurationPanel = ({
       <div className="card-body p-4">
         <div className="d-flex flex-wrap justify-content-between gap-3 mb-3">
           <div>
-            <span className="badge text-bg-warning mb-2">Homologación</span>
+            <span className={`badge ${integrationAvailable ? "text-bg-warning" : "text-bg-light border"} mb-2`}>{integrationAvailable ? "Configuración técnica" : "Preparado para activar"}</span>
             <h2 className="h4 mb-1">Banco Roela · SIRO</h2>
-            <p className="text-muted mb-0">Probá convenios e intenciones de pago sin alterar cuentas corrientes reales.</p>
+            <p className="text-muted mb-0">Recaudación y conciliación automática para cada consorcio.</p>
           </div>
-          {isRoot && <button className="btn btn-outline-primary align-self-start" type="button" disabled={operation === "test"} onClick={testConnection}>
+          {isRoot && integrationAvailable && <button className="btn btn-outline-primary align-self-start" type="button" disabled={operation === "test"} onClick={testConnection}>
             {operation === "test" ? "Probando..." : configuration?.connected ? "Volver a probar" : "Probar conexión"}
           </button>}
         </div>
 
         {error && <div className="alert alert-danger">{error}</div>}
         {notice && <div className="alert alert-success">{notice}</div>}
-        {loading ? <div className="text-center py-4"><div className="spinner-border text-primary" /></div> : <>
+        {loading ? <div className="text-center py-4"><div className="spinner-border text-primary" /></div> : !integrationAvailable ? <>
+          <div className="alert alert-info">
+            <strong>No necesitás configurar SIRO todavía.</strong> La administración puede operar con transferencias, efectivo o Mercado Pago. Cuando se incorpore el primer consorcio que use Banco Roela, ONO Prop habilitará sus convenios sin volver a cargar el padrón ni las deudas.
+          </div>
+          <div className="row g-3 mb-3">
+            <div className="col-md-4"><div className="rounded border p-3 h-100"><span className="badge rounded-pill text-bg-primary mb-2">1</span><strong className="d-block">Crear el consorcio</strong><small className="text-muted">Cargá o importá unidades y saldos anteriores.</small></div></div>
+            <div className="col-md-4"><div className="rounded border p-3 h-100"><span className="badge rounded-pill text-bg-primary mb-2">2</span><strong className="d-block">Definir la cuenta</strong><small className="text-muted">La cuenta de tesorería recibirá las imputaciones automáticas.</small></div></div>
+            <div className="col-md-4"><div className="rounded border p-3 h-100"><span className="badge rounded-pill text-bg-primary mb-2">3</span><strong className="d-block">Activar SIRO</strong><small className="text-muted">ONO Prop vinculará el convenio provisto por Banco Roela.</small></div></div>
+          </div>
+          <div className="table-responsive">
+            <table className="table table-sm align-middle mb-0">
+              <thead><tr><th>Consorcio</th><th>Padrón</th><th>Cuenta de tesorería</th><th>SIRO</th></tr></thead>
+              <tbody>{consortiums.map((item) => { const accounts = treasuryAccounts.filter((account) => account.consortiumId === item.id && account.active !== false); return <tr key={item.id}><td><strong>{item.name}</strong><small className="d-block text-muted">{item.address}</small></td><td><span className="badge text-bg-success">Disponible</span></td><td>{accounts.length ? <><span className="badge text-bg-success">Lista</span><small className="d-block text-muted mt-1">{accounts[0].name}{accounts.length > 1 ? ` y ${accounts.length - 1} más` : ""}</small></> : <span className="badge text-bg-warning">Falta crearla</span>}</td><td><span className="badge text-bg-secondary">Pendiente de credenciales</span></td></tr>; })}{!consortiums.length && <tr><td colSpan="4" className="text-center text-muted py-4">Creá el primer consorcio para comenzar la preparación.</td></tr>}</tbody>
+            </table>
+          </div>
+        </> : <>
           {!isRoot && <div className="alert alert-info">La prueba de SIRO es administrada por ONO Prop. La inmobiliaria podrá configurar sus convenios cuando habilitemos Producción.</div>}
           <div className={`alert ${configuration?.connected ? "alert-success" : "alert-secondary"}`}>
             <strong>{configuration?.connected ? "Conexión de prueba disponible." : "Conexión todavía no probada."}</strong>

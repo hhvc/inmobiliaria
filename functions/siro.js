@@ -262,6 +262,7 @@ export const siroGetConfiguration = onCall({
         .slice(0, 30)
         .map(publicOrder);
     return serialize({
+        available: SIRO_INTEGRATION_ENABLED,
         environment: "homologation",
         connected: connectionSnap.exists && connectionSnap.data()?.ok === true,
         lastTestAt: connectionSnap.data()?.lastTestAt || null,

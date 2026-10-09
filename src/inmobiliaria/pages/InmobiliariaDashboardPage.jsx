@@ -35,11 +35,11 @@ const MODULE_CARDS = [
     {
         id: "inmuebles",
         section: "daily",
-        title: "Inmuebles",
+        title: "Administración de inmuebles",
         description:
-            "Crear, editar, publicar, compartir y difundir propiedades en el portal y las integraciones.",
+            "Administrar fichas, multimedia, estado, publicación y difusión de propiedades.",
         route: "/admin/inmuebles/listado",
-        cta: "Administrar inmuebles",
+        cta: "Gestionar propiedades",
         secondaryRoute: "/admin/inmuebles/nuevo",
         secondaryCta: "Cargar nuevo",
         icon: "🏠",

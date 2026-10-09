@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import SEO from "../../components/SEO";
 import { useActiveInmobiliariaModules } from "../../inmobiliaria/hooks/useActiveInmobiliariaModules";
@@ -28,6 +28,8 @@ import "../rental.css";
 const RentalContractFormPage = () => {
   const { id: contractId = "" } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedInmuebleId = searchParams.get("inmuebleId")?.trim() || "";
   const { activeInmobiliariaId, activeInmobiliaria } = useActiveInmobiliariaModules();
   const [form, setForm] = useState(createEmptyRentalContract);
   const [people, setPeople] = useState([]);
@@ -51,13 +53,26 @@ const RentalContractFormPage = () => {
       if (contractId) {
         if (!contractData) throw new Error("No se encontró el contrato.");
         setForm(normalizeRentalContract(contractData));
+      } else if (requestedInmuebleId) {
+        const requestedInmueble = propertyData.find((item) => item.id === requestedInmuebleId);
+        if (requestedInmueble) {
+          setForm((current) => ({
+            ...current,
+            inmuebleId: requestedInmueble.id,
+            inmuebleSnapshot: {
+              title: requestedInmueble.titulo || "Inmueble sin título",
+              address: getRentalInmuebleAddress(requestedInmueble),
+              propertyType: requestedInmueble.tipo || "",
+            },
+          }));
+        }
       }
     } catch (loadError) {
       setError(loadError.message || "No se pudo preparar el contrato.");
     } finally {
       setLoading(false);
     }
-  }, [activeInmobiliariaId, contractId]);
+  }, [activeInmobiliariaId, contractId, requestedInmuebleId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -175,7 +190,10 @@ const RentalContractFormPage = () => {
           <h1 className="h3 mb-1">{contractId ? "Editar contrato" : "Nuevo contrato"}</h1>
           <p className="text-muted mb-0">{activeInmobiliaria?.nombre || "Inmobiliaria activa"}</p>
         </div>
-        <Link className="btn btn-outline-secondary align-self-start" to={contractId ? `/admin/alquileres/${contractId}` : "/admin/alquileres"}>Cancelar</Link>
+        <div className="d-flex flex-wrap gap-2 align-self-start">
+          <Link className="btn btn-outline-primary" to="/admin/inmuebles/listado">Administración de inmuebles</Link>
+          <Link className="btn btn-outline-secondary" to={contractId ? `/admin/alquileres/${contractId}` : "/admin/alquileres"}>Cancelar</Link>
+        </div>
       </header>
 
       {error && <div className="alert alert-danger">{error}</div>}
@@ -203,7 +221,11 @@ const RentalContractFormPage = () => {
                   <option value="">Seleccionar...</option>
                   {inmuebles.map((item) => <option key={item.id} value={item.id}>{item.titulo || "Sin título"} · {getRentalInmuebleAddress(item) || "Sin dirección"}</option>)}
                 </select>
-                {inmuebles.length === 0 && <div className="form-text">Primero tenés que cargar el inmueble, aunque permanezca sin publicar.</div>}
+                <div className="form-text">
+                  El contrato reutiliza la ficha cargada en Administración de inmuebles. Si todavía no
+                  existe, <Link to="/admin/inmuebles/nuevo">cargá una nueva propiedad</Link> aunque
+                  permanezca sin publicar.
+                </div>
               </div>
               <div className="col-lg-3">
                 <label className="form-label" htmlFor="rentalContractStatus">Estado</label>

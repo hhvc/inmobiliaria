@@ -440,10 +440,19 @@ const Navbar = () => {
                               <li>
                                 <Link
                                   className="dropdown-item"
+                                  to="/admin/inmuebles/listado"
+                                  onClick={closeMenus}
+                                >
+                                  Administración de inmuebles
+                                </Link>
+                              </li>
+                              <li>
+                                <Link
+                                  className="dropdown-item"
                                   to="/admin/inmuebles/nuevo"
                                   onClick={closeMenus}
                                 >
-                                  Nueva publicación
+                                  Nueva propiedad
                                 </Link>
                               </li>
                               <li>

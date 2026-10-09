@@ -9,6 +9,10 @@ import {
   updateConsortium,
 } from "../services/consorcio.service";
 import { createEmptyConsortium } from "../utils/consorcio.schema";
+import {
+  normalizeConsortiumCoefficientGroups,
+  normalizeConsortiumPaymentPolicy,
+} from "../utils/consorcio.helpers";
 import "../consorcio.css";
 
 const ConsortiumFormPage = () => {
@@ -41,6 +45,11 @@ const ConsortiumFormPage = () => {
               ...empty.interestPolicy,
               ...(data.interestPolicy || {}),
             },
+            coefficientGroups: normalizeConsortiumCoefficientGroups(data.coefficientGroups),
+            paymentPolicy: {
+              ...empty.paymentPolicy,
+              ...normalizeConsortiumPaymentPolicy(data.paymentPolicy),
+            },
           });
         }
       } catch (loadError) {
@@ -57,6 +66,32 @@ const ConsortiumFormPage = () => {
   const updateInterestPolicy = (field, value) => setForm((current) => ({
     ...current,
     interestPolicy: { ...current.interestPolicy, [field]: value },
+  }));
+  const updatePaymentPolicy = (field, value) => setForm((current) => ({
+    ...current,
+    paymentPolicy: { ...current.paymentPolicy, [field]: value },
+  }));
+  const updateCoefficientGroup = (index, field, value) => setForm((current) => ({
+    ...current,
+    coefficientGroups: current.coefficientGroups.map((group, groupIndex) => (
+      groupIndex === index ? { ...group, [field]: value } : group
+    )),
+  }));
+  const addCoefficientGroup = () => setForm((current) => {
+    if (current.coefficientGroups.length >= 8) return current;
+    const nextId = `grupo-${Date.now().toString(36)}`;
+    return {
+      ...current,
+      coefficientGroups: [...current.coefficientGroups, {
+        id: nextId,
+        name: `Grupo ${current.coefficientGroups.length + 1}`,
+        active: true,
+      }],
+    };
+  });
+  const removeCoefficientGroup = (index) => setForm((current) => ({
+    ...current,
+    coefficientGroups: current.coefficientGroups.filter((_, groupIndex) => groupIndex !== index),
   }));
 
   const submit = async (event) => {
@@ -147,6 +182,36 @@ const ConsortiumFormPage = () => {
                 <option value="USD">Dólares estadounidenses (USD)</option>
               </select>
             </div>
+            <div className="col-12">
+              <div className="rounded border p-3">
+                <div className="d-flex justify-content-between align-items-start gap-3 mb-2">
+                  <div><h3 className="h6 mb-1">Coeficientes de prorrateo</h3><p className="small text-muted mb-0">Podés definir hasta 8 grupos, por ejemplo gastos generales, ascensores o cocheras.</p></div>
+                  <button className="btn btn-sm btn-outline-primary" type="button" onClick={addCoefficientGroup} disabled={form.coefficientGroups.length >= 8}>Agregar grupo</button>
+                </div>
+                <div className="row g-2">
+                  {form.coefficientGroups.map((group, index) => <div className="col-md-6 col-lg-4" key={group.id}>
+                    <div className="input-group"><input className="form-control" value={group.name} onChange={(e) => updateCoefficientGroup(index, "name", e.target.value)} disabled={index === 0} /><button className="btn btn-outline-danger" type="button" onClick={() => removeCoefficientGroup(index)} disabled={index === 0} aria-label={`Quitar ${group.name}`}>×</button></div>
+                    {index === 0 && <small className="text-muted">Grupo obligatorio y predeterminado.</small>}
+                  </div>)}
+                </div>
+              </div>
+            </div>
+            <div className="col-12">
+              <div className="rounded border p-3 bg-light">
+                <h3 className="h6 mb-3">Condiciones de pago de la liquidación</h3>
+                <div className="row g-3">
+                  <div className="col-md-6">
+                    <div className="form-check form-switch"><input id="consortium-early-enabled" className="form-check-input" type="checkbox" checked={form.paymentPolicy.earlyPaymentEnabled} onChange={(e) => updatePaymentPolicy("earlyPaymentEnabled", e.target.checked)} /><label className="form-check-label" htmlFor="consortium-early-enabled">Ofrecer pronto pago</label></div>
+                    <div className="row g-2 mt-1"><div className="col-6"><label className="form-label small">Días antes</label><input className="form-control" type="number" min="1" max="60" disabled={!form.paymentPolicy.earlyPaymentEnabled} value={form.paymentPolicy.earlyPaymentDaysBefore} onChange={(e) => updatePaymentPolicy("earlyPaymentDaysBefore", e.target.value)} /></div><div className="col-6"><label className="form-label small">Bonificación %</label><input className="form-control" type="number" min="0" max="100" step="0.01" disabled={!form.paymentPolicy.earlyPaymentEnabled} value={form.paymentPolicy.earlyPaymentDiscountPercent} onChange={(e) => updatePaymentPolicy("earlyPaymentDiscountPercent", e.target.value)} /></div></div>
+                  </div>
+                  <div className="col-md-6">
+                    <div className="form-check form-switch"><input id="consortium-second-enabled" className="form-check-input" type="checkbox" checked={form.paymentPolicy.secondDueEnabled} onChange={(e) => updatePaymentPolicy("secondDueEnabled", e.target.checked)} /><label className="form-check-label" htmlFor="consortium-second-enabled">Habilitar segundo vencimiento</label></div>
+                    <div className="row g-2 mt-1"><div className="col-6"><label className="form-label small">Días después</label><input className="form-control" type="number" min="1" max="60" disabled={!form.paymentPolicy.secondDueEnabled} value={form.paymentPolicy.secondDueDaysAfter} onChange={(e) => updatePaymentPolicy("secondDueDaysAfter", e.target.value)} /></div><div className="col-6"><label className="form-label small">Recargo %</label><input className="form-control" type="number" min="0" max="1000" step="0.01" disabled={!form.paymentPolicy.secondDueEnabled} value={form.paymentPolicy.secondDueSurchargePercent} onChange={(e) => updatePaymentPolicy("secondDueSurchargePercent", e.target.value)} /></div></div>
+                  </div>
+                </div>
+                <p className="small text-muted mb-0 mt-3">Cada liquidación guarda una foto de estas reglas y permite editar las fechas antes de emitirla. Los intereses por mora siguen siendo una regla separada.</p>
+              </div>
+            </div>
             <div className="col-md-4">
               <label className="form-label" htmlFor="consortium-due-day">Día habitual de vencimiento</label>
               <input id="consortium-due-day" className="form-control" type="number" min="1" max="31" value={form.dueDay} onChange={(e) => update("dueDay", Number(e.target.value))} />
@@ -180,7 +245,7 @@ const ConsortiumFormPage = () => {
                   <div className="col-md-4">
                     <label className="form-label" htmlFor="consortium-interest-grace">Días de gracia</label>
                     <input id="consortium-interest-grace" className="form-control" type="number" min="0" max="365" step="1" disabled={!form.interestPolicy.enabled} value={form.interestPolicy.graceDays} onChange={(e) => updateInterestPolicy("graceDays", e.target.value)} />
-                    <div className="form-text">El último día de gracia funciona como segundo vencimiento sin recargo.</div>
+                    <div className="form-text">Se aplica al calcular mora; no reemplaza al segundo vencimiento comercial.</div>
                   </div>
                   <div className="col-12">
                     <div className="form-check">

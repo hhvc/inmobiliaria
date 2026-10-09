@@ -47,12 +47,13 @@ export const buildConsortiumInterestPreview = ({
     .filter((item) => item?.voided !== true && safeInteger(item?.balanceMinor) > 0)
     .filter((item) => !selectedIds.size || selectedIds.has(item.id))
     .map((obligation) => {
-      const dueDate = obligation.dueDate || "";
+      const firstDueDate = obligation.dueDate || "";
+      const dueDate = obligation.secondDueDate || firstDueDate;
       const graceEndsOn = addDays(dueDate, normalizedPolicy.graceDays);
       const previousCutoff = obligation.interestAssessedThrough || "";
       const firstCalculationFrom = normalizedPolicy.retroactiveFromDueDate
         && dateDiffDays(graceEndsOn, cutoffDate) > 0
-        ? dueDate
+        ? firstDueDate
         : graceEndsOn;
       const calculationFrom = previousCutoff && previousCutoff > firstCalculationFrom
         ? previousCutoff
@@ -70,6 +71,7 @@ export const buildConsortiumInterestPreview = ({
         periodId: obligation.periodId || "",
         periodKey: obligation.periodKey || "",
         dueDate,
+        firstDueDate,
         graceEndsOn,
         calculationFrom,
         cutoffDate,

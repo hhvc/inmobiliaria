@@ -8,6 +8,9 @@ import {
   buildConsortiumSupplierObligationsCsv,
   buildConsortiumLiquidationLines,
   calculateConsortiumAssessments,
+  getConsortiumPaymentSchedule,
+  getConsortiumPaymentTermAdjustment,
+  normalizeConsortiumCoefficientGroups,
   filterConsortiumSupplierObligations,
   getConsortiumAccountingPeriodLabel,
   getConsortiumAccountSummary,
@@ -203,6 +206,37 @@ test("combina partes iguales y un cargo particular", () => {
 test("vence el mes siguiente respetando el día configurado", () => {
   assert.equal(getDefaultConsortiumDueDate("2026-12", 10), "2027-01-10");
   assert.equal(getDefaultConsortiumDueDate("2026-01", 31), "2026-02-28");
+});
+
+test("distribuye un gasto usando un grupo de coeficientes distinto al general", () => {
+  const result = calculateConsortiumAssessments({
+    units: [
+      { id: "a", coefficient: 60, coefficients: { general: 60, ascensor: 10 }, active: true },
+      { id: "b", coefficient: 40, coefficients: { general: 40, ascensor: 30 }, active: true },
+    ],
+    expenses: [{ id: "e2", concept: "Ascensor", amountMinor: 10000, distributionMode: "coefficient", coefficientGroupId: "ascensor" }],
+  });
+  assert.equal(result.assessments.find((item) => item.unitId === "a").totalAmountMinor, 2500);
+  assert.equal(result.assessments.find((item) => item.unitId === "b").totalAmountMinor, 7500);
+  assert.deepEqual(normalizeConsortiumCoefficientGroups([{ id: "general", name: "General" }, { id: "ascensor", name: "Ascensores" }]), [
+    { id: "general", name: "General", active: true },
+    { id: "ascensor", name: "Ascensores", active: true },
+  ]);
+});
+
+test("calcula pronto pago y segundo vencimiento con importes redondeados", () => {
+  const schedule = getConsortiumPaymentSchedule({
+    amountMinor: 100000,
+    dueDate: "2026-10-15",
+    earlyPaymentDate: "2026-10-10",
+    earlyPaymentDiscountPercent: 5,
+    secondDueDate: "2026-10-25",
+    secondDueSurchargePercent: 10,
+  });
+  assert.equal(schedule.earlyPaymentAmountMinor, 95000);
+  assert.equal(schedule.secondDueAmountMinor, 110000);
+  assert.equal(getConsortiumPaymentTermAdjustment({ obligation: { ...schedule, paidAmountMinor: 0, totalAmountMinor: 100000 }, paymentDate: "2026-10-10", paymentAmountMinor: 95000 }).amountMinor, -5000);
+  assert.equal(getConsortiumPaymentTermAdjustment({ obligation: { ...schedule, paidAmountMinor: 0, totalAmountMinor: 100000 }, paymentDate: "2026-10-26", paymentAmountMinor: 110000 }).amountMinor, 10000);
 });
 
 test("normaliza importes y estados operativos", () => {

@@ -332,17 +332,17 @@ const AdminDashboard = () => {
 
         <div className="row g-4">
           <ModuleCard
-            title="🏠 Inmuebles"
-            text="Panel principal de propiedades: creación, edición, imágenes, videos, estados y publicación."
+            title="🏠 Administración de inmuebles"
+            text="Ficha, imágenes, videos, estado comercial, publicación y vinculación con alquileres."
             to="/admin/inmuebles"
-            buttonLabel="Gestionar inmuebles"
+            buttonLabel="Gestionar propiedades"
             icon="fa fa-house"
             color="#0d6efd"
             badge={`${getStatValue(stats, "totalInmuebles")} propiedades`}
           />
 
           <ModuleCard
-            title="📋 Listado de inmuebles"
+            title="📋 Listado de propiedades"
             text="Listado operativo para filtrar, editar, destacar, marcar vendido/alquilado y revisar calidad."
             to="/admin/inmuebles/listado"
             buttonLabel="Ver listado"
@@ -351,10 +351,10 @@ const AdminDashboard = () => {
           />
 
           <ModuleCard
-            title="➕ Nuevo inmueble"
-            text="Crear una nueva publicación inmobiliaria desde la inmobiliaria activa."
+            title="➕ Nueva propiedad"
+            text="Crear una ficha que puede mantenerse privada o convertirse en publicación."
             to="/admin/inmuebles/nuevo"
-            buttonLabel="Crear inmueble"
+            buttonLabel="Cargar propiedad"
             icon="fa fa-plus"
             color="#198754"
           />
@@ -609,11 +609,11 @@ const AdminDashboard = () => {
             )}
 
             <QuickLink to="/admin/inmuebles/nuevo">
-              ➕ Nuevo inmueble
+              ➕ Nueva propiedad
             </QuickLink>
 
             <QuickLink to="/admin/inmuebles/listado">
-              📋 Listado de inmuebles
+              📋 Listado de propiedades
             </QuickLink>
 
             <QuickLink to="/admin/inmuebles/consultas">

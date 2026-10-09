@@ -1,0 +1,20 @@
+.property-guide-hero {
+  background:
+    radial-gradient(circle at 82% 12%, rgba(255, 255, 255, 0.2), transparent 27%),
+    linear-gradient(135deg, #123b49 0%, #087f8c 52%, #0d6efd 100%);
+}
+
+.property-guide-page .consortium-guide-principle {
+  border-color: #9fd5d9;
+  background: #eaf8f8;
+}
+
+.property-guide-page .consortium-guide-principle > span,
+.property-guide-page .consortium-guide-section > header > span,
+.property-guide-page .consortium-guide-workflow article > span {
+  background: #087f8c;
+}
+
+.property-guide-page .consortium-guide-kicker { color: #087f8c; }
+.property-guide-page .consortium-guide-index a { background: #e8f7f8; color: #086a74; }
+.property-guide-page .consortium-guide-index a:hover { background: #d5eff1; }

@@ -136,6 +136,131 @@ export const getDefaultConsortiumDueDate = (periodKey = "", dueDay = 10) => {
   ].join("-");
 };
 
+export const CONSORTIUM_DEFAULT_COEFFICIENT_GROUP = Object.freeze({
+  id: "general",
+  name: "Gastos generales",
+  active: true,
+});
+
+export const normalizeConsortiumCoefficientGroups = (groups = []) => {
+  const source = Array.isArray(groups) ? groups : [];
+  const seen = new Set();
+  const normalized = source.map((item, index) => {
+    const rawId = `${item?.id || ""}`.trim().toLowerCase();
+    const id = (index === 0 ? "general" : rawId)
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 48);
+    const name = `${item?.name || ""}`.trim().slice(0, 100);
+    if (!id || !name || seen.has(id)) return null;
+    seen.add(id);
+    return { id, name, active: index === 0 ? true : item?.active !== false };
+  }).filter(Boolean).slice(0, 8);
+  if (!normalized.length || normalized[0].id !== "general") {
+    return [
+      { ...CONSORTIUM_DEFAULT_COEFFICIENT_GROUP },
+      ...normalized.filter((item) => item.id !== "general").slice(0, 7),
+    ];
+  }
+  return normalized;
+};
+
+export const getConsortiumUnitCoefficient = (unit = {}, groupId = "general") => {
+  const selectedId = groupId || "general";
+  const fromMap = Number(unit?.coefficients?.[selectedId]);
+  if (Number.isFinite(fromMap) && fromMap >= 0) return fromMap;
+  return selectedId === "general" ? Math.max(0, Number(unit.coefficient) || 0) : 0;
+};
+
+export const normalizeConsortiumPaymentPolicy = (value = {}) => ({
+  earlyPaymentEnabled: value?.earlyPaymentEnabled === true,
+  earlyPaymentDaysBefore: Math.min(60, Math.max(1, Math.trunc(Number(value?.earlyPaymentDaysBefore) || 5))),
+  earlyPaymentDiscountPercent: Math.min(100, Math.max(0, Number(value?.earlyPaymentDiscountPercent) || 0)),
+  secondDueEnabled: value?.secondDueEnabled === true,
+  secondDueDaysAfter: Math.min(60, Math.max(1, Math.trunc(Number(value?.secondDueDaysAfter) || 10))),
+  secondDueSurchargePercent: Math.min(1000, Math.max(0, Number(value?.secondDueSurchargePercent) || 0)),
+});
+
+export const addConsortiumDays = (dateKey = "", days = 0) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return "";
+  const date = new Date(`${dateKey}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + Math.trunc(Number(days) || 0));
+  return date.toISOString().slice(0, 10);
+};
+
+export const getConsortiumPaymentSchedule = ({
+  amountMinor = 0,
+  dueDate = "",
+  paymentPolicy = {},
+  earlyPaymentDate = "",
+  earlyPaymentDiscountPercent,
+  secondDueDate = "",
+  secondDueSurchargePercent,
+} = {}) => {
+  const baseAmountMinor = Math.max(0, Math.round(Number(amountMinor) || 0));
+  const policy = normalizeConsortiumPaymentPolicy(paymentPolicy);
+  const earlyEnabled = Boolean(earlyPaymentDate) || policy.earlyPaymentEnabled;
+  const secondEnabled = Boolean(secondDueDate) || policy.secondDueEnabled;
+  const earlyPercent = earlyPaymentDiscountPercent === undefined
+    ? policy.earlyPaymentDiscountPercent
+    : Math.min(100, Math.max(0, Number(earlyPaymentDiscountPercent) || 0));
+  const secondPercent = secondDueSurchargePercent === undefined
+    ? policy.secondDueSurchargePercent
+    : Math.min(1000, Math.max(0, Number(secondDueSurchargePercent) || 0));
+  const discountMinor = earlyEnabled ? Math.round(baseAmountMinor * earlyPercent / 100) : 0;
+  const surchargeMinor = secondEnabled ? Math.round(baseAmountMinor * secondPercent / 100) : 0;
+  return {
+    baseAmountMinor,
+    dueDate,
+    dueAmountMinor: baseAmountMinor,
+    earlyPaymentDate: earlyEnabled
+      ? earlyPaymentDate || addConsortiumDays(dueDate, -policy.earlyPaymentDaysBefore)
+      : "",
+    earlyPaymentDiscountPercent: earlyEnabled ? earlyPercent : 0,
+    earlyPaymentDiscountMinor: discountMinor,
+    earlyPaymentAmountMinor: Math.max(0, baseAmountMinor - discountMinor),
+    secondDueDate: secondEnabled
+      ? secondDueDate || addConsortiumDays(dueDate, policy.secondDueDaysAfter)
+      : "",
+    secondDueSurchargePercent: secondEnabled ? secondPercent : 0,
+    secondDueSurchargeMinor: surchargeMinor,
+    secondDueAmountMinor: baseAmountMinor + surchargeMinor,
+  };
+};
+
+export const getConsortiumPaymentTermAdjustment = ({
+  obligation = {},
+  paymentDate = "",
+  paymentAmountMinor = 0,
+} = {}) => {
+  if (Number(obligation.paidAmountMinor || 0) > 0 || obligation.paymentTermAdjustment?.paymentId) {
+    return { type: "", amountMinor: 0 };
+  }
+  const paymentAmount = Math.max(0, Math.round(Number(paymentAmountMinor) || 0));
+  const baseAmount = Math.max(0, Math.round(Number(
+    obligation.baseAmountMinor ?? obligation.totalAmountMinor,
+  ) || 0));
+  const schedule = getConsortiumPaymentSchedule({
+    amountMinor: baseAmount,
+    dueDate: obligation.dueDate,
+    earlyPaymentDate: obligation.earlyPaymentDate,
+    earlyPaymentDiscountPercent: obligation.earlyPaymentDiscountPercent,
+    secondDueDate: obligation.secondDueDate,
+    secondDueSurchargePercent: obligation.secondDueSurchargePercent,
+  });
+  if (schedule.earlyPaymentDate && paymentDate <= schedule.earlyPaymentDate
+    && paymentAmount === schedule.earlyPaymentAmountMinor
+    && schedule.earlyPaymentDiscountMinor > 0) {
+    return { type: "early_payment_discount", amountMinor: -schedule.earlyPaymentDiscountMinor, schedule };
+  }
+  if (schedule.secondDueDate && paymentDate > schedule.dueDate
+    && paymentAmount >= schedule.secondDueAmountMinor
+    && schedule.secondDueSurchargeMinor > 0) {
+    return { type: "second_due_surcharge", amountMinor: schedule.secondDueSurchargeMinor, schedule };
+  }
+  return { type: "", amountMinor: 0, schedule };
+};
+
 const allocateExact = (amountMinor, weightedUnits) => {
   const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
   const totalWeight = weightedUnits.reduce((sum, item) => sum + item.weight, 0);
@@ -163,6 +288,13 @@ export const validateConsortium = (value = {}) => {
   }
   if (value.interestPolicy?.enabled && Number(value.interestPolicy.annualRatePercent || 0) <= 0) {
     errors.push("Ingresá una TNA mayor a cero para aplicar intereses por mora.");
+  }
+  const paymentPolicy = normalizeConsortiumPaymentPolicy(value.paymentPolicy);
+  if (paymentPolicy.earlyPaymentEnabled && paymentPolicy.earlyPaymentDiscountPercent <= 0) {
+    errors.push("Ingresá un porcentaje de pronto pago mayor a cero.");
+  }
+  if (paymentPolicy.secondDueEnabled && paymentPolicy.secondDueSurchargePercent < 0) {
+    errors.push("El recargo del segundo vencimiento no puede ser negativo.");
   }
   return errors;
 };
@@ -199,7 +331,8 @@ export const calculateConsortiumAssessments = ({ units = [], expenses = [] } = {
       apartment: unit.apartment || "",
       ownerName: unit.ownerName || "",
       occupantName: unit.occupantName || "",
-      coefficient: Number(unit.coefficient || 0),
+      coefficient: getConsortiumUnitCoefficient(unit, "general"),
+      coefficients: { ...(unit.coefficients || {}), general: getConsortiumUnitCoefficient(unit, "general") },
     },
     ordinaryMinor: 0,
     extraordinaryMinor: 0,
@@ -219,11 +352,12 @@ export const calculateConsortiumAssessments = ({ units = [], expenses = [] } = {
     } else if (expense.distributionMode === "equal") {
       weightedUnits = activeUnits.map((unit) => ({ unitId: unit.id, weight: 1 }));
     } else {
+      const coefficientGroupId = expense.coefficientGroupId || "general";
       weightedUnits = activeUnits
-        .map((unit) => ({ unitId: unit.id, weight: Math.max(0, Number(unit.coefficient) || 0) }))
+        .map((unit) => ({ unitId: unit.id, weight: getConsortiumUnitCoefficient(unit, coefficientGroupId) }))
         .filter((item) => item.weight > 0);
       if (!weightedUnits.length) {
-        throw new Error(`No hay coeficientes positivos para distribuir ${expense.concept}.`);
+        throw new Error(`No hay coeficientes positivos en el grupo elegido para distribuir ${expense.concept}.`);
       }
     }
     const allocations = allocateExact(amountMinor, weightedUnits);
@@ -238,6 +372,9 @@ export const calculateConsortiumAssessments = ({ units = [], expenses = [] } = {
         concept: expense.concept.trim(),
         category,
         distributionMode: expense.distributionMode || "coefficient",
+        ...(expense.distributionMode === "coefficient" && expense.coefficientGroupId
+          ? { coefficientGroupId: expense.coefficientGroupId }
+          : {}),
         amountMinor: allocatedMinor,
       });
     });
@@ -857,6 +994,8 @@ export const getConsortiumExpenseCategoryLabel = (category = "ordinary") => (
     ? "Multa / penalidad"
     : category === "interest"
       ? "Interés por mora"
+      : category === "payment_term"
+        ? "Condición de pago"
     : category === "extraordinary" ? "Extraordinaria" : "Ordinaria"
 );
 
@@ -888,8 +1027,13 @@ export const buildConsortiumLiquidationLines = ({ period = {}, obligation = {} }
         ? "penalty"
         : line.category === "interest"
           ? "interest"
+          : line.category === "payment_term"
+            ? "payment_term"
           : line.category === "extraordinary" ? "extraordinary" : "ordinary",
       distributionMode: line.distributionMode || expense?.distributionMode || "coefficient",
+      ...(line.coefficientGroupId || expense?.coefficientGroupId
+        ? { coefficientGroupId: line.coefficientGroupId || expense?.coefficientGroupId }
+        : {}),
       expenseTotalMinor: expense ? Number(expense.amountMinor || 0) : Math.abs(unitAmountMinor),
       unitAmountMinor,
     };

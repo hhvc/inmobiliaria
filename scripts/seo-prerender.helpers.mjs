@@ -120,9 +120,81 @@ export const STATIC_SEO_ROUTES = {
   "/guias": {
     title: "Guías y manuales | ONO Prop",
     description:
-      "Consultá las guías públicas de ONO Prop para administrar alquileres, consorcios e integraciones.",
-    heading: "Guías y manuales de ONO Prop",
-    summary: "Instructivos breves para conocer y utilizar las herramientas de la plataforma.",
+      "Conocé los beneficios y consultá los manuales públicos de ONO Prop para administrar inmuebles, tasaciones, alquileres, consorcios e integraciones.",
+    heading: "Conocé los módulos de ONO Prop y aprendé a utilizarlos",
+    summary: "Beneficios, circuitos completos e instrucciones operativas reunidos en una biblioteca pública.",
+  },
+  "/guias/administracion-inmuebles": {
+    title: "Administración de inmuebles y publicaciones | Manual ONO Prop",
+    description:
+      "Organizá el inventario y reutilizá cada ficha en publicaciones, difusión, tasaciones y administración de alquileres con ONO Prop.",
+    heading: "Administración de inmuebles con ONO Prop",
+    summary: "Una base única para cargar, controlar, publicar, compartir y reutilizar la información de cada inmueble.",
+    facts: ["Inventario centralizado", "Carga individual y CSV", "Publicación y difusión", "Vinculación con tasaciones y alquileres"],
+    links: [
+      { href: "/software-para-inmobiliarias", label: "Conocer ONO Prop para inmobiliarias" },
+      { href: "/planes", label: "Consultar productos y servicios" },
+    ],
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: "Administración de inmuebles con ONO Prop",
+      author: { "@type": "Organization", name: "ONO Prop" },
+    },
+  },
+  "/guias/tasaciones": {
+    title: "Tasaciones inmobiliarias | Manual ONO Prop",
+    description:
+      "Documentá inspecciones, antecedentes, métodos de valuación, revisión profesional y emisión de informes verificables con ONO Prop.",
+    heading: "Tasaciones inmobiliarias con ONO Prop",
+    summary: "Un expediente trazable desde el encargo y la evidencia hasta la revisión, emisión y entrega del informe.",
+    facts: ["Inmueble y parcela vinculados", "Métodos comparativo y del costo", "Revisión profesional", "Informe verificable"],
+    links: [
+      { href: "/software-para-inmobiliarias", label: "Solicitar una demostración" },
+      { href: "/planes", label: "Consultar productos y servicios" },
+    ],
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: "Tasaciones inmobiliarias con ONO Prop",
+      author: { "@type": "Organization", name: "ONO Prop" },
+    },
+  },
+  "/guias/administracion-alquileres": {
+    title: "Administración de alquileres | Manual ONO Prop",
+    description:
+      "Gestioná contratos, vencimientos, cobranzas, liquidaciones, cuentas corrientes y facturación ARCA desde ONO Prop.",
+    heading: "Administración de alquileres con ONO Prop",
+    summary: "Un circuito conectado desde el contrato hasta el cobro, la rendición al locador y la facturación.",
+    facts: ["Contratos recurrentes y temporales", "Cobros y recibos", "Liquidaciones al locador", "Facturación ARCA"],
+    links: [
+      { href: "/software-para-inmobiliarias", label: "Solicitar una demostración" },
+      { href: "/guias/delegacion-arca", label: "Consultar delegación ARCA" },
+    ],
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: "Administración de alquileres con ONO Prop",
+      author: { "@type": "Organization", name: "ONO Prop" },
+    },
+  },
+  "/guias/administracion-consorcios": {
+    title: "Administración de consorcios | Manual ONO Prop",
+    description:
+      "Centralizá expensas, cobranzas, proveedores, tesorería, documentación y comunicación con consorcistas desde ONO Prop.",
+    heading: "Administración de consorcios con ONO Prop",
+    summary: "Más control para la administración, trazabilidad económica y mejor información para propietarios y ocupantes.",
+    facts: ["Liquidación de expensas", "Cobranzas y mora", "Proveedores y tesorería", "Portal Mi Consorcio"],
+    links: [
+      { href: "/software-administracion-consorcios", label: "Solicitar una demostración" },
+      { href: "/planes", label: "Consultar productos y servicios" },
+    ],
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: "Administración de consorcios con ONO Prop",
+      author: { "@type": "Organization", name: "ONO Prop" },
+    },
   },
   "/sobre-onoprop": {
     title: "Conocé ONO Prop | Portal y herramientas inmobiliarias",

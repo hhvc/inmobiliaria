@@ -79,6 +79,26 @@ const STATIC_ROUTES = [
         priority: "0.6",
     },
     {
+        path: "/guias/administracion-inmuebles",
+        changefreq: "monthly",
+        priority: "0.7",
+    },
+    {
+        path: "/guias/administracion-alquileres",
+        changefreq: "monthly",
+        priority: "0.7",
+    },
+    {
+        path: "/guias/tasaciones",
+        changefreq: "monthly",
+        priority: "0.7",
+    },
+    {
+        path: "/guias/administracion-consorcios",
+        changefreq: "monthly",
+        priority: "0.7",
+    },
+    {
         path: "/sobre-onoprop",
         changefreq: "monthly",
         priority: "0.7",

@@ -25,8 +25,12 @@ import {
   buildConsortiumEconomicStatement,
   buildConsortiumMonthlyCloseChecklist,
   calculateConsortiumAssessments,
+  getConsortiumPaymentSchedule,
+  getConsortiumPaymentTermAdjustment,
   getConsortiumObligationStatus,
   getConsortiumTreasuryBookBalance,
+  normalizeConsortiumCoefficientGroups,
+  normalizeConsortiumPaymentPolicy,
   validateConsortium,
   validateConsortiumUnit,
 } from "../utils/consorcio.helpers";
@@ -115,6 +119,8 @@ const sanitizeConsortium = (value = {}) => ({
   bankAccount: cleanText(value.bankAccount, 120),
   currency: cleanText(value.currency, 10) || "ARS",
   dueDay: Math.min(31, Math.max(1, Math.trunc(Number(value.dueDay) || 10))),
+  coefficientGroups: normalizeConsortiumCoefficientGroups(value.coefficientGroups),
+  paymentPolicy: normalizeConsortiumPaymentPolicy(value.paymentPolicy),
   interestPolicy: normalizeConsortiumInterestPolicy(value.interestPolicy),
   notes: cleanText(value.notes, 4000),
   portalEmails: normalizeConsortiumEmails(value.portalEmails),
@@ -138,6 +144,14 @@ const sanitizeUnit = (value = {}) => {
     occupantEmail,
     ...manualPortalEmails,
   ]).filter((email) => !ownerPortalEmails.includes(email));
+  const coefficient = Math.max(0, Number(value.coefficient ?? value.coefficients?.general) || 0);
+  const coefficients = Object.fromEntries(
+    Object.entries(value.coefficients || {})
+      .filter(([key]) => /^[a-z0-9_-]{1,48}$/.test(key))
+      .slice(0, 8)
+      .map(([key, amount]) => [key, Math.max(0, Number(amount) || 0)]),
+  );
+  coefficients.general = coefficient;
   const unit = {
     schemaVersion: 1,
     consortiumId: cleanText(value.consortiumId, 128),
@@ -145,7 +159,8 @@ const sanitizeUnit = (value = {}) => {
     floor: cleanText(value.floor, 40),
     apartment: cleanText(value.apartment, 40),
     type: cleanText(value.type, 40) || "apartment",
-    coefficient: Math.max(0, Number(value.coefficient) || 0),
+    coefficient,
+    coefficients,
     ownerName: cleanText(value.ownerName, 220),
     ownerTaxId: cleanText(value.ownerTaxId, 32),
     ownerSince: cleanText(value.ownerSince, 10),
@@ -184,6 +199,7 @@ const UNIT_AUDIT_FIELDS = [
   "apartment",
   "type",
   "coefficient",
+  "coefficients",
   "ownerName",
   "ownerTaxId",
   "ownerSince",
@@ -268,6 +284,7 @@ const sanitizeExpense = (value = {}, fallbackId = "") => ({
     ? value.distributionMode
     : "coefficient",
   specificUnitId: cleanText(value.specificUnitId, 128),
+  coefficientGroupId: cleanText(value.coefficientGroupId, 48) || "general",
   amountMinor: Math.max(0, Math.round(Number(value.amountMinor) || 0)),
   notes: cleanText(value.notes, 1000),
 });
@@ -446,6 +463,76 @@ export const createConsortiumUnit = async (inmobiliariaId, consortiumId, value) 
   return ref.id;
 };
 
+export const createConsortiumUnitsBulk = async (
+  inmobiliariaId,
+  consortiumId,
+  values = [],
+) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  if (!Array.isArray(values) || values.length === 0) {
+    throw new Error("No hay unidades válidas para importar.");
+  }
+  if (values.length > 200) {
+    throw new Error("Podés importar hasta 200 unidades por archivo.");
+  }
+
+  const [consortium, currentUnits] = await Promise.all([
+    getConsortiumById(inmobiliariaId, consortiumId),
+    getConsortiumUnits(inmobiliariaId, consortiumId),
+  ]);
+  if (!consortium || consortium.deleted === true) throw new Error("El consorcio no existe.");
+
+  const normalizeCode = (value) => cleanText(value, 80)
+    .toLocaleLowerCase("es")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const existingCodes = new Set(currentUnits.map((unit) => normalizeCode(unit.code)));
+  const importedCodes = new Set();
+  const prepared = values.map((value, index) => {
+    const payload = sanitizeUnit({ ...value, consortiumId });
+    const errors = validateConsortiumUnit(payload);
+    const codeKey = normalizeCode(payload.code);
+    if (existingCodes.has(codeKey)) errors.push(`La unidad ${payload.code} ya existe.`);
+    if (importedCodes.has(codeKey)) errors.push(`La unidad ${payload.code} está repetida.`);
+    importedCodes.add(codeKey);
+    if (errors.length) throw new Error(`Fila ${index + 2}: ${errors.join(" ")}`);
+    const ref = doc(agencyCollection(inmobiliariaId, "units"));
+    return {
+      ref,
+      data: {
+        ...payload,
+        consortiumName: cleanText(consortium.name, 200),
+        consortiumAddress: cleanText(consortium.address, 300),
+        consortiumCurrency: cleanText(consortium.currency, 10) || "ARS",
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        createdBy: user.uid,
+        updatedBy: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      },
+    };
+  });
+
+  const batch = writeBatch(db);
+  prepared.forEach((item) => batch.set(item.ref, item.data));
+  const importedUnits = prepared.map((item) => ({ id: item.ref.id, ...item.data }));
+  const allUnits = [...currentUnits, ...importedUnits];
+  batch.update(agencyDoc(inmobiliariaId, "consortiums", consortiumId), {
+    portalEmails: getAggregatedPortalEmails(allUnits),
+    ownerPortalEmails: getAggregatedPortalEmails(allUnits, null, "ownerPortalEmails"),
+    occupantPortalEmails: getAggregatedPortalEmails(allUnits, null, "occupantPortalEmails"),
+    updatedAt: serverTimestamp(),
+    updatedBy: user.uid,
+  });
+  await batch.commit();
+
+  return importedUnits.map((item) => ({ id: item.id, code: item.code }));
+};
+
 export const updateConsortiumUnit = async (inmobiliariaId, unitId, value) => {
   await assertAgency(inmobiliariaId);
   const user = currentUserOrThrow();
@@ -617,11 +704,25 @@ export const createConsortiumPeriod = async ({
   consortiumId,
   periodKey,
   dueDate,
+  earlyPaymentDate = "",
+  earlyPaymentDiscountPercent = 0,
+  secondDueDate = "",
+  secondDueSurchargePercent = 0,
   currency = "ARS",
 }) => {
   await assertAgency(inmobiliariaId);
   if (!/^\d{4}-\d{2}$/.test(periodKey || "")) throw new Error("Ingresá un período válido.");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate || "")) throw new Error("Ingresá el vencimiento.");
+  if (earlyPaymentDate && (!/^\d{4}-\d{2}-\d{2}$/.test(earlyPaymentDate)
+    || earlyPaymentDate > dueDate)) {
+    throw new Error("La fecha de pronto pago debe ser igual o anterior al primer vencimiento.");
+  }
+  if (secondDueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(secondDueDate)
+    || secondDueDate <= dueDate)) {
+    throw new Error("El segundo vencimiento debe ser posterior al primero.");
+  }
+  const normalizedEarlyPercent = Math.min(100, Math.max(0, Number(earlyPaymentDiscountPercent) || 0));
+  const normalizedSecondPercent = Math.min(1000, Math.max(0, Number(secondDueSurchargePercent) || 0));
   const user = currentUserOrThrow();
   const id = `${consortiumId}_${periodKey}`;
   const ref = agencyDoc(inmobiliariaId, "periods", id);
@@ -635,6 +736,10 @@ export const createConsortiumPeriod = async ({
     consortiumId,
     periodKey,
     dueDate,
+    earlyPaymentDate: earlyPaymentDate || "",
+    earlyPaymentDiscountPercent: earlyPaymentDate ? normalizedEarlyPercent : 0,
+    secondDueDate: secondDueDate || "",
+    secondDueSurchargePercent: secondDueDate ? normalizedSecondPercent : 0,
     currency,
     status: "draft",
     expenses: [],
@@ -699,6 +804,14 @@ export const issueConsortiumPeriod = async ({ inmobiliariaId, periodId }) => {
 
     assessments.forEach((assessment) => {
       const id = `${periodId}_${assessment.unitId}`;
+      const schedule = getConsortiumPaymentSchedule({
+        amountMinor: assessment.totalAmountMinor,
+        dueDate: period.dueDate,
+        earlyPaymentDate: period.earlyPaymentDate,
+        earlyPaymentDiscountPercent: period.earlyPaymentDiscountPercent,
+        secondDueDate: period.secondDueDate,
+        secondDueSurchargePercent: period.secondDueSurchargePercent,
+      });
       transaction.set(agencyDoc(inmobiliariaId, "obligations", id), {
         ...assessment,
         id,
@@ -706,6 +819,7 @@ export const issueConsortiumPeriod = async ({ inmobiliariaId, periodId }) => {
         periodId,
         periodKey: period.periodKey,
         dueDate: period.dueDate,
+        ...schedule,
         currency: period.currency || "ARS",
         paidAmountMinor: 0,
         balanceMinor: assessment.totalAmountMinor,
@@ -1365,11 +1479,39 @@ export const registerConsortiumAccountPayment = async ({
     if (openObligations.some((item) => (item.currency || "ARS") !== currency)) {
       throw new Error("No se pueden imputar en un mismo cobro obligaciones de monedas distintas.");
     }
+    const singleCandidate = requestedIds.length === 1
+      ? openObligations.find((item) => item.id === requestedIds[0])
+      : openObligations.length === 1 ? openObligations[0] : null;
+    const termAdjustment = singleCandidate
+      ? getConsortiumPaymentTermAdjustment({
+        obligation: singleCandidate,
+        paymentDate: date,
+        paymentAmountMinor: amount,
+      })
+      : { type: "", amountMinor: 0 };
+    const projectedObligations = openObligations.map((item) => (
+      item.id === singleCandidate?.id && Number(termAdjustment.amountMinor || 0)
+        ? {
+          ...item,
+          totalAmountMinor: Math.max(0, Number(item.totalAmountMinor || 0) + Number(termAdjustment.amountMinor)),
+          balanceMinor: Math.max(0, Number(item.balanceMinor || 0) + Number(termAdjustment.amountMinor)),
+        }
+        : item
+    ));
     const allocation = buildConsortiumPaymentAllocations({
       amountMinor: amount,
-      obligations: openObligations,
+      obligations: projectedObligations,
       obligationIds: requestedIds,
     });
+    allocation.allocations = allocation.allocations.map((item) => (
+      item.obligationId === singleCandidate?.id && Number(termAdjustment.amountMinor || 0)
+        ? {
+          ...item,
+          termAdjustmentType: termAdjustment.type,
+          termAdjustmentMinor: Number(termAdjustment.amountMinor),
+        }
+        : item
+    ));
     if (allocation.creditAmountMinor > 0 && requestedIds.length &&
       allocation.allocations.length < openObligations.length) {
       throw new Error("Para registrar un excedente como saldo a favor, seleccioná todos los períodos pendientes.");
@@ -1394,10 +1536,16 @@ export const registerConsortiumAccountPayment = async ({
     freshObligations.forEach((obligation) => {
       const item = allocationById.get(obligation.id);
       if (!item) return;
+      const adjustmentMinor = Number(item.termAdjustmentMinor || 0);
+      const adjustedTotalAmountMinor = Math.max(
+        0,
+        Number(obligation.totalAmountMinor || 0) + adjustmentMinor,
+      );
       const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor) || 0)
         + item.amountMinor;
-      const balanceMinor = Math.max(0, Number(obligation.totalAmountMinor || 0) - paidAmountMinor);
+      const balanceMinor = Math.max(0, adjustedTotalAmountMinor - paidAmountMinor);
       transaction.update(agencyDoc(inmobiliariaId, "obligations", obligation.id), {
+        totalAmountMinor: adjustedTotalAmountMinor,
         paidAmountMinor,
         balanceMinor,
         status: balanceMinor <= 0 ? "paid" : getConsortiumObligationStatus({
@@ -1409,6 +1557,25 @@ export const registerConsortiumAccountPayment = async ({
           ...(Array.isArray(obligation.paymentIds) ? obligation.paymentIds : []),
           paymentRef.id,
         ],
+        ...(adjustmentMinor ? {
+          paymentTermAdjustment: {
+            type: item.termAdjustmentType,
+            amountMinor: adjustmentMinor,
+            paymentId: paymentRef.id,
+            paymentDate: date,
+          },
+          breakdown: [...(Array.isArray(obligation.breakdown) ? obligation.breakdown : []), {
+            expenseId: `payment_term_${paymentRef.id}`,
+            concept: item.termAdjustmentType === "early_payment_discount"
+              ? "Bonificación por pronto pago"
+              : "Recargo por segundo vencimiento",
+            category: "payment_term",
+            distributionMode: "specific",
+            amountMinor: adjustmentMinor,
+            source: "payment_terms",
+            sourcePaymentId: paymentRef.id,
+          }],
+        } : {}),
         updatedBy: user.uid,
         updatedAt: serverTimestamp(),
       });
@@ -1516,10 +1683,20 @@ export const registerConsortiumPayment = async ({
     const snap = await transaction.get(obligationRef);
     if (!snap.exists()) throw new Error("La expensa no existe.");
     const obligation = snap.data();
-    const balance = Math.max(0, Number(obligation.balanceMinor) || 0);
+    const termAdjustment = getConsortiumPaymentTermAdjustment({
+      obligation,
+      paymentDate: date,
+      paymentAmountMinor: amount,
+    });
+    const adjustmentMinor = Number(termAdjustment.amountMinor || 0);
+    const adjustedTotalAmountMinor = Math.max(
+      0,
+      Number(obligation.totalAmountMinor || 0) + adjustmentMinor,
+    );
+    const balance = Math.max(0, Number(obligation.balanceMinor || 0) + adjustmentMinor);
     if (amount > balance) throw new Error("El cobro no puede superar el saldo de la unidad.");
     const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor) || 0) + amount;
-    const balanceMinor = Math.max(0, Number(obligation.totalAmountMinor) - paidAmountMinor);
+    const balanceMinor = Math.max(0, adjustedTotalAmountMinor - paidAmountMinor);
     let treasuryAccount = null;
     let treasuryAccountRef = null;
     if (treasuryAccountId) {
@@ -1539,6 +1716,12 @@ export const registerConsortiumPayment = async ({
     const payment = {
       id: paymentRef.id,
       obligationId,
+      allocations: [{
+        obligationId,
+        amountMinor: amount,
+        termAdjustmentType: termAdjustment.type || "",
+        termAdjustmentMinor: adjustmentMinor,
+      }],
       consortiumId: obligation.consortiumId,
       periodId: obligation.periodId,
       periodKey: obligation.periodKey,
@@ -1547,6 +1730,8 @@ export const registerConsortiumPayment = async ({
       unitSnapshot: obligation.unitSnapshot || {},
       currency: obligation.currency || "ARS",
       amountMinor: amount,
+      termAdjustmentType: termAdjustment.type || "",
+      termAdjustmentMinor: adjustmentMinor,
       date,
       method: cleanText(method, 40) || "transfer",
       reference: cleanText(reference, 220),
@@ -1593,6 +1778,7 @@ export const registerConsortiumPayment = async ({
       });
     }
     transaction.update(obligationRef, {
+      totalAmountMinor: adjustedTotalAmountMinor,
       paidAmountMinor,
       balanceMinor,
       status: balanceMinor <= 0 ? "paid" : getConsortiumObligationStatus({
@@ -1601,6 +1787,25 @@ export const registerConsortiumPayment = async ({
         balanceMinor,
       }),
       paymentIds: [...(Array.isArray(obligation.paymentIds) ? obligation.paymentIds : []), paymentRef.id],
+      ...(adjustmentMinor ? {
+        paymentTermAdjustment: {
+          type: termAdjustment.type,
+          amountMinor: adjustmentMinor,
+          paymentId: paymentRef.id,
+          paymentDate: date,
+        },
+        breakdown: [...(Array.isArray(obligation.breakdown) ? obligation.breakdown : []), {
+          expenseId: `payment_term_${paymentRef.id}`,
+          concept: termAdjustment.type === "early_payment_discount"
+            ? "Bonificación por pronto pago"
+            : "Recargo por segundo vencimiento",
+          category: "payment_term",
+          distributionMode: "specific",
+          amountMinor: adjustmentMinor,
+          source: "payment_terms",
+          sourcePaymentId: paymentRef.id,
+        }],
+      } : {}),
       updatedBy: user.uid,
       updatedAt: serverTimestamp(),
     });
@@ -1672,15 +1877,21 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
     obligationSnapshots.forEach((snap, index) => {
       const obligation = snap.data();
       const allocatedMinor = Math.max(0, Number(allocations[index]?.amountMinor) || 0);
+      const termAdjustmentMinor = Number(allocations[index]?.termAdjustmentMinor || 0);
       const paidAmountMinor = Math.max(
         0,
         Number(obligation.paidAmountMinor || 0) - allocatedMinor,
       );
+      const totalAmountMinor = Math.max(
+        0,
+        Number(obligation.totalAmountMinor || 0) - termAdjustmentMinor,
+      );
       const balanceMinor = Math.max(
         0,
-        Number(obligation.totalAmountMinor || 0) - paidAmountMinor,
+        totalAmountMinor - paidAmountMinor,
       );
       transaction.update(obligationRefs[index], {
+        totalAmountMinor,
         paidAmountMinor,
         balanceMinor,
         status: getConsortiumObligationStatus({
@@ -1688,6 +1899,11 @@ export const voidConsortiumPayment = async ({ inmobiliariaId, paymentId, reason 
           paidAmountMinor,
           balanceMinor,
         }),
+        paymentTermAdjustment: termAdjustmentMinor ? null : obligation.paymentTermAdjustment || null,
+        breakdown: termAdjustmentMinor
+          ? (Array.isArray(obligation.breakdown) ? obligation.breakdown : [])
+            .filter((line) => line.sourcePaymentId !== paymentId)
+          : obligation.breakdown || [],
         updatedBy: user.uid,
         updatedAt: serverTimestamp(),
       });
@@ -2555,12 +2771,22 @@ export const approveConsortiumPaymentReport = async ({ inmobiliariaId, reportId 
       throw new Error("El pago informado no coincide con la expensa relacionada.");
     }
     const amount = Number(report.amountMinor || 0);
-    const balance = Math.max(0, Number(obligation.balanceMinor || 0));
+    const termAdjustment = getConsortiumPaymentTermAdjustment({
+      obligation,
+      paymentDate: report.date,
+      paymentAmountMinor: amount,
+    });
+    const adjustmentMinor = Number(termAdjustment.amountMinor || 0);
+    const adjustedTotalAmountMinor = Math.max(
+      0,
+      Number(obligation.totalAmountMinor || 0) + adjustmentMinor,
+    );
+    const balance = Math.max(0, Number(obligation.balanceMinor || 0) + adjustmentMinor);
     if (!amount || amount > balance) {
       throw new Error("El importe informado ya no coincide con el saldo pendiente.");
     }
     const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor || 0)) + amount;
-    const balanceMinor = Math.max(0, Number(obligation.totalAmountMinor || 0) - paidAmountMinor);
+    const balanceMinor = Math.max(0, adjustedTotalAmountMinor - paidAmountMinor);
     transaction.set(paymentRef, {
       id: paymentRef.id,
       obligationId: report.obligationId,
@@ -2572,6 +2798,8 @@ export const approveConsortiumPaymentReport = async ({ inmobiliariaId, reportId 
       unitSnapshot: report.unitSnapshot || obligation.unitSnapshot || {},
       currency: report.currency || obligation.currency || "ARS",
       amountMinor: amount,
+      termAdjustmentType: termAdjustment.type || "",
+      termAdjustmentMinor: adjustmentMinor,
       date: report.date,
       method: report.method || "transfer",
       reference: report.reference || "",
@@ -2590,6 +2818,7 @@ export const approveConsortiumPaymentReport = async ({ inmobiliariaId, reportId 
       updatedAt: serverTimestamp(),
     });
     transaction.update(obligationRef, {
+      totalAmountMinor: adjustedTotalAmountMinor,
       paidAmountMinor,
       balanceMinor,
       status: balanceMinor <= 0 ? "paid" : getConsortiumObligationStatus({
@@ -2598,6 +2827,25 @@ export const approveConsortiumPaymentReport = async ({ inmobiliariaId, reportId 
         balanceMinor,
       }),
       paymentIds: [...(Array.isArray(obligation.paymentIds) ? obligation.paymentIds : []), paymentRef.id],
+      ...(adjustmentMinor ? {
+        paymentTermAdjustment: {
+          type: termAdjustment.type,
+          amountMinor: adjustmentMinor,
+          paymentId: paymentRef.id,
+          paymentDate: report.date,
+        },
+        breakdown: [...(Array.isArray(obligation.breakdown) ? obligation.breakdown : []), {
+          expenseId: `payment_term_${paymentRef.id}`,
+          concept: termAdjustment.type === "early_payment_discount"
+            ? "Bonificación por pronto pago"
+            : "Recargo por segundo vencimiento",
+          category: "payment_term",
+          distributionMode: "specific",
+          amountMinor: adjustmentMinor,
+          source: "payment_terms",
+          sourcePaymentId: paymentRef.id,
+        }],
+      } : {}),
       updatedBy: user.uid,
       updatedAt: serverTimestamp(),
     });

@@ -12,6 +12,7 @@ import ConsortiumTreasuryPanel from "../components/ConsortiumTreasuryPanel";
 import ConsortiumClaimsPanel from "../components/ConsortiumClaimsPanel";
 import ConsortiumPortalInformationPanel from "../components/ConsortiumPortalInformationPanel";
 import ConsortiumMonthlyCloseAssistant from "../components/ConsortiumMonthlyCloseAssistant";
+import ConsortiumUnitsCsvImport from "../components/ConsortiumUnitsCsvImport";
 import {
   getInternalPermissions,
   getInternalRoleForInmobiliaria,
@@ -25,6 +26,7 @@ import {
   closeConsortiumPeriod,
   createConsortiumPeriod,
   createConsortiumUnit,
+  createConsortiumUnitsBulk,
   getConsortiumById,
   getConsortiumExpenseDocuments,
   getConsortiumMonthlyCloseChecklist,
@@ -48,9 +50,11 @@ import {
 } from "../utils/consorcio.constants";
 import {
   formatConsortiumMoney,
+  addConsortiumDays,
   getConsortiumAccountingPeriodLabel,
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
+  getConsortiumPaymentSchedule,
   getDefaultConsortiumDueDate,
   majorToMinor,
   minorToMajorInput,
@@ -113,6 +117,7 @@ const ConsortiumDetailPage = () => {
   const [unitChangeForm, setUnitChangeForm] = useState(emptyUnitChangeForm);
   const [activeWorkspace, setActiveWorkspace] = useState("liquidations");
   const [showUnitForm, setShowUnitForm] = useState(false);
+  const [showUnitImport, setShowUnitImport] = useState(false);
   const [showOpeningBalanceForm, setShowOpeningBalanceForm] = useState(false);
   const [showCloseAssistant, setShowCloseAssistant] = useState(false);
   const [closeAssistantLoading, setCloseAssistantLoading] = useState(false);
@@ -125,6 +130,10 @@ const ConsortiumDetailPage = () => {
   }));
   const [newPeriodKey, setNewPeriodKey] = useState(currentPeriodKey);
   const [newDueDate, setNewDueDate] = useState("");
+  const [newEarlyPaymentDate, setNewEarlyPaymentDate] = useState("");
+  const [newEarlyPaymentDiscountPercent, setNewEarlyPaymentDiscountPercent] = useState(0);
+  const [newSecondDueDate, setNewSecondDueDate] = useState("");
+  const [newSecondDueSurchargePercent, setNewSecondDueSurchargePercent] = useState(0);
   const [paymentForm, setPaymentForm] = useState({
     obligationId: "",
     amountMajor: "",
@@ -194,7 +203,17 @@ const ConsortiumDetailPage = () => {
 
   useEffect(() => {
     if (!consortium) return;
-    setNewDueDate(getDefaultConsortiumDueDate(newPeriodKey, consortium.dueDay));
+    const dueDate = getDefaultConsortiumDueDate(newPeriodKey, consortium.dueDay);
+    const policy = consortium.paymentPolicy || {};
+    setNewDueDate(dueDate);
+    setNewEarlyPaymentDate(policy.earlyPaymentEnabled
+      ? addConsortiumDays(dueDate, -Number(policy.earlyPaymentDaysBefore || 5)) : "");
+    setNewEarlyPaymentDiscountPercent(policy.earlyPaymentEnabled
+      ? Number(policy.earlyPaymentDiscountPercent || 0) : 0);
+    setNewSecondDueDate(policy.secondDueEnabled
+      ? addConsortiumDays(dueDate, Number(policy.secondDueDaysAfter || 10)) : "");
+    setNewSecondDueSurchargePercent(policy.secondDueEnabled
+      ? Number(policy.secondDueSurchargePercent || 0) : 0);
   }, [consortium, newPeriodKey]);
 
   useEffect(() => {
@@ -256,6 +275,19 @@ const ConsortiumDetailPage = () => {
     balance: selectedObligations.reduce((sum, item) => sum + Number(item.balanceMinor || 0), 0),
     overdue: selectedObligations.filter((item) => getConsortiumObligationStatus(item) === "overdue").length,
   }), [selectedObligations]);
+  const paymentObligation = useMemo(
+    () => obligations.find((item) => item.id === paymentForm.obligationId) || null,
+    [obligations, paymentForm.obligationId],
+  );
+  const paymentSchedule = useMemo(() => paymentObligation
+    ? getConsortiumPaymentSchedule({
+      amountMinor: paymentObligation.baseAmountMinor ?? paymentObligation.totalAmountMinor,
+      dueDate: paymentObligation.dueDate,
+      earlyPaymentDate: paymentObligation.earlyPaymentDate,
+      earlyPaymentDiscountPercent: paymentObligation.earlyPaymentDiscountPercent,
+      secondDueDate: paymentObligation.secondDueDate,
+      secondDueSurchargePercent: paymentObligation.secondDueSurchargePercent,
+    }) : null, [paymentObligation]);
 
   const resetMessages = () => {
     setError("");
@@ -273,10 +305,89 @@ const ConsortiumDetailPage = () => {
     resetMessages();
     resetUnitForm();
     setActiveWorkspace("units");
+    setShowUnitImport(false);
     setShowUnitForm(true);
     setTimeout(() => {
       document.getElementById("consortium-unit-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
+  };
+
+  const openUnitImport = () => {
+    resetMessages();
+    closeUnitForm();
+    setActiveWorkspace("units");
+    setShowUnitImport(true);
+    setTimeout(() => {
+      document.getElementById("consortium-unit-import")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
+  const importUnits = async (rows, migration) => {
+    try {
+      resetMessages();
+      setOperation("import-units");
+      const created = await createConsortiumUnitsBulk(
+        activeInmobiliariaId,
+        consortiumId,
+        rows.map((item) => item.row),
+      );
+      let balancesApplied = 0;
+      let balanceFailed = 0;
+      const balanceFailures = [];
+      for (let index = 0; index < created.length; index += 1) {
+        const signedBalanceMajor = Number(rows[index]?.row?.openingBalanceMajor || 0);
+        if (!signedBalanceMajor) continue;
+        try {
+          await recordConsortiumOpeningBalance({
+            inmobiliariaId: activeInmobiliariaId,
+            consortiumId,
+            unitId: created[index].id,
+            type: signedBalanceMajor > 0 ? "debit" : "credit",
+            amountMinor: Math.round(Math.abs(signedBalanceMajor) * 100),
+            effectiveDate: migration.effectiveDate,
+            periodKey: migration.periodKey,
+            dueDate: migration.dueDate,
+            reason: migration.reason,
+          });
+          balancesApplied += 1;
+        } catch (balanceError) {
+          console.error("Saldo inicial no importado", {
+            unitId: created[index].id,
+            error: balanceError,
+          });
+          balanceFailed += 1;
+          balanceFailures.push({
+            code: created[index].code,
+            error: balanceError.message || "No se pudo registrar el saldo.",
+          });
+        }
+      }
+      setSuccess(`${created.length} unidad(es) importada(s).${balanceFailed ? " Revisá los saldos que no pudieron incorporarse." : " El padrón quedó listo para continuar."}`);
+      const [unitData, periodData, obligationData] = await Promise.all([
+        getConsortiumUnits(activeInmobiliariaId, consortiumId),
+        getConsortiumPeriods(activeInmobiliariaId, consortiumId),
+        getConsortiumObligations(activeInmobiliariaId, { consortiumId }),
+      ]);
+      setUnits(unitData);
+      setPeriods(periodData);
+      setObligations(obligationData);
+      setSelectedPeriodId((current) => (
+        current && periodData.some((item) => item.id === current)
+          ? current
+          : periodData[0]?.id || ""
+      ));
+      return {
+        created: created.length,
+        balancesApplied,
+        balanceFailed,
+        balanceFailures,
+      };
+    } catch (importError) {
+      setError(importError.message || "No se pudo importar el padrón.");
+      throw importError;
+    } finally {
+      setOperation("");
+    }
   };
 
   const closeUnitForm = () => {
@@ -364,6 +475,10 @@ const ConsortiumDetailPage = () => {
         consortiumId,
         periodKey: newPeriodKey,
         dueDate: newDueDate,
+        earlyPaymentDate: newEarlyPaymentDate,
+        earlyPaymentDiscountPercent: newEarlyPaymentDiscountPercent,
+        secondDueDate: newSecondDueDate,
+        secondDueSurchargePercent: newSecondDueSurchargePercent,
         currency: consortium.currency || "ARS",
       });
       setSelectedPeriodId(periodId);
@@ -440,9 +555,23 @@ const ConsortiumDetailPage = () => {
   };
 
   const selectPayment = (obligation) => {
+    const schedule = getConsortiumPaymentSchedule({
+      amountMinor: obligation.baseAmountMinor ?? obligation.totalAmountMinor,
+      dueDate: obligation.dueDate,
+      earlyPaymentDate: obligation.earlyPaymentDate,
+      earlyPaymentDiscountPercent: obligation.earlyPaymentDiscountPercent,
+      secondDueDate: obligation.secondDueDate,
+      secondDueSurchargePercent: obligation.secondDueSurchargePercent,
+    });
+    const today = todayKey();
+    const suggestedAmount = schedule.earlyPaymentDate && today <= schedule.earlyPaymentDate
+      ? schedule.earlyPaymentAmountMinor
+      : schedule.secondDueDate && today > schedule.dueDate
+        ? schedule.secondDueAmountMinor
+        : schedule.dueAmountMinor;
     setPaymentForm({
       obligationId: obligation.id,
-      amountMajor: minorToMajorInput(obligation.balanceMinor),
+      amountMajor: minorToMajorInput(suggestedAmount),
       date: todayKey(),
       method: "transfer",
       reference: "",
@@ -746,18 +875,25 @@ const ConsortiumDetailPage = () => {
             <div><h2 className="h5 mb-1">Padrón de unidades</h2><p className="text-muted small mb-0">Consultá cuentas y contactos. El alta y la edición se abren únicamente cuando las necesitás.</p></div>
             <div className="d-flex align-items-center gap-2">
               <span className="badge text-bg-light border">{activeUnits.length} activas</span>
-              {canManage && <button className="btn btn-sm btn-primary" type="button" onClick={openNewUnitForm}>Agregar unidad</button>}
+              {canManage && <div className="btn-group btn-group-sm"><button className="btn btn-outline-primary" type="button" onClick={openUnitImport}>Importar planilla</button><button className="btn btn-primary" type="button" onClick={openNewUnitForm}>Agregar unidad</button></div>}
             </div>
           </div>
+          {showUnitImport && canManage && <ConsortiumUnitsCsvImport
+            units={activeUnits}
+            working={operation === "import-units"}
+            defaultDueDate={getDefaultConsortiumDueDate(currentPeriodKey(), consortium.dueDay)}
+            onImport={importUnits}
+            onClose={() => setShowUnitImport(false)}
+          />}
           <div className={`table-responsive ${showUnitForm ? "mb-4" : ""}`}>
             <table className="table table-hover consortium-unit-table">
-              <thead><tr><th>Unidad</th><th>Tipo</th><th>Coeficiente</th><th>Titular / ocupante</th><th>Contacto</th><th>Saldo a favor</th><th className="text-end">Acciones</th></tr></thead>
+              <thead><tr><th>Unidad</th><th>Tipo</th><th>Coeficientes</th><th>Titular / ocupante</th><th>Contacto</th><th>Saldo a favor</th><th className="text-end">Acciones</th></tr></thead>
               <tbody>
                 {activeUnits.map((unit) => (
                   <tr key={unit.id}>
                     <td><strong>{unit.code}</strong><div className="small text-muted">{[unit.floor && `Piso ${unit.floor}`, unit.apartment && `Dpto. ${unit.apartment}`].filter(Boolean).join(" · ")}</div></td>
                     <td>{CONSORTIUM_UNIT_TYPES.find((item) => item.id === unit.type)?.label || unit.type}</td>
-                    <td>{Number(unit.coefficient || 0).toLocaleString("es-AR", { maximumFractionDigits: 6 })}</td>
+                    <td><div>General: {Number(unit.coefficient || 0).toLocaleString("es-AR", { maximumFractionDigits: 6 })}</div>{(consortium.coefficientGroups || []).filter((group) => group.active !== false && group.id !== "general" && Number(unit.coefficients?.[group.id] || 0) > 0).map((group) => <small className="d-block text-muted" key={group.id}>{group.name}: {Number(unit.coefficients?.[group.id] || 0).toLocaleString("es-AR", { maximumFractionDigits: 6 })}</small>)}</td>
                     <td><div>{unit.ownerName || "Titular no informado"}</div>{unit.ownerSince && <small className="d-block text-muted">Titular desde {unit.ownerSince}</small>}<small className="d-block text-muted">{unit.occupantName || "Sin ocupante informado"}</small>{unit.occupantSince && <small className="d-block text-muted">Ocupante desde {unit.occupantSince}</small>}</td>
                     <td><div>{unit.ownerEmail || unit.email || ""}</div>{unit.occupantEmail && <small className="d-block">Ocupante: {unit.occupantEmail}</small>}<small className="d-block text-muted">{unit.phone || ""}</small>{Array.isArray(unit.portalEmails) && unit.portalEmails.length > 0 && <small className="d-block text-success">Portal: {unit.portalEmails.length} acceso(s)</small>}<small className="d-block text-muted">Automatización: {{ inherit: "hereda consorcio", custom: "personalizada", disabled: "excluida" }[unit.notificationAutomationMode] || "hereda consorcio"}</small></td>
                     <td className="consortium-money text-success">{formatConsortiumMoney(unit.creditBalanceMinor, consortium.currency)}</td>
@@ -783,7 +919,8 @@ const ConsortiumDetailPage = () => {
               <div className="col-md-2"><label className="form-label">Piso</label><input className="form-control" value={unitForm.floor} onChange={(e) => setUnitForm((c) => ({ ...c, floor: e.target.value }))} /></div>
               <div className="col-md-2"><label className="form-label">Departamento</label><input className="form-control" value={unitForm.apartment} onChange={(e) => setUnitForm((c) => ({ ...c, apartment: e.target.value }))} /></div>
               <div className="col-md-3"><label className="form-label">Tipo</label><select className="form-select" value={unitForm.type} onChange={(e) => setUnitForm((c) => ({ ...c, type: e.target.value }))}>{CONSORTIUM_UNIT_TYPES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
-              <div className="col-md-2"><label className="form-label">Coeficiente</label><input className="form-control" type="number" min="0" step="0.000001" value={unitForm.coefficient} onChange={(e) => setUnitForm((c) => ({ ...c, coefficient: e.target.value }))} /></div>
+              <div className="col-md-2"><label className="form-label">Coef. general</label><input className="form-control" type="number" min="0" step="0.000001" value={unitForm.coefficient} onChange={(e) => setUnitForm((c) => ({ ...c, coefficient: e.target.value, coefficients: { ...(c.coefficients || {}), general: e.target.value } }))} /></div>
+              {(consortium.coefficientGroups || []).filter((group) => group.active !== false && group.id !== "general").map((group) => <div className="col-md-2" key={group.id}><label className="form-label">{group.name}</label><input className="form-control" type="number" min="0" step="0.000001" value={unitForm.coefficients?.[group.id] ?? ""} onChange={(e) => setUnitForm((c) => ({ ...c, coefficients: { ...(c.coefficients || {}), [group.id]: e.target.value } }))} /></div>)}
               <div className="col-md-4"><label className="form-label">Propietario / titular</label><input className="form-control" value={unitForm.ownerName} onChange={(e) => setUnitForm((c) => ({ ...c, ownerName: e.target.value }))} /></div>
               <div className="col-md-3"><label className="form-label">CUIT / DNI titular</label><input className="form-control" value={unitForm.ownerTaxId} onChange={(e) => setUnitForm((c) => ({ ...c, ownerTaxId: e.target.value }))} /></div>
               <div className="col-md-5"><label className="form-label">Ocupante</label><input className="form-control" value={unitForm.occupantName} onChange={(e) => setUnitForm((c) => ({ ...c, occupantName: e.target.value }))} /></div>
@@ -881,12 +1018,15 @@ const ConsortiumDetailPage = () => {
           <h2 className="h5">Liquidaciones mensuales</h2>
           {canManage && <form className="row g-3 align-items-end mb-4" onSubmit={createPeriod}>
             <div className="col-md-4"><label className="form-label">Período a liquidar</label><input className="form-control" type="month" value={newPeriodKey} onChange={(e) => setNewPeriodKey(e.target.value)} required /></div>
-            <div className="col-md-4"><label className="form-label">Vencimiento</label><input className="form-control" type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} required /></div>
-            <div className="col-md-4"><button className="btn btn-outline-primary w-100" disabled={operation === "create-period"} type="submit">Crear borrador mensual</button></div>
+            <div className="col-md-4"><label className="form-label">Primer vencimiento</label><input className="form-control" type="date" value={newDueDate} onChange={(e) => setNewDueDate(e.target.value)} required /></div>
+            <div className="col-md-4"><label className="form-label">Pronto pago hasta</label><input className="form-control" type="date" value={newEarlyPaymentDate} onChange={(e) => setNewEarlyPaymentDate(e.target.value)} /><div className="input-group mt-1"><input className="form-control" type="number" min="0" max="100" step="0.01" value={newEarlyPaymentDiscountPercent} onChange={(e) => setNewEarlyPaymentDiscountPercent(e.target.value)} /><span className="input-group-text">% bonif.</span></div></div>
+            <div className="col-md-4"><label className="form-label">Segundo vencimiento</label><input className="form-control" type="date" value={newSecondDueDate} onChange={(e) => setNewSecondDueDate(e.target.value)} /><div className="input-group mt-1"><input className="form-control" type="number" min="0" max="1000" step="0.01" value={newSecondDueSurchargePercent} onChange={(e) => setNewSecondDueSurchargePercent(e.target.value)} /><span className="input-group-text">% recargo</span></div></div>
+            <div className="col-12"><small className="text-muted">La liquidación guarda estas condiciones. Si una fecha no corresponde, dejala vacía; el interés por mora continúa siendo independiente.</small></div>
+            <div className="col-12"><button className="btn btn-outline-primary w-100" disabled={operation === "create-period"} type="submit">Crear borrador mensual</button></div>
           </form>}
           <div className="row g-3 align-items-end">
             <div className="col-lg-8"><label className="form-label" htmlFor="selected-consortium-period">Liquidación seleccionada</label><select id="selected-consortium-period" className="form-select" value={selectedPeriodId} onChange={(e) => setSelectedPeriodId(e.target.value)}><option value="">Seleccionar...</option>{periods.map((period) => <option key={period.id} value={period.id}>{getConsortiumAccountingPeriodLabel(period)} · {getConsortiumPeriodStatus(period.status).label}</option>)}</select></div>
-            {selectedPeriod && <div className="col-lg-4"><span className={`badge ${periodState.badge} me-2`}>{periodState.label}</span><span className="text-muted small">Vence {selectedPeriod.dueDate}</span></div>}
+            {selectedPeriod && <div className="col-lg-4"><span className={`badge ${periodState.badge} me-2`}>{periodState.label}</span><span className="text-muted small d-block">1.º vencimiento: {selectedPeriod.dueDate}</span>{selectedPeriod.earlyPaymentDate && <span className="text-success small d-block">Pronto pago: {selectedPeriod.earlyPaymentDate} · {selectedPeriod.earlyPaymentDiscountPercent || 0}% bonif.</span>}{selectedPeriod.secondDueDate && <span className="text-warning small d-block">2.º vencimiento: {selectedPeriod.secondDueDate} · {selectedPeriod.secondDueSurchargePercent || 0}% recargo</span>}</div>}
           </div>
         </div>
       </section>
@@ -901,7 +1041,8 @@ const ConsortiumDetailPage = () => {
                   <h3 className="h6">Agregar gasto</h3>
                   <div className="mb-3"><label className="form-label">Concepto *</label><input className="form-control" value={expenseForm.concept} onChange={(e) => setExpenseForm((c) => ({ ...c, concept: e.target.value }))} required /></div>
                   <div className="row g-3 mb-3"><div className="col-md-6"><label className="form-label">Tipo</label><select className="form-select" value={expenseForm.category} onChange={(e) => setExpenseForm((c) => ({ ...c, category: e.target.value }))}>{CONSORTIUM_EXPENSE_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div><div className="col-md-6"><label className="form-label">Importe</label><input className="form-control" inputMode="decimal" placeholder="0,00" value={expenseForm.amountMajor} onChange={(e) => setExpenseForm((c) => ({ ...c, amountMajor: e.target.value }))} required /></div></div>
-                  <div className="mb-3"><label className="form-label">Distribución</label><select className="form-select" value={expenseForm.distributionMode} onChange={(e) => setExpenseForm((c) => ({ ...c, distributionMode: e.target.value, specificUnitId: "" }))}>{CONSORTIUM_DISTRIBUTION_MODES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
+                  <div className="mb-3"><label className="form-label">Distribución</label><select className="form-select" value={expenseForm.distributionMode} onChange={(e) => setExpenseForm((c) => ({ ...c, distributionMode: e.target.value, specificUnitId: "", coefficientGroupId: e.target.value === "coefficient" ? (c.coefficientGroupId || "general") : "" }))}>{CONSORTIUM_DISTRIBUTION_MODES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
+                  {expenseForm.distributionMode === "coefficient" && <div className="mb-3"><label className="form-label">Grupo de coeficientes</label><select className="form-select" value={expenseForm.coefficientGroupId || "general"} onChange={(e) => setExpenseForm((c) => ({ ...c, coefficientGroupId: e.target.value }))}>{(consortium.coefficientGroups || [{ id: "general", name: "Gastos generales" }]).filter((group) => group.active !== false).map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></div>}
                   {expenseForm.distributionMode === "specific" && <div className="mb-3"><label className="form-label">Unidad</label><select className="form-select" value={expenseForm.specificUnitId} onChange={(e) => setExpenseForm((c) => ({ ...c, specificUnitId: e.target.value }))}><option value="">Seleccionar...</option>{activeUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.code}</option>)}</select></div>}
                   <div className="mb-3"><label className="form-label">Notas</label><input className="form-control" value={expenseForm.notes} onChange={(e) => setExpenseForm((c) => ({ ...c, notes: e.target.value }))} /></div>
                   <button className="btn btn-outline-primary w-100" type="submit">Agregar al borrador</button>
@@ -911,7 +1052,7 @@ const ConsortiumDetailPage = () => {
                 <div className="list-group consortium-expense-list mb-3">
                   {periodExpenses.map((expense) => (
                     <div className="list-group-item" key={expense.id}>
-                      <div className="d-flex justify-content-between gap-3"><div><strong>{expense.concept}</strong><div className="small text-muted">{CONSORTIUM_EXPENSE_CATEGORIES.find((item) => item.id === expense.category)?.label} · {CONSORTIUM_DISTRIBUTION_MODES.find((item) => item.id === expense.distributionMode)?.label}</div></div><div className="text-end"><strong className="consortium-money">{formatConsortiumMoney(expense.amountMinor, selectedPeriod.currency)}</strong><div><button className="btn btn-sm btn-link text-danger p-0" type="button" onClick={() => setPeriodExpenses((current) => current.filter((item) => item.id !== expense.id))}>Quitar</button></div></div></div>
+                      <div className="d-flex justify-content-between gap-3"><div><strong>{expense.concept}</strong><div className="small text-muted">{CONSORTIUM_EXPENSE_CATEGORIES.find((item) => item.id === expense.category)?.label} · {CONSORTIUM_DISTRIBUTION_MODES.find((item) => item.id === expense.distributionMode)?.label}{expense.distributionMode === "coefficient" && ` · ${(consortium.coefficientGroups || []).find((group) => group.id === expense.coefficientGroupId)?.name || "Gastos generales"}`}</div></div><div className="text-end"><strong className="consortium-money">{formatConsortiumMoney(expense.amountMinor, selectedPeriod.currency)}</strong><div><button className="btn btn-sm btn-link text-danger p-0" type="button" onClick={() => setPeriodExpenses((current) => current.filter((item) => item.id !== expense.id))}>Quitar</button></div></div></div>
                     </div>
                   ))}
                   {!periodExpenses.length && <div className="list-group-item text-center text-muted py-4">Todavía no hay gastos.</div>}
@@ -981,7 +1122,7 @@ const ConsortiumDetailPage = () => {
                   {selectedObligations.map((obligation) => {
                     const status = getConsortiumObligationStatus(obligation);
                     const state = getConsortiumObligationStatusLabel(status);
-                    return <tr key={obligation.id}><td><strong>{obligation.unitSnapshot?.code || obligation.unitId}</strong><div className="small text-muted">{obligation.unitSnapshot?.ownerName || obligation.unitSnapshot?.occupantName || "Sin responsable"}</div></td><td className="consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.penaltyMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/admin/consorcios/${consortiumId}/liquidaciones/${obligation.id}`}>Liquidación</Link><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/unidades/${obligation.unitId}/cuenta-corriente`}>Cuenta</Link>{canManage && obligation.source !== "penalty" && <button className="btn btn-outline-warning" type="button" onClick={() => selectAdjustment(obligation)}>Ajustar</button>}{canManage && Number(obligation.balanceMinor || 0) > 0 && <button className="btn btn-outline-success" type="button" onClick={() => selectPayment(obligation)}>Cobrar</button>}</div></td></tr>;
+                    return <tr key={obligation.id}><td><strong>{obligation.unitSnapshot?.code || obligation.unitId}</strong><div className="small text-muted">{obligation.unitSnapshot?.ownerName || obligation.unitSnapshot?.occupantName || "Sin responsable"}</div></td><td className="consortium-money">{formatConsortiumMoney(obligation.ordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.extraordinaryMinor, obligation.currency)}</td><td className="consortium-money">{formatConsortiumMoney(obligation.penaltyMinor, obligation.currency)}</td><td className="consortium-money"><div>{formatConsortiumMoney(obligation.totalAmountMinor, obligation.currency)}</div>{obligation.earlyPaymentAmountMinor < obligation.baseAmountMinor && <small className="text-success">Pronto pago: {formatConsortiumMoney(obligation.earlyPaymentAmountMinor, obligation.currency)}</small>}{obligation.secondDueAmountMinor > obligation.baseAmountMinor && <small className="text-warning d-block">2.º: {formatConsortiumMoney(obligation.secondDueAmountMinor, obligation.currency)}</small>}</td><td className="consortium-money">{formatConsortiumMoney(obligation.paidAmountMinor, obligation.currency)}</td><td className="consortium-money fw-semibold">{formatConsortiumMoney(obligation.balanceMinor, obligation.currency)}</td><td><span className={`badge ${state.badge}`}>{state.label}</span></td><td className="text-end"><div className="btn-group btn-group-sm"><Link className="btn btn-outline-primary" to={`/admin/consorcios/${consortiumId}/liquidaciones/${obligation.id}`}>Liquidación</Link><Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/unidades/${obligation.unitId}/cuenta-corriente`}>Cuenta</Link>{canManage && obligation.source !== "penalty" && <button className="btn btn-outline-warning" type="button" onClick={() => selectAdjustment(obligation)}>Ajustar</button>}{canManage && Number(obligation.balanceMinor || 0) > 0 && <button className="btn btn-outline-success" type="button" onClick={() => selectPayment(obligation)}>Cobrar</button>}</div></td></tr>;
                   })}
                 </tbody>
               </table>
@@ -1003,7 +1144,7 @@ const ConsortiumDetailPage = () => {
 
             {canManage && paymentForm.obligationId && (
               <form id="consortium-payment-form" className="rounded border bg-light p-3 mt-4" onSubmit={submitPayment}>
-                <div className="d-flex justify-content-between align-items-center mb-3"><h3 className="h6 mb-0">Registrar cobro</h3><button className="btn btn-sm btn-link" type="button" onClick={() => setPaymentForm((c) => ({ ...c, obligationId: "" }))}>Cancelar</button></div>
+                <div className="d-flex justify-content-between align-items-center mb-3"><div><h3 className="h6 mb-0">Registrar cobro</h3>{paymentSchedule && <small className="text-muted">{paymentSchedule.earlyPaymentDate && paymentSchedule.earlyPaymentDiscountMinor > 0 && `Pronto pago: ${formatConsortiumMoney(paymentSchedule.earlyPaymentAmountMinor, paymentObligation.currency)} · `}Primer vencimiento: {formatConsortiumMoney(paymentSchedule.dueAmountMinor, paymentObligation.currency)}{paymentSchedule.secondDueDate && paymentSchedule.secondDueSurchargeMinor > 0 && ` · Segundo: ${formatConsortiumMoney(paymentSchedule.secondDueAmountMinor, paymentObligation.currency)}`}</small>}</div><button className="btn btn-sm btn-link" type="button" onClick={() => setPaymentForm((c) => ({ ...c, obligationId: "" }))}>Cancelar</button></div>
                 <div className="row g-3">
                   <div className="col-md-3"><label className="form-label">Importe</label><input className="form-control" inputMode="decimal" value={paymentForm.amountMajor} onChange={(e) => setPaymentForm((c) => ({ ...c, amountMajor: e.target.value }))} required /></div>
                   <div className="col-md-3"><label className="form-label">Fecha</label><input className="form-control" type="date" value={paymentForm.date} onChange={(e) => setPaymentForm((c) => ({ ...c, date: e.target.value }))} required /></div>

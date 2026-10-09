@@ -439,7 +439,7 @@ def configure_section(section):
     footer = section.footer
     p = footer.paragraphs[0]
     p.paragraph_format.tab_stops.add_tab_stop(Inches(6.5))
-    left = p.add_run("onoprop.com · Versión 1.0 · Agosto 2026")
+    left = p.add_run("onoprop.com · Versión 1.1 · Octubre 2026")
     set_run_font(left, size=8, color=MUTED)
     p.add_run("\t")
     right = p.add_run("Página ")
@@ -483,7 +483,7 @@ def add_cover(doc):
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_after = Pt(80)
-    run = p.add_run("Versión 1.0 · 10 de agosto de 2026")
+    run = p.add_run("Versión 1.1 · 8 de octubre de 2026")
     set_run_font(run, size=10.5, color=MUTED, italic=True)
 
     add_callout(
@@ -519,13 +519,13 @@ def build_manual():
     add_callout(
         doc,
         "Antes de comenzar",
-        "Verificá que la inmobiliaria correcta esté seleccionada en la barra de navegación. Los contratos, personas y movimientos pertenecen siempre a la inmobiliaria activa.",
+        "Verificá que la inmobiliaria correcta esté seleccionada en la barra de navegación. Administración de inmuebles conserva la ficha técnica y comercial; Administración de alquileres conserva personas, contratos, obligaciones, cobros, liquidaciones y comprobantes.",
         "warning",
     )
 
     add_section_heading(doc, "Ruta rápida recomendada", 2)
     quick_steps = [
-        "Cargar el inmueble, aunque todavía no esté publicado.",
+        "Cargar la ficha en Administración de inmuebles, aunque todavía no esté publicada.",
         "Registrar locadores, locatarios y garantes en Personas.",
         "Crear el contrato como Borrador, revisar todos los datos y luego activarlo.",
         "Controlar las obligaciones generadas y registrar cada cobro en el período correcto.",
@@ -627,7 +627,7 @@ def build_manual():
     add_section_heading(doc, "3.1 Requisitos previos", 2)
     adjustment_number_id = clone_numbering_instance(doc, number_id)
     for item in [
-        "El inmueble debe estar cargado en la inmobiliaria, publicado o no.",
+        "El inmueble debe estar cargado en Administración de inmuebles dentro de la inmobiliaria activa, publicado o no.",
         "Debe existir al menos un locador y un locatario activos en Personas.",
         "El usuario debe tener permiso para gestionar alquileres.",
     ]:
@@ -635,7 +635,7 @@ def build_manual():
 
     add_section_heading(doc, "3.2 Completar el formulario", 2)
     contract_steps = [
-        ("Inmueble y estado", "Seleccioná el inmueble administrado. Para revisar antes de operar, comenzá con estado Borrador."),
+        ("Inmueble y estado", "Seleccioná el inmueble administrado. Si iniciás el contrato desde Administración de inmuebles, la ficha aparece preseleccionada. Para revisar antes de operar, comenzá con estado Borrador."),
         ("Partes", "Elegí uno o más locadores y locatarios. Los garantes son opcionales. El sistema impide que la misma persona sea locador y locatario en un mismo contrato."),
         ("Vigencia y valores", "Ingresá inicio, finalización, fecha de firma, día mensual de vencimiento, moneda, alquiler inicial y depósito."),
         ("Honorarios", "Podés establecer un porcentaje mensual, un importe fijo o ambos. El cálculo nunca supera el monto cobrado."),
@@ -986,7 +986,7 @@ def build_manual():
 
     add_section_heading(doc, "10.3 Preguntas frecuentes", 2)
     faqs = [
-        ("No aparece un inmueble al crear el contrato.", "Debe estar cargado dentro de la inmobiliaria activa. Puede permanecer sin publicar."),
+        ("No aparece un inmueble al crear el contrato.", "Debe estar cargado en Administración de inmuebles dentro de la inmobiliaria activa. Puede permanecer sin publicar."),
         ("Una persona no aparece como locador o locatario.", "Revisá que esté activa y tenga marcado el rol correspondiente."),
         ("El contrato editado conserva períodos anteriores.", "Usá Sincronizar períodos ahora. Los períodos con actividad se preservan para revisión."),
         ("No puedo liquidar.", "Debe existir al menos un cobro activo y el período no debe estar cerrado externamente. Una liquidación pagada o recibida no puede recalcularse."),
@@ -1021,7 +1021,10 @@ def build_manual():
     add_table(
         doc,
         ["Versión", "Fecha", "Alcance"],
-        [["1.0", "10/08/2026", "Primera edición: circuito completo de administración de alquileres y facturación ARCA."]],
+        [
+            ["1.0", "10/08/2026", "Primera edición: circuito completo de administración de alquileres y facturación ARCA."],
+            ["1.1", "08/10/2026", "Diferenciación entre Administración de inmuebles y Administración de alquileres; acceso al contrato desde un inmueble preseleccionado."],
+        ],
         [1400, 1900, 6060],
     )
     add_rich_paragraph(doc, [
@@ -1034,7 +1037,7 @@ def build_manual():
     core.subject = "Guía operativa del módulo de Administración de alquileres de ONO Prop"
     core.author = "ONO Prop"
     core.keywords = "ONO Prop, alquileres, inmobiliaria, contratos, cobros, ARCA"
-    core.comments = "Versión 1.0 - Agosto 2026"
+    core.comments = "Versión 1.1 - Octubre 2026"
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     doc.save(OUTPUT)

@@ -20,7 +20,7 @@
   line-height: 1.04;
 }
 
-.guide-library-hero > div > p:last-child {
+.guide-library-hero > div > p:not(.guide-library-eyebrow) {
   max-width: 760px;
   margin: 1.2rem 0 0;
   color: #e6f1ff;
@@ -89,6 +89,11 @@
 .guide-library-card-body { flex: 1; padding: 1rem 1.4rem 1.25rem; }
 .guide-library-card-body h2 { margin: 0 0 0.7rem; font-size: 1.25rem; font-weight: 850; }
 .guide-library-card-body > p { color: #59677d; line-height: 1.55; }
+.guide-library-card-body > .guide-library-value {
+  margin-bottom: 0.55rem;
+  color: #0a58ca;
+  font-weight: 800;
+}
 .guide-library-card dl { display: grid; gap: 0.55rem; margin: 1.2rem 0 0; }
 .guide-library-card dl div { display: grid; grid-template-columns: 6.4rem 1fr; gap: 0.6rem; font-size: 0.83rem; }
 .guide-library-card dt { color: #778298; font-weight: 650; }

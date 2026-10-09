@@ -102,6 +102,7 @@ const RentalManagementPage = () => {
           <p className="text-muted mb-0">{activeInmobiliaria?.nombre || "Inmobiliaria activa"} · contratos, cobros y liquidaciones.</p>
         </div>
         <div className="d-flex flex-wrap gap-2">
+          <Link className="btn btn-outline-secondary" to="/admin/inmuebles/listado">Administración de inmuebles</Link>
           <Link className="btn btn-outline-primary" to="/guias/administracion-alquileres">Manual</Link>
           <Link className="btn btn-outline-primary" to="/admin/alquileres/comprobantes">Comprobantes ARCA</Link>
           <Link className="btn btn-outline-success" to="/admin/alquileres/cuentas-locadores">Cuentas de locadores</Link>
@@ -109,6 +110,16 @@ const RentalManagementPage = () => {
           <Link className="btn btn-primary" to="/admin/alquileres/nuevo">+ Nuevo contrato</Link>
         </div>
       </header>
+
+      <div className="alert alert-light border shadow-sm d-flex flex-column flex-md-row gap-2 align-items-md-center justify-content-between">
+        <span>
+          Este módulo administra contratos, obligaciones, cobros y liquidaciones. La ficha técnica,
+          comercial y su publicación se gestionan en <strong>Administración de inmuebles</strong>.
+        </span>
+        <Link className="btn btn-sm btn-outline-primary flex-shrink-0" to="/admin/inmuebles/listado">
+          Abrir propiedades
+        </Link>
+      </div>
 
       <section className="row g-3 mb-4" aria-label="Resumen de alquileres">
         {[
@@ -194,6 +205,11 @@ const RentalManagementPage = () => {
                   <div className="col-lg-4 d-flex flex-wrap justify-content-lg-end gap-2">
                     <Link className="btn btn-primary" to={`/admin/alquileres/${contract.id}`}>Gestionar</Link>
                     <Link className="btn btn-outline-secondary" to={`/admin/alquileres/${contract.id}/editar`}>Editar contrato</Link>
+                    {contract.inmuebleId && (
+                      <Link className="btn btn-outline-primary" to={`/admin/inmuebles/${encodeURIComponent(contract.inmuebleId)}/editar`}>
+                        Ver propiedad
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

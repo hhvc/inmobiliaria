@@ -1,7 +1,17 @@
 import { Link } from "react-router-dom";
 
 import SEO from "../components/SEO";
+import GuideCommercialOverview from "./GuideCommercialOverview";
 import "./consortiumGuide.css";
+
+const consortiumGuideJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  headline: "Administración de consorcios con ONO Prop",
+  description: "Beneficios y guía operativa para liquidar expensas, cobrar, administrar tesorería y comunicarse con consorcistas.",
+  author: { "@type": "Organization", name: "ONO Prop", url: "https://onoprop.com" },
+  about: { "@type": "SoftwareApplication", name: "Administración de Consorcios ONO Prop", applicationCategory: "BusinessApplication" },
+};
 
 const workflow = [
   ["1", "Configurar", "Creá el consorcio, sus unidades y los accesos de propietarios y ocupantes."],
@@ -33,17 +43,17 @@ const ConsortiumAdministrationGuidePage = () => (
   <main className="consortium-guide-page">
     <SEO
       title="Manual de Administración de Consorcios | ONO Prop"
-      description="Guía práctica para configurar consorcios, liquidar expensas, registrar cobranzas, gestionar tesorería y realizar el cierre mensual en ONO Prop."
+      description="Conocé cómo ONO Prop centraliza expensas, cobranzas, tesorería, documentación y comunicación con consorcistas, y consultá su manual operativo."
       url="https://onoprop.com/guias/administracion-consorcios"
-      noIndex
+      jsonLd={consortiumGuideJsonLd}
     />
 
     <section className="consortium-guide-hero">
       <div className="container py-5 py-lg-6">
         <p className="consortium-guide-eyebrow">ONO Prop · Manual operativo</p>
         <h1>Administración de consorcios, paso a paso</h1>
-        <p className="consortium-guide-lead">Una guía para pasar de la configuración inicial al cierre mensual sin perder saldos, comprobantes ni trazabilidad.</p>
-        <p className="consortium-guide-version">Actualizado en septiembre de 2026</p>
+        <p className="consortium-guide-lead">Liquidaciones, cobranzas, proveedores, tesorería y comunicación con consorcistas dentro de un circuito trazable.</p>
+        <p className="consortium-guide-version">Actualizado en octubre de 2026</p>
         <div className="d-flex flex-wrap gap-2 mt-4">
           <Link className="btn btn-light btn-lg" to="/admin/consorcios">Abrir Administración de Consorcios</Link>
           <a className="btn btn-outline-light btn-lg" href="#circuito-mensual">Ver circuito mensual</a>
@@ -53,7 +63,20 @@ const ConsortiumAdministrationGuidePage = () => (
     </section>
 
     <div className="container consortium-guide-content py-5">
-      <aside className="consortium-guide-principle mb-4">
+      <GuideCommercialOverview
+        audience="Administradores de consorcios y equipos de gestión"
+        title="Más transparencia para administrar y mejor información para el consorcista"
+        description="ONO Prop conecta liquidaciones, cuentas corrientes, cobranzas, proveedores y comunicaciones. La administración conserva trazabilidad y cada usuario consulta la información que le corresponde."
+        benefits={[
+          { title: "Circuito económico conectado", text: "Expensas, pagos, intereses, proveedores, tesorería y cierre mensual relacionados." },
+          { title: "Portal Mi Consorcio", text: "Propietarios y ocupantes consultan deuda, documentación, avisos y comunicaciones habilitadas." },
+          { title: "Seguimiento auditable", text: "Rectificaciones, reclamos, comprobantes y cambios quedan documentados sin borrar antecedentes." },
+        ]}
+        primaryAction={{ to: "/software-administracion-consorcios#solicitar-demo-consorcios", label: "Solicitar demostración" }}
+        secondaryAction={{ to: "/planes#catalogo-planes", label: "Consultar planes" }}
+      />
+
+      <aside className="consortium-guide-principle mb-4" id="manual-operativo">
         <span aria-hidden="true">✓</span>
         <div><h2>Regla principal</h2><p className="mb-0">No borres movimientos históricos para corregirlos. Usá las acciones de anulación, rectificación, archivo o cambio de estado: así la cuenta siempre conserva su explicación.</p></div>
       </aside>

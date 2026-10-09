@@ -37,7 +37,7 @@ const MODULE_LABELS = {
     branding: "Personalización",
     consultas: "Consultas",
     dominios: "Dominio propio",
-    inmuebles: "Publicación de inmuebles",
+    inmuebles: "Administración de inmuebles y publicaciones",
     instagram: "Instagram",
     mercadolibre: "Mercado Libre",
     parcelas: "Parcelas y normativa",
