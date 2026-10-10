@@ -59,6 +59,12 @@ const PrivacyPolicyPage = () => {
             referencias de inmuebles y publicaciones.
           </li>
           <li>
+            <strong>Datos de gestión:</strong> información de contratos,
+            consorcios, unidades, personas vinculadas, obligaciones, pagos,
+            gastos, comprobantes y demás documentación que una organización
+            decida administrar mediante la plataforma.
+          </li>
+          <li>
             <strong>Consultas y contactos:</strong> nombre, correo, teléfono,
             mensaje, inmueble o servicio consultado, tamaño aproximado de la
             operación, código promocional, origen, campaña, fecha y seguimiento
@@ -123,6 +129,14 @@ const PrivacyPolicyPage = () => {
           sus propios términos y políticas de privacidad. La conexión es
           voluntaria y podés desconectarla cuando quieras.
         </p>
+        <p>
+          Cuando elegís una función de asistencia con inteligencia artificial,
+          los textos, imágenes o documentos que selecciones pueden enviarse a
+          OpenAI para generar sugerencias de carga o revisión. Estas sugerencias
+          pueden contener errores y requieren confirmación humana antes de
+          incorporarse a la gestión. No utilizamos esta función para adoptar
+          decisiones automatizadas con efectos jurídicos sobre una persona.
+        </p>
       </section>
 
       <section>
@@ -139,6 +153,11 @@ const PrivacyPolicyPage = () => {
           <li>
             conectar, mantener y desconectar integraciones solicitadas por la
             persona usuaria;
+          </li>
+          <li>
+            asistir, a solicitud de la persona usuaria, la lectura, preparación
+            y revisión de información mediante herramientas de inteligencia
+            artificial;
           </li>
           <li>
             brindar soporte, registrar operaciones y comunicar cambios
@@ -171,6 +190,11 @@ const PrivacyPolicyPage = () => {
           <li>
             proveedores de infraestructura, autenticación, almacenamiento,
             correo, seguridad y soporte;
+          </li>
+          <li>
+            proveedores de inteligencia artificial, únicamente cuando la
+            persona usuaria activa una función asistida y respecto del contenido
+            que selecciona para procesar;
           </li>
           <li>
             Meta/Instagram, Mercado Libre u otra plataforma elegida para

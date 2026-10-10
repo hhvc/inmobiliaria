@@ -2597,8 +2597,17 @@ export const uploadConsortiumExpenseDocument = async ({
   expenseId,
   file,
   provider = "",
+  providerTaxId = "",
+  voucherType = "unknown",
   voucherNumber = "",
   documentDate = "",
+  dueDate = "",
+  currency = "ARS",
+  documentHash = "",
+  documentTotalMinor = 0,
+  aiAssisted = false,
+  aiConfidence = 0,
+  aiGenerationId = "",
   notes = "",
 }) => {
   await assertAgency(inmobiliariaId);
@@ -2609,6 +2618,15 @@ export const uploadConsortiumExpenseDocument = async ({
   const expense = (Array.isArray(period.expenses) ? period.expenses : [])
     .find((item) => item.id === expenseId);
   if (!expense) throw new Error("Guardá el gasto antes de adjuntar su comprobante.");
+  const normalizedHash = /^[a-f0-9]{64}$/i.test(documentHash) ? documentHash.toLowerCase() : "";
+  if (normalizedHash) {
+    const existingDocuments = await getConsortiumExpenseDocuments(inmobiliariaId, { periodId });
+    if (existingDocuments.some((item) => (
+      item.voided !== true && item.documentHash === normalizedHash
+    ))) {
+      throw new Error("Este mismo archivo ya fue incorporado a la liquidación.");
+    }
+  }
 
   const documentRef = doc(agencyCollection(inmobiliariaId, "expenseDocuments"));
   const safeName = safeConsortiumFileName(file.name);
@@ -2630,8 +2648,20 @@ export const uploadConsortiumExpenseDocument = async ({
       expenseId,
       expenseConcept: cleanText(expense.concept, 220),
       provider: cleanText(provider, 220),
+      providerTaxId: cleanText(providerTaxId, 32).replace(/[^0-9-]/g, ""),
+      voucherType: [
+        "invoice", "receipt", "credit_note", "debit_note", "ticket",
+        "service_bill", "other", "unknown",
+      ].includes(voucherType) ? voucherType : "unknown",
       voucherNumber: cleanText(voucherNumber, 120),
       documentDate: /^\d{4}-\d{2}-\d{2}$/.test(documentDate) ? documentDate : "",
+      dueDate: /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : "",
+      currency: ["ARS", "USD", "OTHER", "UNKNOWN"].includes(currency) ? currency : "ARS",
+      documentHash: normalizedHash,
+      documentTotalMinor: Math.max(0, Math.round(Number(documentTotalMinor) || 0)),
+      aiAssisted: aiAssisted === true,
+      aiConfidence: Math.min(1, Math.max(0, Number(aiConfidence) || 0)),
+      aiGenerationId: cleanText(aiGenerationId, 128),
       notes: cleanText(notes, 1000),
       fileName: safeName,
       originalFileName: cleanText(file.name, 220),

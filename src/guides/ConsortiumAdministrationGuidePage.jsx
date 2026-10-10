@@ -116,9 +116,10 @@ const ConsortiumAdministrationGuidePage = () => (
           <li><span>1</span><div><strong>Crear el período.</strong><p>Elegí mes y vencimiento y presioná “Crear borrador mensual”.</p></div></li>
           <li><span>2</span><div><strong>Elegir una base.</strong><p>Usá la preparación asistida para copiar el mes anterior o incorporar los gastos recurrentes. Los comprobantes anteriores nunca se duplican.</p></div></li>
           <li><span>3</span><div><strong>Actualizar y controlar.</strong><p>Editá los importes variables y abrí la vista previa para revisar cuánto corresponde a cada unidad.</p></div></li>
-          <li><span>4</span><div><strong>Adjuntar comprobantes.</strong><p>Relacioná cada PDF o imagen con el gasto correspondiente. Podés completar proveedor, número y fecha.</p></div></li>
+          <li><span>4</span><div><strong>Leer y adjuntar comprobantes.</strong><p>Podés relacionar cada archivo manualmente o usar la carga asistida para extraer proveedor, importe, fecha y número. La IA solo propone: revisá los datos y confirmá qué gastos incorporar.</p></div></li>
           <li><span>5</span><div><strong>Guardar y emitir.</strong><p>Al emitir se crean las obligaciones de cada unidad. El borrador deja de ser editable.</p></div></li>
         </ol>
+        <div className="consortium-guide-note"><strong>Control de duplicados.</strong> La carga asistida bloquea un archivo idéntico y advierte posibles coincidencias de proveedor y número. El comprobante original queda vinculado al gasto confirmado.</div>
         <div className="consortium-guide-note"><strong>Correcciones posteriores.</strong> Si la liquidación ya fue emitida, registrá una nota de débito o crédito desde “Rectificar liquidación emitida”. El documento original se conserva.</div>
       </GuideSection>
 

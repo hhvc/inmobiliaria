@@ -243,3 +243,7 @@ export {
   inmuebleReviewAiImages,
   inmuebleReviewAiPublication,
 } from "./inmuebleAi.js";
+
+export {
+  consortiumAnalyzeExpenseDocument,
+} from "./consortiumExpenseAi.js";

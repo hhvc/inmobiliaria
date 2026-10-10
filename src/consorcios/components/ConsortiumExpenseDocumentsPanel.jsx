@@ -8,6 +8,7 @@ import {
   uploadConsortiumExpenseDocument,
   voidConsortiumExpenseDocument,
 } from "../services/consorcio.service";
+import ConsortiumExpenseAiAssistant from "./ConsortiumExpenseAiAssistant";
 import ConsortiumPrivateDocumentButton from "./ConsortiumPrivateDocumentButton";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -18,8 +19,11 @@ const ConsortiumExpenseDocumentsPanel = ({
   period,
   expenses = [],
   documents = [],
+  coefficientGroups = [],
   canManage = false,
+  disabled = false,
   beforeUpload,
+  onIncorporateAiDocuments,
   onChanged,
 }) => {
   const [form, setForm] = useState({
@@ -110,6 +114,18 @@ const ConsortiumExpenseDocumentsPanel = ({
         {error && <div className="alert alert-danger py-2">{error}</div>}
         {success && <div className="alert alert-success py-2">{success}</div>}
 
+        {canManage && onIncorporateAiDocuments && (
+          <ConsortiumExpenseAiAssistant
+            inmobiliariaId={inmobiliariaId}
+            consortiumId={consortiumId}
+            period={period}
+            documents={documents}
+            coefficientGroups={coefficientGroups}
+            disabled={disabled}
+            onIncorporate={onIncorporateAiDocuments}
+          />
+        )}
+
         <div className="table-responsive mb-3">
           <table className="table table-sm align-middle">
             <thead><tr><th>Gasto</th><th>Proveedor / comprobante</th><th>Archivo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead>
@@ -119,7 +135,7 @@ const ConsortiumExpenseDocumentsPanel = ({
                   <td>{document.expenseConcept || document.expenseId}</td>
                   <td><div>{document.provider || "No informado"}</div><small className="text-muted">{[document.voucherNumber, document.documentDate].filter(Boolean).join(" · ") || "Sin datos adicionales"}</small></td>
                   <td>{document.originalFileName || document.fileName}</td>
-                  <td>{document.voided ? <span className="badge text-bg-dark">Anulado</span> : <span className="badge text-bg-success">Vigente</span>}{document.voidReason && <small className="d-block">{document.voidReason}</small>}</td>
+                  <td>{document.voided ? <span className="badge text-bg-dark">Anulado</span> : <span className="badge text-bg-success">Vigente</span>}{document.aiAssisted && <span className="badge text-bg-primary ms-1">Asistido por IA</span>}{document.voidReason && <small className="d-block">{document.voidReason}</small>}</td>
                   <td className="text-end"><div className="d-flex justify-content-end gap-2"><ConsortiumPrivateDocumentButton path={document.storagePath} fileName={document.originalFileName || document.fileName} />{canManage && !document.voided && <button className="btn btn-sm btn-outline-danger" disabled={operation === `void-${document.id}`} type="button" onClick={() => voidDocument(document)}>Anular</button>}</div></td>
                 </tr>
               ))}

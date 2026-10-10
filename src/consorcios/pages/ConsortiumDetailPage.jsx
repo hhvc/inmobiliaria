@@ -41,6 +41,7 @@ import {
   rejectConsortiumPaymentReport,
   saveConsortiumRecurringExpenses,
   saveConsortiumPeriodExpenses,
+  uploadConsortiumExpenseDocument,
   updateConsortiumUnit,
 } from "../services/consorcio.service";
 import {
@@ -69,6 +70,7 @@ import {
   createEmptyConsortiumUnit,
 } from "../utils/consorcio.schema";
 import { getConsortiumUnitNotificationRecipients } from "../utils/consorcioNotification.helpers";
+import { buildConsortiumExpenseFromAiDraft } from "../utils/consorcioExpenseAi.helpers";
 import "../consorcio.css";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -674,6 +676,80 @@ const ConsortiumDetailPage = () => {
     }
   };
 
+  const incorporateAiExpenseDocuments = async (drafts = []) => {
+    if (!selectedPeriod || selectedPeriod.status !== "draft") {
+      throw new Error("La liquidación ya no admite nuevos gastos.");
+    }
+    const validDrafts = drafts.filter((draft) => (
+      draft?.file && draft.concept?.trim() && Number(draft.amountMinor) > 0
+    ));
+    if (!validDrafts.length) throw new Error("No hay gastos revisados para incorporar.");
+    resetMessages();
+    setOperation("ai-expense-documents");
+    try {
+      const entries = validDrafts.map((draft) => {
+        const expenseId = makeLocalId();
+        return {
+          draft,
+          expense: buildConsortiumExpenseFromAiDraft(draft, {
+            id: expenseId,
+            coefficientGroups: consortium.coefficientGroups || [],
+          }),
+        };
+      });
+      const nextExpenses = [...periodExpenses, ...entries.map((entry) => entry.expense)];
+      await saveConsortiumPeriodExpenses({
+        inmobiliariaId: activeInmobiliariaId,
+        periodId: selectedPeriod.id,
+        expenses: nextExpenses,
+      });
+      setPeriodExpenses(nextExpenses);
+      setDraftExpensesDirty(false);
+
+      const failures = [];
+      let uploadedCount = 0;
+      for (const { draft, expense } of entries) {
+        try {
+          await uploadConsortiumExpenseDocument({
+            inmobiliariaId: activeInmobiliariaId,
+            consortiumId,
+            periodId: selectedPeriod.id,
+            expenseId: expense.id,
+            file: draft.file,
+            provider: draft.providerName,
+            providerTaxId: draft.providerTaxId,
+            voucherType: draft.voucherType,
+            voucherNumber: draft.voucherNumber,
+            documentDate: draft.issueDate,
+            dueDate: draft.dueDate,
+            currency: draft.currency,
+            documentHash: draft.documentHash,
+            documentTotalMinor: draft.amountMinor,
+            aiAssisted: true,
+            aiConfidence: draft.confidence,
+            aiGenerationId: draft.generationId,
+            notes: draft.notes,
+          });
+          uploadedCount += 1;
+        } catch (uploadError) {
+          failures.push({
+            localId: draft.localId,
+            fileName: draft.file.name,
+            message: uploadError.message || "No se pudo archivar el archivo.",
+          });
+        }
+      }
+      await load();
+      setSuccess(`${entries.length} gasto(s) revisado(s) incorporado(s) al borrador.${failures.length ? ` ${failures.length} comprobante(s) requieren adjuntarse manualmente.` : ""}`);
+      return { createdCount: entries.length, uploadedCount, failures };
+    } catch (saveError) {
+      setError(saveError.message || "No se pudieron incorporar los comprobantes revisados.");
+      throw saveError;
+    } finally {
+      setOperation("");
+    }
+  };
+
   const issuePeriod = async () => {
     if (!window.confirm("Al emitir se generará la deuda de cada unidad y ya no podrás modificar los gastos. ¿Continuar?")) return;
     try {
@@ -1221,8 +1297,11 @@ const ConsortiumDetailPage = () => {
           period={selectedPeriod}
           expenses={selectedPeriod.status === "draft" ? periodExpenses : selectedPeriod.expenses || []}
           documents={selectedExpenseDocuments}
+          coefficientGroups={consortium.coefficientGroups || []}
           canManage={canManage}
+          disabled={Boolean(operation)}
           beforeUpload={selectedPeriod.status === "draft" ? () => saveExpenses({ showSuccess: false }) : undefined}
+          onIncorporateAiDocuments={incorporateAiExpenseDocuments}
           onChanged={load}
         />
       )}
