@@ -10,6 +10,7 @@ import {
 } from "../services/consorcio.service";
 import ConsortiumExpenseAiAssistant from "./ConsortiumExpenseAiAssistant";
 import ConsortiumPrivateDocumentButton from "./ConsortiumPrivateDocumentButton";
+import { formatConsortiumMoney } from "../utils/consorcio.helpers";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -133,7 +134,19 @@ const ConsortiumExpenseDocumentsPanel = ({
               {documents.map((document) => (
                 <tr className={document.voided ? "text-muted" : ""} key={document.id}>
                   <td>{document.expenseConcept || document.expenseId}</td>
-                  <td><div>{document.provider || "No informado"}</div><small className="text-muted">{[document.voucherNumber, document.documentDate].filter(Boolean).join(" · ") || "Sin datos adicionales"}</small></td>
+                  <td>
+                    <div>{document.provider || "No informado"}</div>
+                    <small className="text-muted">{[document.voucherNumber, document.documentDate].filter(Boolean).join(" · ") || "Sin datos adicionales"}</small>
+                    {(document.recipientName || document.recipientTaxId || document.documentNetMinor || document.documentTaxMinor || document.cae) && (
+                      <details className="small mt-1">
+                        <summary className="text-primary">Datos fiscales</summary>
+                        {(document.recipientName || document.recipientTaxId) && <div>Receptor: {[document.recipientName, document.recipientTaxId].filter(Boolean).join(" · ")}</div>}
+                        {Number(document.documentNetMinor || 0) > 0 && <div>Neto: {formatConsortiumMoney(document.documentNetMinor, document.currency)}</div>}
+                        {Number(document.documentTaxMinor || 0) > 0 && <div>IVA: {formatConsortiumMoney(document.documentTaxMinor, document.currency)}</div>}
+                        {document.cae && <div>CAE: {document.cae}{document.caeDueDate ? ` · vence ${document.caeDueDate}` : ""}</div>}
+                      </details>
+                    )}
+                  </td>
                   <td>{document.originalFileName || document.fileName}</td>
                   <td>{document.voided ? <span className="badge text-bg-dark">Anulado</span> : <span className="badge text-bg-success">Vigente</span>}{document.aiAssisted && <span className="badge text-bg-primary ms-1">Asistido por IA</span>}{document.voidReason && <small className="d-block">{document.voidReason}</small>}</td>
                   <td className="text-end"><div className="d-flex justify-content-end gap-2"><ConsortiumPrivateDocumentButton path={document.storagePath} fileName={document.originalFileName || document.fileName} />{canManage && !document.voided && <button className="btn btn-sm btn-outline-danger" disabled={operation === `void-${document.id}`} type="button" onClick={() => voidDocument(document)}>Anular</button>}</div></td>

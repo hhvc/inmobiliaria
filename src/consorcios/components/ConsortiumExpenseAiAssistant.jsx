@@ -49,6 +49,8 @@ const buildDraft = ({
     file,
     providerName: result.providerName || "",
     providerTaxId: result.providerTaxId || "",
+    recipientName: result.recipientName || "",
+    recipientTaxId: result.recipientTaxId || "",
     voucherType: result.voucherType || "unknown",
     voucherNumber: result.voucherNumber || "",
     issueDate: result.issueDate || "",
@@ -56,6 +58,12 @@ const buildDraft = ({
     currency: ["ARS", "USD"].includes(result.currency) ? result.currency : periodCurrency,
     amountMinor: Number(result.totalAmountMinor || 0),
     amountMajor: minorToMajorInput(result.totalAmountMinor || 0),
+    netAmountMinor: Number(result.netAmountMinor || 0),
+    netAmountMajor: minorToMajorInput(result.netAmountMinor || 0),
+    taxAmountMinor: Number(result.taxAmountMinor || 0),
+    taxAmountMajor: minorToMajorInput(result.taxAmountMinor || 0),
+    cae: result.cae || "",
+    caeDueDate: result.caeDueDate || "",
     concept: result.suggestedConcept || "",
     category: result.suggestedCategory || "ordinary",
     distributionMode: result.suggestedDistributionMode === "equal" ? "equal" : "coefficient",
@@ -276,11 +284,17 @@ const ConsortiumExpenseAiAssistant = ({
                     <div className="col-sm-6 col-lg-2"><label className="form-label">Moneda</label><select className="form-select" value={draft.currency} onChange={(event) => updateDraft(draft.localId, { currency: event.target.value })}><option value="ARS">ARS</option><option value="USD">USD</option></select></div>
                     <div className="col-lg-2"><label className="form-label">Categoría</label><select className="form-select" value={draft.category} onChange={(event) => updateDraft(draft.localId, { category: event.target.value })}>{CONSORTIUM_EXPENSE_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
                     <div className="col-lg-4"><label className="form-label">Proveedor</label><input className="form-control" value={draft.providerName} onChange={(event) => updateDraft(draft.localId, { providerName: event.target.value })} /></div>
-                    <div className="col-sm-6 col-lg-2"><label className="form-label">CUIT</label><input className="form-control" value={draft.providerTaxId} onChange={(event) => updateDraft(draft.localId, { providerTaxId: event.target.value })} /></div>
+                    <div className="col-sm-6 col-lg-2"><label className="form-label">CUIT proveedor</label><input className="form-control" value={draft.providerTaxId} onChange={(event) => updateDraft(draft.localId, { providerTaxId: event.target.value })} /></div>
                     <div className="col-sm-6 col-lg-2"><label className="form-label">Tipo</label><select className="form-select" value={draft.voucherType} onChange={(event) => updateDraft(draft.localId, { voucherType: event.target.value })}>{voucherTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
                     <div className="col-lg-2"><label className="form-label">N.º comprobante</label><input className="form-control" value={draft.voucherNumber} onChange={(event) => updateDraft(draft.localId, { voucherNumber: event.target.value })} /></div>
                     <div className="col-lg-2"><label className="form-label">Fecha</label><input className="form-control" type="date" value={draft.issueDate} onChange={(event) => updateDraft(draft.localId, { issueDate: event.target.value })} /></div>
                     <div className="col-lg-2"><label className="form-label">Vencimiento</label><input className="form-control" type="date" value={draft.dueDate} onChange={(event) => updateDraft(draft.localId, { dueDate: event.target.value })} /></div>
+                    <div className="col-lg-4"><label className="form-label">Receptor</label><input className="form-control" value={draft.recipientName} onChange={(event) => updateDraft(draft.localId, { recipientName: event.target.value })} /></div>
+                    <div className="col-sm-6 col-lg-2"><label className="form-label">CUIT receptor</label><input className="form-control" value={draft.recipientTaxId} onChange={(event) => updateDraft(draft.localId, { recipientTaxId: event.target.value })} /></div>
+                    <div className="col-sm-6 col-lg-2"><label className="form-label">Neto gravado</label><input className="form-control" inputMode="decimal" value={draft.netAmountMajor} onChange={(event) => updateDraft(draft.localId, { netAmountMajor: event.target.value, netAmountMinor: majorToMinor(event.target.value) })} /></div>
+                    <div className="col-sm-6 col-lg-2"><label className="form-label">IVA</label><input className="form-control" inputMode="decimal" value={draft.taxAmountMajor} onChange={(event) => updateDraft(draft.localId, { taxAmountMajor: event.target.value, taxAmountMinor: majorToMinor(event.target.value) })} /></div>
+                    <div className="col-sm-6 col-lg-2"><label className="form-label">CAE</label><input className="form-control" inputMode="numeric" value={draft.cae} onChange={(event) => updateDraft(draft.localId, { cae: event.target.value })} /></div>
+                    <div className="col-sm-6 col-lg-2"><label className="form-label">Vencimiento CAE</label><input className="form-control" type="date" value={draft.caeDueDate} onChange={(event) => updateDraft(draft.localId, { caeDueDate: event.target.value })} /></div>
                     <div className="col-lg-3"><label className="form-label">Distribución</label><select className="form-select" value={draft.distributionMode} onChange={(event) => updateDraft(draft.localId, { distributionMode: event.target.value })}>{CONSORTIUM_DISTRIBUTION_MODES.filter((item) => item.id !== "specific").map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
                     {draft.distributionMode === "coefficient" && <div className="col-lg-3"><label className="form-label">Grupo de coeficientes</label><select className="form-select" value={draft.coefficientGroupId} onChange={(event) => updateDraft(draft.localId, { coefficientGroupId: event.target.value, coefficientGroupHint: event.target.value })}>{coefficientGroups.filter((group) => group.active !== false).map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></div>}
                     <div className="col"><label className="form-label">Observaciones internas</label><input className="form-control" value={draft.notes} onChange={(event) => updateDraft(draft.localId, { notes: event.target.value })} /></div>
