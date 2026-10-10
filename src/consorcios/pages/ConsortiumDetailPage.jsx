@@ -116,7 +116,9 @@ const ConsortiumDetailPage = () => {
   const [paymentReports, setPaymentReports] = useState([]);
   const [treasuryAccounts, setTreasuryAccounts] = useState([]);
   const [consortiumSuppliers, setConsortiumSuppliers] = useState([]);
+  const [supplierObligations, setSupplierObligations] = useState([]);
   const [treasuryRefreshKey, setTreasuryRefreshKey] = useState(0);
+  const [payableRequest, setPayableRequest] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [periodExpenses, setPeriodExpenses] = useState([]);
   const [draftExpensesDirty, setDraftExpensesDirty] = useState(false);
@@ -977,6 +979,22 @@ const ConsortiumDetailPage = () => {
     setActiveWorkspace(area);
   };
 
+  const prepareExpensePayable = (document, obligation = null) => {
+    resetMessages();
+    if (document?.periodId) setSelectedPeriodId(document.periodId);
+    setActiveWorkspace("treasury");
+    setPayableRequest({
+      nonce: `${Date.now()}-${document?.id || "expense"}`,
+      document,
+      obligationId: obligation?.id || "",
+    });
+    setTimeout(() => {
+      document?.id && globalThis.document
+        ?.getElementById("proveedores-tesoreria")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
+
   const closePeriod = async () => {
     try {
       resetMessages();
@@ -1224,7 +1242,9 @@ const ConsortiumDetailPage = () => {
           periods={periods}
           canManage={canManage}
           refreshKey={treasuryRefreshKey}
+          payableRequest={payableRequest}
           onAccountsChanged={setTreasuryAccounts}
+          onObligationsChanged={setSupplierObligations}
           onSuppliersChanged={setConsortiumSuppliers}
         />
       </div>
@@ -1303,11 +1323,13 @@ const ConsortiumDetailPage = () => {
           period={selectedPeriod}
           expenses={selectedPeriod.status === "draft" ? periodExpenses : selectedPeriod.expenses || []}
           documents={selectedExpenseDocuments}
+          supplierObligations={supplierObligations}
           coefficientGroups={consortium.coefficientGroups || []}
           canManage={canManage}
           disabled={Boolean(operation)}
           beforeUpload={selectedPeriod.status === "draft" ? () => saveExpenses({ showSuccess: false }) : undefined}
           onIncorporateAiDocuments={incorporateAiExpenseDocuments}
+          onPreparePayable={prepareExpensePayable}
           onChanged={load}
         />
       )}

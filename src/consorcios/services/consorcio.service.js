@@ -3008,6 +3008,17 @@ export const saveConsortiumSupplier = async ({ inmobiliariaId, supplierId = "", 
   if (!normalized.name) throw new Error("Ingresá el nombre del proveedor.");
   const consortium = await getConsortiumById(inmobiliariaId, normalized.consortiumId);
   if (!consortium) throw new Error("El consorcio no existe.");
+  if (!supplierId && normalized.taxId) {
+    const normalizedTaxId = normalized.taxId.replace(/\D/g, "");
+    const existingSuppliers = await getConsortiumSuppliers(inmobiliariaId, normalized.consortiumId);
+    if (existingSuppliers.some((supplier) => (
+      supplier.active !== false
+      && supplier.deleted !== true
+      && supplier.taxId?.replace?.(/\D/g, "") === normalizedTaxId
+    ))) {
+      throw new Error("Ya existe un proveedor activo con ese CUIT.");
+    }
+  }
   if (supplierId) {
     const targetRef = agencyDoc(inmobiliariaId, "suppliers", supplierId);
     const current = await getDoc(targetRef);
@@ -3204,6 +3215,7 @@ export const createConsortiumSupplierObligation = async ({
   amountMinor,
   periodId = "",
   expenseId = "",
+  expenseDocumentId = "",
   notes = "",
   file = null,
 }) => {
@@ -3231,6 +3243,32 @@ export const createConsortiumSupplierObligation = async ({
   }
   const obligationRef = doc(agencyCollection(inmobiliariaId, "supplierObligations"));
   let document = {};
+  let uploadedDocumentPath = "";
+  if (expenseDocumentId) {
+    if (file) throw new Error("El comprobante del gasto ya está archivado; no hace falta adjuntarlo otra vez.");
+    const expenseDocumentSnap = await getDoc(
+      agencyDoc(inmobiliariaId, "expenseDocuments", expenseDocumentId),
+    );
+    const expenseDocument = expenseDocumentSnap.data();
+    if (
+      !expenseDocumentSnap.exists()
+      || expenseDocument.voided === true
+      || expenseDocument.consortiumId !== consortiumId
+      || expenseDocument.periodId !== periodId
+      || expenseDocument.expenseId !== expenseId
+      || !expenseDocument.storagePath
+    ) {
+      throw new Error("El comprobante vinculado no está vigente o no corresponde a este gasto.");
+    }
+    document = {
+      expenseDocumentId,
+      documentOrigin: "expense_document",
+      documentStoragePath: expenseDocument.storagePath,
+      documentFileName: expenseDocument.originalFileName || expenseDocument.fileName || "comprobante",
+      documentContentType: expenseDocument.contentType || "",
+      documentSize: Number(expenseDocument.size || 0),
+    };
+  }
   if (file) {
     validateConsortiumFileOrThrow(file);
     const safeName = safeConsortiumFileName(file.name);
@@ -3240,6 +3278,7 @@ export const createConsortiumSupplierObligation = async ({
       path,
       metadata: { inmobiliariaId, consortiumId, obligationId: obligationRef.id, uploadedBy: user.uid },
     });
+    uploadedDocumentPath = path;
     document = {
       documentStoragePath: path,
       documentFileName: safeName,
@@ -3285,8 +3324,8 @@ export const createConsortiumSupplierObligation = async ({
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
-    if (document.documentStoragePath) {
-      await deleteObject(storageRef(storage, document.documentStoragePath)).catch(() => {});
+    if (uploadedDocumentPath) {
+      await deleteObject(storageRef(storage, uploadedDocumentPath)).catch(() => {});
     }
     throw error;
   }

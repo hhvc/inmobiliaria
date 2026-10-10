@@ -11,6 +11,7 @@ import {
 import ConsortiumExpenseAiAssistant from "./ConsortiumExpenseAiAssistant";
 import ConsortiumPrivateDocumentButton from "./ConsortiumPrivateDocumentButton";
 import { formatConsortiumMoney } from "../utils/consorcio.helpers";
+import { findConsortiumPayableForDocument } from "../utils/consorcioTreasury.helpers";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -20,11 +21,13 @@ const ConsortiumExpenseDocumentsPanel = ({
   period,
   expenses = [],
   documents = [],
+  supplierObligations = [],
   coefficientGroups = [],
   canManage = false,
   disabled = false,
   beforeUpload,
   onIncorporateAiDocuments,
+  onPreparePayable,
   onChanged,
 }) => {
   const [form, setForm] = useState({
@@ -131,7 +134,12 @@ const ConsortiumExpenseDocumentsPanel = ({
           <table className="table table-sm align-middle">
             <thead><tr><th>Gasto</th><th>Proveedor / comprobante</th><th>Archivo</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead>
             <tbody>
-              {documents.map((document) => (
+              {documents.map((document) => {
+                const linkedObligation = findConsortiumPayableForDocument(
+                  document,
+                  supplierObligations,
+                );
+                return (
                 <tr className={document.voided ? "text-muted" : ""} key={document.id}>
                   <td>{document.expenseConcept || document.expenseId}</td>
                   <td>
@@ -149,9 +157,10 @@ const ConsortiumExpenseDocumentsPanel = ({
                   </td>
                   <td>{document.originalFileName || document.fileName}</td>
                   <td>{document.voided ? <span className="badge text-bg-dark">Anulado</span> : <span className="badge text-bg-success">Vigente</span>}{document.aiAssisted && <span className="badge text-bg-primary ms-1">Asistido por IA</span>}{document.voidReason && <small className="d-block">{document.voidReason}</small>}</td>
-                  <td className="text-end"><div className="d-flex justify-content-end gap-2"><ConsortiumPrivateDocumentButton path={document.storagePath} fileName={document.originalFileName || document.fileName} />{canManage && !document.voided && <button className="btn btn-sm btn-outline-danger" disabled={operation === `void-${document.id}`} type="button" onClick={() => voidDocument(document)}>Anular</button>}</div></td>
+                  <td className="text-end"><div className="d-flex flex-wrap justify-content-end gap-2"><ConsortiumPrivateDocumentButton path={document.storagePath} fileName={document.originalFileName || document.fileName} />{canManage && !document.voided && onPreparePayable && <button className={`btn btn-sm ${linkedObligation ? "btn-outline-success" : "btn-outline-primary"}`} type="button" onClick={() => onPreparePayable(document, linkedObligation)}>{linkedObligation ? "Ver cuenta a pagar" : "Preparar cuenta a pagar"}</button>}{canManage && !document.voided && <button className="btn btn-sm btn-outline-danger" disabled={operation === `void-${document.id}` || Boolean(linkedObligation)} title={linkedObligation ? "Anulá primero la cuenta a pagar vinculada." : ""} type="button" onClick={() => voidDocument(document)}>Anular</button>}</div></td>
                 </tr>
-              ))}
+                );
+              })}
               {!documents.length && <tr><td className="text-center text-muted py-4" colSpan="5">No se adjuntaron comprobantes.</td></tr>}
             </tbody>
           </table>

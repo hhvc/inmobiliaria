@@ -50,6 +50,11 @@ import {
   createEmptyConsortiumTreasuryReconciliation,
   createEmptyConsortiumTreasuryTransfer,
 } from "../utils/consorcio.schema";
+import {
+  buildConsortiumPayableDraftFromDocument,
+  buildConsortiumSupplierDraftFromDocument,
+  findConsortiumSupplierForDocument,
+} from "../utils/consorcioTreasury.helpers";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
 const thisMonth = () => todayKey().slice(0, 7);
@@ -137,7 +142,9 @@ const ConsortiumTreasuryPanel = ({
   periods = [],
   canManage = false,
   refreshKey = 0,
+  payableRequest = null,
   onAccountsChanged,
+  onObligationsChanged,
   onSuppliersChanged,
 }) => {
   const consortiumId = consortium?.id || "";
@@ -163,6 +170,7 @@ const ConsortiumTreasuryPanel = ({
   const [showObligationForm, setShowObligationForm] = useState(false);
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [showAccountForm, setShowAccountForm] = useState(false);
+  const [pendingPayableDraft, setPendingPayableDraft] = useState(null);
   const [treasuryAction, setTreasuryAction] = useState("");
   const [obligationStatusFilter, setObligationStatusFilter] = useState("open");
   const [obligationSearch, setObligationSearch] = useState("");
@@ -170,11 +178,13 @@ const ConsortiumTreasuryPanel = ({
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [payableWarning, setPayableWarning] = useState("");
   const supplierFormRef = useRef(null);
   const obligationFormRef = useRef(null);
   const paymentFormRef = useRef(null);
   const accountFormRef = useRef(null);
   const treasuryActionFormRef = useRef(null);
+  const processedPayableRequestRef = useRef("");
 
   const load = useCallback(async () => {
     if (!inmobiliariaId || !consortiumId) return;
@@ -200,6 +210,7 @@ const ConsortiumTreasuryPanel = ({
       setAccounts(accountData);
       onAccountsChanged?.(accountData);
       setObligations(obligationData);
+      onObligationsChanged?.(obligationData);
       setPayments(paymentData);
       setMovements(movementData);
       setReconciliations(reconciliationData);
@@ -208,7 +219,7 @@ const ConsortiumTreasuryPanel = ({
     } finally {
       setLoading(false);
     }
-  }, [consortiumId, inmobiliariaId, onAccountsChanged, onSuppliersChanged]);
+  }, [consortiumId, inmobiliariaId, onAccountsChanged, onObligationsChanged, onSuppliersChanged]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
   useEffect(() => {
@@ -241,6 +252,72 @@ const ConsortiumTreasuryPanel = ({
     })) : []
   )), [currency, obligations, periods]);
 
+  useEffect(() => {
+    const requestKey = payableRequest?.nonce?.toString?.() || "";
+    if (!requestKey || loading || processedPayableRequestRef.current === requestKey) return;
+    processedPayableRequestRef.current = requestKey;
+    const document = payableRequest.document || {};
+    setActiveView("obligations");
+    setShowSupplierForm(false);
+    setShowObligationForm(false);
+    setEditingSupplierId("");
+    setEditingObligationId("");
+    setPendingPayableDraft(null);
+    setError("");
+    setPayableWarning("");
+    if (payableRequest.obligationId) {
+      setObligationStatusFilter("all");
+      setObligationSearch(document.voucherNumber || document.provider || document.expenseConcept || "");
+      setSuccess("El gasto ya tiene una cuenta a pagar activa. Se mostró en el listado.");
+      return;
+    }
+    const link = document.periodId && document.expenseId
+      ? `${document.periodId}::${document.expenseId}` : "";
+    const expense = availableExpenses.find((item) => item.link === link);
+    if (!expense) {
+      setError("No se encontró el gasto vinculado al comprobante. Actualizá la liquidación y reintentá.");
+      return;
+    }
+    if (expense.linked) {
+      setError("Ese gasto ya tiene una cuenta a pagar activa y no puede duplicarse.");
+      return;
+    }
+    const supplierMatch = findConsortiumSupplierForDocument(document, suppliers);
+    const draft = buildConsortiumPayableDraftFromDocument({
+      consortiumId,
+      document,
+      expense,
+      supplierId: supplierMatch.supplier?.id || "",
+      currency,
+    });
+    const warningParts = [];
+    const documentTotalMinor = Math.max(0, Number(document.documentTotalMinor) || 0);
+    if (documentTotalMinor && documentTotalMinor !== Number(expense.amountMinor || 0)) {
+      warningParts.push(`El comprobante informa ${formatConsortiumMoney(documentTotalMinor, document.currency || draft.currency)} y el gasto liquidado ${formatConsortiumMoney(expense.amountMinor, draft.currency)}.`);
+    }
+    if (
+      document.currency
+      && document.currency !== "UNKNOWN"
+      && document.currency !== draft.currency
+    ) {
+      warningParts.push(`La moneda leída (${document.currency}) difiere de la liquidación (${draft.currency}); se conservó el importe del gasto.`);
+    }
+    setPayableWarning(warningParts.join(" "));
+    if (supplierMatch.supplier) {
+      setObligationForm({ ...emptyObligationForm(consortiumId, currency), ...draft });
+      setShowObligationForm(true);
+      setSuccess(`Proveedor reconocido por ${supplierMatch.matchType === "tax_id" ? "CUIT" : "nombre"}. Revisá los datos y confirmá la cuenta a pagar.`);
+      focusForm(obligationFormRef);
+      return;
+    }
+    setPendingPayableDraft(draft);
+    setSupplierForm(buildConsortiumSupplierDraftFromDocument({ consortiumId, document }));
+    setActiveView("suppliers");
+    setShowSupplierForm(true);
+    setSuccess("El proveedor todavía no está en el padrón. Revisá sus datos y crealo para continuar; la cuenta a pagar no se registrará hasta tu confirmación.");
+    focusForm(supplierFormRef);
+  }, [availableExpenses, consortiumId, currency, loading, payableRequest, suppliers]);
+
   const pendingMinor = useMemo(() => obligations
     .filter((item) => item.voided !== true)
     .reduce((sum, item) => sum + Math.max(0, Number(item.balanceMinor) || 0), 0), [obligations]);
@@ -266,7 +343,7 @@ const ConsortiumTreasuryPanel = ({
   const reconciliationDifference = majorToMinor(reconciliationForm.statementBalanceMajor)
     - reconciliationBookBalance;
 
-  const clearMessages = () => { setError(""); setSuccess(""); };
+  const clearMessages = () => { setError(""); setSuccess(""); setPayableWarning(""); };
 
   const focusForm = (formRef) => {
     window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
@@ -277,6 +354,7 @@ const ConsortiumTreasuryPanel = ({
 
   const openNewSupplier = () => {
     clearMessages();
+    setPendingPayableDraft(null);
     setEditingSupplierId("");
     setSupplierForm(emptySupplierForm(consortiumId));
     setShowSupplierForm(true);
@@ -285,6 +363,7 @@ const ConsortiumTreasuryPanel = ({
 
   const openNewObligation = () => {
     clearMessages();
+    setPendingPayableDraft(null);
     setEditingObligationId("");
     setObligationForm(emptyObligationForm(consortiumId, currency));
     setShowObligationForm(true);
@@ -409,19 +488,35 @@ const ConsortiumTreasuryPanel = ({
 
   const submitSupplier = async (event) => {
     event.preventDefault();
+    const payableWarningBeforeSave = payableWarning;
     try {
       clearMessages();
       setOperation("supplier");
-      await saveConsortiumSupplier({
+      const savedSupplierId = await saveConsortiumSupplier({
         inmobiliariaId,
         supplierId: editingSupplierId,
         value: supplierForm,
       });
+      const continuePayable = !editingSupplierId && pendingPayableDraft;
       setSupplierForm(emptySupplierForm(consortiumId));
       setEditingSupplierId("");
       setShowSupplierForm(false);
-      setSuccess(editingSupplierId ? "Proveedor actualizado." : "Proveedor incorporado al padrón.");
       await load();
+      if (continuePayable) {
+        setActiveView("obligations");
+        setObligationForm({
+          ...emptyObligationForm(consortiumId, currency),
+          ...continuePayable,
+          supplierId: savedSupplierId,
+        });
+        setPendingPayableDraft(null);
+        setShowObligationForm(true);
+        setPayableWarning(payableWarningBeforeSave);
+        setSuccess("Proveedor creado. Revisá y confirmá la cuenta a pagar; todavía no se registró ninguna obligación.");
+        focusForm(obligationFormRef);
+      } else {
+        setSuccess(editingSupplierId ? "Proveedor actualizado." : "Proveedor incorporado al padrón.");
+      }
     } catch (saveError) {
       setError(saveError.message || "No se pudo guardar el proveedor.");
     } finally {
@@ -641,6 +736,7 @@ const ConsortiumTreasuryPanel = ({
 
         {error && <div className="alert alert-danger">{error}</div>}
         {success && <div className="alert alert-success">{success}</div>}
+        {payableWarning && <div className="alert alert-warning"><strong>Revisá el importe.</strong> {payableWarning}</div>}
         {loading && <div className="text-center text-muted py-4">Cargando gestión financiera...</div>}
 
         {!loading && <>
@@ -654,7 +750,7 @@ const ConsortiumTreasuryPanel = ({
           {activeView === "suppliers" && <div>
             <div className="d-flex justify-content-between align-items-center gap-2 mb-3"><div><h3 className="h6 mb-1">Padrón de proveedores</h3><small className="text-muted">Los datos quedan disponibles para futuras liquidaciones y pagos.</small></div>{canManage && <button className="btn btn-sm btn-outline-primary" type="button" onClick={openNewSupplier}>Agregar proveedor</button>}</div>
             {canManage && showSupplierForm && <form ref={supplierFormRef} className="rounded border bg-light p-3 mb-4" onSubmit={submitSupplier}>
-              <div className="row g-3"><div className="col-md-4"><label className="form-label">Nombre habitual *</label><input className="form-control" value={supplierForm.name} onChange={(event) => setSupplierForm((current) => ({ ...current, name: event.target.value }))} required /></div><div className="col-md-4"><label className="form-label">Razón social</label><input className="form-control" value={supplierForm.legalName} onChange={(event) => setSupplierForm((current) => ({ ...current, legalName: event.target.value }))} /></div><div className="col-md-4"><label className="form-label">CUIT / documento</label><input className="form-control" value={supplierForm.taxId} onChange={(event) => setSupplierForm((current) => ({ ...current, taxId: event.target.value }))} /></div><div className="col-md-4"><label className="form-label">Rubro</label><select className="form-select" value={supplierForm.category} onChange={(event) => setSupplierForm((current) => ({ ...current, category: event.target.value }))}>{CONSORTIUM_SUPPLIER_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div><div className="col-md-4"><label className="form-label">Email</label><input className="form-control" type="email" value={supplierForm.email} onChange={(event) => setSupplierForm((current) => ({ ...current, email: event.target.value }))} /></div><div className="col-md-4"><label className="form-label">Teléfono</label><input className="form-control" value={supplierForm.phone} onChange={(event) => setSupplierForm((current) => ({ ...current, phone: event.target.value }))} /></div><div className="col-md-6"><label className="form-label">Domicilio</label><input className="form-control" value={supplierForm.address} onChange={(event) => setSupplierForm((current) => ({ ...current, address: event.target.value }))} /></div><div className="col-md-6"><label className="form-label">CBU / alias</label><input className="form-control" value={supplierForm.bankAccount} onChange={(event) => setSupplierForm((current) => ({ ...current, bankAccount: event.target.value }))} /></div><div className="col-12"><label className="form-label">Notas</label><input className="form-control" value={supplierForm.notes} onChange={(event) => setSupplierForm((current) => ({ ...current, notes: event.target.value }))} /></div><div className="col-12 d-flex justify-content-end gap-2"><button className="btn btn-outline-secondary" type="button" onClick={() => setShowSupplierForm(false)}>Cancelar</button><button className="btn btn-primary" disabled={operation === "supplier"} type="submit">{operation === "supplier" ? "Guardando..." : editingSupplierId ? "Guardar cambios" : "Crear proveedor"}</button></div></div>
+              <div className="row g-3"><div className="col-md-4"><label className="form-label">Nombre habitual *</label><input className="form-control" value={supplierForm.name} onChange={(event) => setSupplierForm((current) => ({ ...current, name: event.target.value }))} required /></div><div className="col-md-4"><label className="form-label">Razón social</label><input className="form-control" value={supplierForm.legalName} onChange={(event) => setSupplierForm((current) => ({ ...current, legalName: event.target.value }))} /></div><div className="col-md-4"><label className="form-label">CUIT / documento</label><input className="form-control" value={supplierForm.taxId} onChange={(event) => setSupplierForm((current) => ({ ...current, taxId: event.target.value }))} /></div><div className="col-md-4"><label className="form-label">Rubro</label><select className="form-select" value={supplierForm.category} onChange={(event) => setSupplierForm((current) => ({ ...current, category: event.target.value }))}>{CONSORTIUM_SUPPLIER_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div><div className="col-md-4"><label className="form-label">Email</label><input className="form-control" type="email" value={supplierForm.email} onChange={(event) => setSupplierForm((current) => ({ ...current, email: event.target.value }))} /></div><div className="col-md-4"><label className="form-label">Teléfono</label><input className="form-control" value={supplierForm.phone} onChange={(event) => setSupplierForm((current) => ({ ...current, phone: event.target.value }))} /></div><div className="col-md-6"><label className="form-label">Domicilio</label><input className="form-control" value={supplierForm.address} onChange={(event) => setSupplierForm((current) => ({ ...current, address: event.target.value }))} /></div><div className="col-md-6"><label className="form-label">CBU / alias</label><input className="form-control" value={supplierForm.bankAccount} onChange={(event) => setSupplierForm((current) => ({ ...current, bankAccount: event.target.value }))} /></div><div className="col-12"><label className="form-label">Notas</label><input className="form-control" value={supplierForm.notes} onChange={(event) => setSupplierForm((current) => ({ ...current, notes: event.target.value }))} /></div><div className="col-12 d-flex justify-content-end gap-2"><button className="btn btn-outline-secondary" type="button" onClick={() => { setShowSupplierForm(false); setPendingPayableDraft(null); }}>Cancelar</button><button className="btn btn-primary" disabled={operation === "supplier"} type="submit">{operation === "supplier" ? "Guardando..." : editingSupplierId ? "Guardar cambios" : pendingPayableDraft ? "Crear y continuar" : "Crear proveedor"}</button></div></div>
             </form>}
             <div className="table-responsive"><table className="table table-hover align-middle"><thead><tr><th>Proveedor</th><th>Rubro</th><th>Contacto</th><th>Datos de pago</th><th>Estado</th><th className="text-end">Acciones</th></tr></thead><tbody>{suppliers.map((supplier) => <tr key={supplier.id}><td><strong>{supplier.name}</strong><small className="d-block text-muted">{supplier.legalName || supplier.taxId || "Sin datos fiscales"}</small></td><td>{getConsortiumSupplierCategory(supplier.category).label}</td><td>{supplier.email || supplier.phone || "—"}</td><td>{supplier.bankAccount || "—"}</td><td><span className={`badge ${supplier.active !== false ? "text-bg-success" : "text-bg-secondary"}`}>{supplier.active !== false ? "Activo" : "Archivado"}</span></td><td className="text-end">{canManage && supplier.active !== false && <div className="btn-group btn-group-sm"><button className="btn btn-outline-secondary" type="button" onClick={() => editSupplier(supplier)}>Editar</button><button className="btn btn-outline-danger" disabled={operation === `archive-supplier-${supplier.id}`} type="button" onClick={() => archiveSupplier(supplier)}>Archivar</button></div>}</td></tr>)}{!suppliers.length && <tr><td className="text-center text-muted py-4" colSpan="6">Todavía no hay proveedores cargados.</td></tr>}</tbody></table></div>
           </div>}
@@ -663,7 +759,7 @@ const ConsortiumTreasuryPanel = ({
             <div className="d-flex justify-content-between align-items-center gap-2 mb-3"><div><h3 className="h6 mb-1">Cuentas a pagar</h3><small className="text-muted">Vinculá un gasto liquidado o registrá una obligación independiente.</small></div>{canManage && <button className="btn btn-sm btn-outline-primary" disabled={!activeSuppliers.length} type="button" onClick={openNewObligation}>Nueva obligación</button>}</div>
             {canManage && !activeSuppliers.length && <div className="alert alert-info small">Primero cargá al menos un proveedor desde la pestaña Proveedores.</div>}
             {canManage && showObligationForm && <form ref={obligationFormRef} className="rounded border bg-light p-3 mb-4" onSubmit={submitObligation}>
-              <div className="row g-3"><div className="col-md-4"><label className="form-label">Proveedor *</label><select className="form-select" value={obligationForm.supplierId} onChange={(event) => setObligationForm((current) => ({ ...current, supplierId: event.target.value }))} required><option value="">Seleccionar...</option>{activeSuppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div className="col-md-8"><label className="form-label">Gasto de una liquidación</label><select className="form-select" value={obligationForm.expenseLink} onChange={(event) => selectExpense(event.target.value)}><option value="">Obligación independiente</option>{availableExpenses.map((item) => <option key={item.link} value={item.link} disabled={item.linked && item.link !== obligationForm.expenseLink}>{item.periodKey} · {item.concept}{item.linked && item.link !== obligationForm.expenseLink ? " · ya vinculado" : ""}</option>)}</select></div><div className="col-md-6"><label className="form-label">Concepto *</label><input className="form-control" value={obligationForm.concept} onChange={(event) => setObligationForm((current) => ({ ...current, concept: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Tipo de comprobante</label><select className="form-select" value={obligationForm.voucherType} onChange={(event) => setObligationForm((current) => ({ ...current, voucherType: event.target.value }))}>{Object.entries(voucherLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div><div className="col-md-3"><label className="form-label">Número</label><input className="form-control" value={obligationForm.voucherNumber} onChange={(event) => setObligationForm((current) => ({ ...current, voucherNumber: event.target.value }))} /></div><div className="col-md-3"><label className="form-label">Fecha *</label><input className="form-control" type="date" value={obligationForm.issueDate} onChange={(event) => setObligationForm((current) => ({ ...current, issueDate: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Vencimiento *</label><input className="form-control" type="date" value={obligationForm.dueDate} onChange={(event) => setObligationForm((current) => ({ ...current, dueDate: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Importe *</label><input className="form-control" inputMode="decimal" value={obligationForm.amountMajor} onChange={(event) => setObligationForm((current) => ({ ...current, amountMajor: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Moneda</label><input className="form-control" value={obligationForm.currency} readOnly /></div>{!editingObligationId && <div className="col-md-6"><label className="form-label">Comprobante adjunto</label><input className="form-control" type="file" accept={CONSORTIUM_DOCUMENT_ACCEPT} onChange={(event) => setObligationForm((current) => ({ ...current, file: event.target.files?.[0] || null }))} /></div>}<div className={editingObligationId ? "col-12" : "col-md-6"}><label className="form-label">Notas</label><input className="form-control" value={obligationForm.notes} onChange={(event) => setObligationForm((current) => ({ ...current, notes: event.target.value }))} /></div><div className="col-12 d-flex justify-content-end gap-2"><button className="btn btn-outline-secondary" type="button" onClick={() => setShowObligationForm(false)}>Cancelar</button><button className="btn btn-primary" disabled={operation === "obligation"} type="submit">{operation === "obligation" ? "Guardando..." : editingObligationId ? "Guardar cambios" : "Registrar obligación"}</button></div></div>
+              <div className="row g-3"><div className="col-md-4"><label className="form-label">Proveedor *</label><select className="form-select" value={obligationForm.supplierId} onChange={(event) => setObligationForm((current) => ({ ...current, supplierId: event.target.value }))} required><option value="">Seleccionar...</option>{activeSuppliers.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div><div className="col-md-8"><label className="form-label">Gasto de una liquidación</label><select className="form-select" disabled={Boolean(obligationForm.expenseDocumentId)} value={obligationForm.expenseLink} onChange={(event) => selectExpense(event.target.value)}><option value="">Obligación independiente</option>{availableExpenses.map((item) => <option key={item.link} value={item.link} disabled={item.linked && item.link !== obligationForm.expenseLink}>{item.periodKey} · {item.concept}{item.linked && item.link !== obligationForm.expenseLink ? " · ya vinculado" : ""}</option>)}</select></div><div className="col-md-6"><label className="form-label">Concepto *</label><input className="form-control" value={obligationForm.concept} onChange={(event) => setObligationForm((current) => ({ ...current, concept: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Tipo de comprobante</label><select className="form-select" value={obligationForm.voucherType} onChange={(event) => setObligationForm((current) => ({ ...current, voucherType: event.target.value }))}>{Object.entries(voucherLabels).map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></div><div className="col-md-3"><label className="form-label">Número</label><input className="form-control" value={obligationForm.voucherNumber} onChange={(event) => setObligationForm((current) => ({ ...current, voucherNumber: event.target.value }))} /></div><div className="col-md-3"><label className="form-label">Fecha *</label><input className="form-control" type="date" value={obligationForm.issueDate} onChange={(event) => setObligationForm((current) => ({ ...current, issueDate: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Vencimiento *</label><input className="form-control" type="date" value={obligationForm.dueDate} onChange={(event) => setObligationForm((current) => ({ ...current, dueDate: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Importe *</label><input className="form-control" inputMode="decimal" value={obligationForm.amountMajor} onChange={(event) => setObligationForm((current) => ({ ...current, amountMajor: event.target.value }))} required /></div><div className="col-md-3"><label className="form-label">Moneda</label><input className="form-control" value={obligationForm.currency} readOnly /></div>{!editingObligationId && obligationForm.expenseDocumentId && <div className="col-md-6"><div className="alert alert-success py-2 mb-0"><strong>Comprobante vinculado.</strong><small className="d-block">Se reutilizará el archivo ya archivado en la liquidación.</small></div></div>}{!editingObligationId && !obligationForm.expenseDocumentId && <div className="col-md-6"><label className="form-label">Comprobante adjunto</label><input className="form-control" type="file" accept={CONSORTIUM_DOCUMENT_ACCEPT} onChange={(event) => setObligationForm((current) => ({ ...current, file: event.target.files?.[0] || null }))} /></div>}<div className={editingObligationId ? "col-12" : "col-md-6"}><label className="form-label">Notas</label><input className="form-control" value={obligationForm.notes} onChange={(event) => setObligationForm((current) => ({ ...current, notes: event.target.value }))} /></div><div className="col-12 d-flex justify-content-end gap-2"><button className="btn btn-outline-secondary" type="button" onClick={() => setShowObligationForm(false)}>Cancelar</button><button className="btn btn-primary" disabled={operation === "obligation"} type="submit">{operation === "obligation" ? "Guardando..." : editingObligationId ? "Guardar cambios" : "Registrar obligación"}</button></div></div>
             </form>}
             <div className="row g-2 align-items-end mb-3"><div className="col-md-5"><label className="form-label small">Buscar</label><input className="form-control form-control-sm" placeholder="Proveedor, CUIT, concepto o comprobante" value={obligationSearch} onChange={(event) => setObligationSearch(event.target.value)} /></div><div className="col-md-3"><label className="form-label small">Estado</label><select className="form-select form-select-sm" value={obligationStatusFilter} onChange={(event) => setObligationStatusFilter(event.target.value)}><option value="open">Pendientes de pago</option><option value="overdue">Vencidas</option><option value="partial">Con pago parcial</option><option value="paid">Pagadas</option><option value="voided">Anuladas</option><option value="all">Todas</option></select></div><div className="col-md-2"><button className="btn btn-sm btn-outline-secondary w-100" disabled={!visibleObligations.length} type="button" onClick={exportObligations}>Exportar CSV</button></div><div className="col-md-2 text-md-end"><small className="text-muted">{visibleObligations.length} de {obligations.length}</small></div></div>
             {canManage && obligations.some((item) => item.voided !== true && Number(item.balanceMinor || 0) > 0) && !activeAccounts.length && <div className="alert alert-warning small">Para registrar pagos, creá primero una caja o cuenta bancaria desde la pestaña Tesorería.</div>}
