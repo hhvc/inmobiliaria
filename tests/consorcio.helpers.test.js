@@ -16,6 +16,7 @@ import {
   getConsortiumAccountingPeriodLabel,
   getConsortiumAccountSummary,
   getConsortiumClaimReference,
+  getConsortiumExpenseIdentity,
   getConsortiumLiquidationNumber,
   getConsortiumObligationStatus,
   getConsortiumPenaltyStatus,
@@ -25,6 +26,7 @@ import {
   getConsortiumTreasurySummary,
   getDefaultConsortiumDueDate,
   majorToMinor,
+  mergeConsortiumDraftExpenses,
   isConsortiumClaimOpen,
   validateConsortiumUnit,
 } from "../src/consorcios/utils/consorcio.helpers.js";
@@ -39,6 +41,72 @@ const units = [
   { id: "a", code: "1 A", coefficient: 60, active: true },
   { id: "b", code: "1 B", coefficient: 40, active: true },
 ];
+
+test("identifica un gasto recurrente aunque cambien el importe y las notas", () => {
+  const base = {
+    concept: "Servicio de limpieza",
+    category: "ordinary",
+    distributionMode: "coefficient",
+    coefficientGroupId: "general",
+    amountMinor: 100000,
+    notes: "Factura de agosto",
+  };
+  assert.equal(getConsortiumExpenseIdentity(base), getConsortiumExpenseIdentity({
+    ...base,
+    concept: "  servicio   de LIMPIEZA ",
+    amountMinor: 125000,
+    notes: "Factura de septiembre",
+  }));
+});
+
+test("copia gastos al borrador sin repetir coincidencias exactas ni arrastrar adjuntos", () => {
+  let sequence = 0;
+  const current = [{
+    id: "actual",
+    concept: "Limpieza",
+    category: "ordinary",
+    distributionMode: "coefficient",
+    coefficientGroupId: "general",
+    amountMinor: 100000,
+    notes: "",
+  }];
+  const result = mergeConsortiumDraftExpenses({
+    current,
+    incoming: [
+      { ...current[0], id: "anterior", documentIds: ["privado"] },
+      { ...current[0], id: "variable", concept: "EPEC", amountMinor: 250000, documentIds: ["otro"] },
+    ],
+    createId: () => `nuevo-${sequence += 1}`,
+  });
+  assert.equal(result.addedCount, 1);
+  assert.equal(result.expenses.length, 2);
+  assert.equal(result.expenses[1].id, "nuevo-2");
+  assert.equal(result.expenses[1].concept, "EPEC");
+  assert.equal(Object.hasOwn(result.expenses[1], "documentIds"), false);
+});
+
+test("actualiza el importe recurrente sin duplicar el concepto ya cargado", () => {
+  const current = [{
+    id: "gasto-local",
+    concept: "Limpieza",
+    category: "ordinary",
+    distributionMode: "coefficient",
+    coefficientGroupId: "general",
+    amountMinor: 100000,
+    notes: "Anterior",
+  }];
+  const result = mergeConsortiumDraftExpenses({
+    current,
+    incoming: [{ ...current[0], id: "plantilla", amountMinor: 125000, notes: "Actualizado" }],
+    createId: () => "no-debe-usarse",
+    replaceMatching: true,
+  });
+  assert.equal(result.addedCount, 0);
+  assert.equal(result.updatedCount, 1);
+  assert.equal(result.expenses.length, 1);
+  assert.equal(result.expenses[0].id, "gasto-local");
+  assert.equal(result.expenses[0].amountMinor, 125000);
+});
 
 test("prorratea por coeficiente sin perder centavos", () => {
   const result = calculateConsortiumAssessments({

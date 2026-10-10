@@ -48,6 +48,26 @@
   scroll-margin-top: 1rem;
 }
 
+.consortium-monthly-liquidation-assistant {
+  scroll-margin-top: 1rem;
+}
+
+.consortium-recurring-amount {
+  width: 8.5rem;
+  flex: 0 0 8.5rem;
+  text-align: right;
+}
+
+.consortium-assessment-preview {
+  max-height: 28rem;
+}
+
+.consortium-assessment-preview thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .consortium-close-item-icon {
   display: inline-flex;
   flex: 0 0 1.65rem;

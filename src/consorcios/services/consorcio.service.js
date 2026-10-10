@@ -87,6 +87,25 @@ const agencyDoc = (inmobiliariaId, key, id) =>
 const cleanText = (value = "", maxLength = 1000) =>
   value?.toString?.().trim().replace(/\s+/g, " ").slice(0, maxLength) || "";
 
+const sanitizeRecurringExpense = (value = {}, fallbackId = "") => ({
+  id: cleanText(value.id || fallbackId, 128),
+  concept: cleanText(value.concept, 220),
+  category: value.category === "extraordinary" ? "extraordinary" : "ordinary",
+  distributionMode: ["coefficient", "equal", "specific"].includes(value.distributionMode)
+    ? value.distributionMode
+    : "coefficient",
+  specificUnitId: cleanText(value.specificUnitId, 128),
+  coefficientGroupId: cleanText(value.coefficientGroupId, 48) || "general",
+  amountMinor: Math.max(0, Math.round(Number(value.amountMinor) || 0)),
+  notes: cleanText(value.notes, 1000),
+  active: value.active !== false,
+});
+
+const sanitizeRecurringExpenses = (values = []) => (Array.isArray(values) ? values : [])
+  .slice(0, 60)
+  .map((value, index) => sanitizeRecurringExpense(value, `recurring_${index + 1}`))
+  .filter((value) => value.id && value.concept && value.amountMinor > 0);
+
 const currentUserOrThrow = () => {
   const user = auth.currentUser;
   if (!user?.uid) throw new Error("Usuario no autenticado.");
@@ -122,6 +141,7 @@ const sanitizeConsortium = (value = {}) => ({
   coefficientGroups: normalizeConsortiumCoefficientGroups(value.coefficientGroups),
   paymentPolicy: normalizeConsortiumPaymentPolicy(value.paymentPolicy),
   interestPolicy: normalizeConsortiumInterestPolicy(value.interestPolicy),
+  recurringExpenses: sanitizeRecurringExpenses(value.recurringExpenses),
   notes: cleanText(value.notes, 4000),
   portalEmails: normalizeConsortiumEmails(value.portalEmails),
   status: value.status === "archived" ? "archived" : "active",
@@ -374,6 +394,22 @@ export const updateConsortium = async (inmobiliariaId, consortiumId, value) => {
     updatedBy: user.uid,
     updatedAt: serverTimestamp(),
   });
+};
+
+export const saveConsortiumRecurringExpenses = async ({
+  inmobiliariaId,
+  consortiumId,
+  recurringExpenses,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalized = sanitizeRecurringExpenses(recurringExpenses);
+  await updateDoc(agencyDoc(inmobiliariaId, "consortiums", consortiumId), {
+    recurringExpenses: normalized,
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+  return normalized;
 };
 
 export const archiveConsortium = async (inmobiliariaId, consortiumId) => {

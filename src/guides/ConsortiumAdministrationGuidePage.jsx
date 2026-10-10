@@ -114,9 +114,10 @@ const ConsortiumAdministrationGuidePage = () => (
       <GuideSection number="2" id="liquidaciones" title="Liquidar expensas" summary="La liquidación se prepara como borrador y queda protegida una vez emitida.">
         <ol className="consortium-guide-numbered">
           <li><span>1</span><div><strong>Crear el período.</strong><p>Elegí mes y vencimiento y presioná “Crear borrador mensual”.</p></div></li>
-          <li><span>2</span><div><strong>Cargar los gastos.</strong><p>Indicá concepto, categoría, importe y distribución: por coeficiente, partes iguales o una unidad determinada.</p></div></li>
-          <li><span>3</span><div><strong>Adjuntar comprobantes.</strong><p>Relacioná cada PDF o imagen con el gasto correspondiente. Podés completar proveedor, número y fecha.</p></div></li>
-          <li><span>4</span><div><strong>Revisar y emitir.</strong><p>Al emitir se crean las obligaciones de cada unidad. El borrador deja de ser editable.</p></div></li>
+          <li><span>2</span><div><strong>Elegir una base.</strong><p>Usá la preparación asistida para copiar el mes anterior o incorporar los gastos recurrentes. Los comprobantes anteriores nunca se duplican.</p></div></li>
+          <li><span>3</span><div><strong>Actualizar y controlar.</strong><p>Editá los importes variables y abrí la vista previa para revisar cuánto corresponde a cada unidad.</p></div></li>
+          <li><span>4</span><div><strong>Adjuntar comprobantes.</strong><p>Relacioná cada PDF o imagen con el gasto correspondiente. Podés completar proveedor, número y fecha.</p></div></li>
+          <li><span>5</span><div><strong>Guardar y emitir.</strong><p>Al emitir se crean las obligaciones de cada unidad. El borrador deja de ser editable.</p></div></li>
         </ol>
         <div className="consortium-guide-note"><strong>Correcciones posteriores.</strong> Si la liquidación ya fue emitida, registrá una nota de débito o crédito desde “Rectificar liquidación emitida”. El documento original se conserva.</div>
       </GuideSection>

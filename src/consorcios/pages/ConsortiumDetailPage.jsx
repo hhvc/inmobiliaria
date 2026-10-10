@@ -12,6 +12,7 @@ import ConsortiumTreasuryPanel from "../components/ConsortiumTreasuryPanel";
 import ConsortiumClaimsPanel from "../components/ConsortiumClaimsPanel";
 import ConsortiumPortalInformationPanel from "../components/ConsortiumPortalInformationPanel";
 import ConsortiumMonthlyCloseAssistant from "../components/ConsortiumMonthlyCloseAssistant";
+import ConsortiumMonthlyLiquidationAssistant from "../components/ConsortiumMonthlyLiquidationAssistant";
 import ConsortiumUnitsCsvImport from "../components/ConsortiumUnitsCsvImport";
 import {
   getInternalPermissions,
@@ -38,6 +39,7 @@ import {
   recordConsortiumOpeningBalance,
   registerConsortiumPayment,
   rejectConsortiumPaymentReport,
+  saveConsortiumRecurringExpenses,
   saveConsortiumPeriodExpenses,
   updateConsortiumUnit,
 } from "../services/consorcio.service";
@@ -52,12 +54,14 @@ import {
   formatConsortiumMoney,
   addConsortiumDays,
   getConsortiumAccountingPeriodLabel,
+  getConsortiumExpenseIdentity,
   getConsortiumObligationStatus,
   getConsortiumObligationStatusLabel,
   getConsortiumPaymentSchedule,
   getConsortiumScheduledAmountForDate,
   getDefaultConsortiumDueDate,
   majorToMinor,
+  mergeConsortiumDraftExpenses,
   minorToMajorInput,
 } from "../utils/consorcio.helpers";
 import {
@@ -113,6 +117,7 @@ const ConsortiumDetailPage = () => {
   const [treasuryRefreshKey, setTreasuryRefreshKey] = useState(0);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [periodExpenses, setPeriodExpenses] = useState([]);
+  const [draftExpensesDirty, setDraftExpensesDirty] = useState(false);
   const [unitForm, setUnitForm] = useState(createEmptyConsortiumUnit);
   const [editingUnitId, setEditingUnitId] = useState("");
   const [unitChangeForm, setUnitChangeForm] = useState(emptyUnitChangeForm);
@@ -129,6 +134,7 @@ const ConsortiumDetailPage = () => {
     ...createEmptyConsortiumExpense(),
     amountMajor: "",
   }));
+  const [editingExpenseId, setEditingExpenseId] = useState("");
   const [newPeriodKey, setNewPeriodKey] = useState(currentPeriodKey);
   const [newDueDate, setNewDueDate] = useState("");
   const [newEarlyPaymentDate, setNewEarlyPaymentDate] = useState("");
@@ -232,6 +238,9 @@ const ConsortiumDetailPage = () => {
 
   useEffect(() => {
     setPeriodExpenses(Array.isArray(selectedPeriod?.expenses) ? selectedPeriod.expenses : []);
+    setDraftExpensesDirty(false);
+    setEditingExpenseId("");
+    setExpenseForm({ ...createEmptyConsortiumExpense(), amountMajor: "" });
     setPaymentForm((current) => ({ ...current, obligationId: "", amountMajor: "" }));
     setAdjustmentForm(emptyAdjustmentForm());
     setShowCloseAssistant(false);
@@ -239,6 +248,25 @@ const ConsortiumDetailPage = () => {
     setCloseAcknowledged(false);
     setCloseNote("");
   }, [selectedPeriod]);
+
+  const previousMonthlyPeriod = useMemo(() => {
+    if (!selectedPeriod?.periodKey) return null;
+    return periods
+      .filter((item) => (
+        item.id !== selectedPeriod.id
+        && !item.source
+        && item.periodKey < selectedPeriod.periodKey
+        && Array.isArray(item.expenses)
+        && item.expenses.length > 0
+      ))
+      .sort((left, right) => (right.periodKey || "").localeCompare(left.periodKey || ""))[0] || null;
+  }, [periods, selectedPeriod]);
+
+  const recurringExpenses = useMemo(
+    () => (Array.isArray(consortium?.recurringExpenses) ? consortium.recurringExpenses : [])
+      .filter((item) => item.active !== false),
+    [consortium],
+  );
 
   const selectedObligations = useMemo(
     () => obligations.filter((item) => item.periodId === selectedPeriodId),
@@ -505,12 +533,121 @@ const ConsortiumDetailPage = () => {
       setError("Seleccioná la unidad a la que corresponde el cargo.");
       return;
     }
-    setPeriodExpenses((current) => [...current, {
+    const normalizedExpense = {
       ...expenseForm,
-      id: makeLocalId(),
+      id: editingExpenseId || makeLocalId(),
       amountMinor,
-    }]);
+    };
+    setPeriodExpenses((current) => editingExpenseId
+      ? current.map((item) => (item.id === editingExpenseId ? normalizedExpense : item))
+      : [...current, normalizedExpense]);
+    setDraftExpensesDirty(true);
+    setEditingExpenseId("");
     setExpenseForm({ ...createEmptyConsortiumExpense(), amountMajor: "" });
+  };
+
+  const editExpense = (expense) => {
+    resetMessages();
+    setEditingExpenseId(expense.id);
+    setExpenseForm({
+      ...createEmptyConsortiumExpense(),
+      ...expense,
+      amountMajor: minorToMajorInput(expense.amountMinor),
+    });
+    setTimeout(() => {
+      document.getElementById("consortium-expense-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  };
+
+  const cancelExpenseEdit = () => {
+    setEditingExpenseId("");
+    setExpenseForm({ ...createEmptyConsortiumExpense(), amountMajor: "" });
+  };
+
+  const removeExpense = (expenseId) => {
+    setPeriodExpenses((current) => current.filter((item) => item.id !== expenseId));
+    setDraftExpensesDirty(true);
+    if (editingExpenseId === expenseId) cancelExpenseEdit();
+  };
+
+  const mergeExpensesIntoDraft = (incoming, sourceLabel, { replaceMatching = false } = {}) => {
+    resetMessages();
+    const result = mergeConsortiumDraftExpenses({
+      current: periodExpenses,
+      incoming,
+      createId: makeLocalId,
+      replaceMatching,
+    });
+    if (!result.addedCount && !result.updatedCount) {
+      setSuccess(`Los gastos de ${sourceLabel} ya estaban incorporados en el borrador.`);
+      return;
+    }
+    setPeriodExpenses(result.expenses);
+    setDraftExpensesDirty(true);
+    setSuccess(`${result.addedCount} gasto(s) incorporado(s)${result.updatedCount ? ` y ${result.updatedCount} actualizado(s)` : ""} desde ${sourceLabel}. Revisá los importes antes de guardar.`);
+  };
+
+  const applyPreviousPeriodExpenses = () => {
+    if (!previousMonthlyPeriod) return;
+    mergeExpensesIntoDraft(
+      previousMonthlyPeriod.expenses || [],
+      getConsortiumAccountingPeriodLabel(previousMonthlyPeriod),
+    );
+  };
+
+  const applyRecurringExpenses = (selected) => {
+    mergeExpensesIntoDraft(selected, "la lista recurrente", { replaceMatching: true });
+  };
+
+  const persistRecurringExpenses = async (nextRecurringExpenses, successMessage) => {
+    try {
+      resetMessages();
+      setOperation("recurring-expenses");
+      const normalized = await saveConsortiumRecurringExpenses({
+        inmobiliariaId: activeInmobiliariaId,
+        consortiumId,
+        recurringExpenses: nextRecurringExpenses,
+      });
+      setConsortium((current) => ({ ...current, recurringExpenses: normalized }));
+      setSuccess(successMessage);
+    } catch (saveError) {
+      setError(saveError.message || "No se pudieron actualizar los gastos recurrentes.");
+    } finally {
+      setOperation("");
+    }
+  };
+
+  const saveDraftAsRecurring = async () => {
+    if (!periodExpenses.length) {
+      setError("Cargá al menos un gasto antes de guardarlo como recurrente.");
+      return;
+    }
+    const templatesByIdentity = new Map(
+      recurringExpenses.map((item, index) => [getConsortiumExpenseIdentity(item), { item, index }]),
+    );
+    const next = [...recurringExpenses];
+    periodExpenses.forEach((expense) => {
+      const identity = getConsortiumExpenseIdentity(expense);
+      const existing = templatesByIdentity.get(identity);
+      const template = {
+        ...expense,
+        id: existing?.item?.id || `recurring_${makeLocalId()}`,
+        active: true,
+      };
+      if (existing) next[existing.index] = template;
+      else {
+        templatesByIdentity.set(identity, { item: template, index: next.length });
+        next.push(template);
+      }
+    });
+    await persistRecurringExpenses(next, "Gastos recurrentes actualizados con los importes de este borrador.");
+  };
+
+  const removeRecurringExpense = async (templateId) => {
+    await persistRecurringExpenses(
+      recurringExpenses.filter((item) => item.id !== templateId),
+      "Gasto quitado de la lista recurrente.",
+    );
   };
 
   const saveExpenses = async ({ showSuccess = true } = {}) => {
@@ -520,6 +657,7 @@ const ConsortiumDetailPage = () => {
       periodId: selectedPeriod.id,
       expenses: periodExpenses,
     });
+    setDraftExpensesDirty(false);
     if (showSuccess) setSuccess("Gastos guardados en el borrador.");
   };
 
@@ -1032,29 +1170,44 @@ const ConsortiumDetailPage = () => {
         <section className="card border-0 shadow-sm mb-4">
           <div className="card-body p-4">
             <div className="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h2 className="h5 mb-1">Gastos del borrador</h2><p className="text-muted small mb-0">Cada gasto puede prorratearse por coeficiente, partes iguales o una unidad determinada.</p></div><strong className="consortium-money">Total: {formatConsortiumMoney(draftTotal, selectedPeriod.currency)}</strong></div>
+            <ConsortiumMonthlyLiquidationAssistant
+              currency={selectedPeriod.currency || consortium.currency}
+              disabled={Boolean(operation)}
+              documents={selectedExpenseDocuments}
+              draftDirty={draftExpensesDirty}
+              expenses={periodExpenses}
+              previousPeriod={previousMonthlyPeriod}
+              recurringExpenses={recurringExpenses}
+              units={activeUnits}
+              onApplyPrevious={applyPreviousPeriodExpenses}
+              onApplyRecurring={applyRecurringExpenses}
+              onRemoveRecurring={removeRecurringExpense}
+              onSaveAsRecurring={saveDraftAsRecurring}
+              onSaveDraft={handleSaveExpenses}
+            />
             <div className="row g-4">
               <div className="col-lg-5">
-                <form className="rounded border bg-light p-3" onSubmit={addExpense}>
-                  <h3 className="h6">Agregar gasto</h3>
+                <form className="rounded border bg-light p-3" id="consortium-expense-form" onSubmit={addExpense}>
+                  <div className="d-flex justify-content-between align-items-center gap-2 mb-2"><h3 className="h6 mb-0">{editingExpenseId ? "Editar gasto" : "Agregar gasto"}</h3>{editingExpenseId && <button className="btn btn-sm btn-link" type="button" onClick={cancelExpenseEdit}>Cancelar edición</button>}</div>
                   <div className="mb-3"><label className="form-label">Concepto *</label><input className="form-control" value={expenseForm.concept} onChange={(e) => setExpenseForm((c) => ({ ...c, concept: e.target.value }))} required /></div>
                   <div className="row g-3 mb-3"><div className="col-md-6"><label className="form-label">Tipo</label><select className="form-select" value={expenseForm.category} onChange={(e) => setExpenseForm((c) => ({ ...c, category: e.target.value }))}>{CONSORTIUM_EXPENSE_CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div><div className="col-md-6"><label className="form-label">Importe</label><input className="form-control" inputMode="decimal" placeholder="0,00" value={expenseForm.amountMajor} onChange={(e) => setExpenseForm((c) => ({ ...c, amountMajor: e.target.value }))} required /></div></div>
                   <div className="mb-3"><label className="form-label">Distribución</label><select className="form-select" value={expenseForm.distributionMode} onChange={(e) => setExpenseForm((c) => ({ ...c, distributionMode: e.target.value, specificUnitId: "", coefficientGroupId: e.target.value === "coefficient" ? (c.coefficientGroupId || "general") : "" }))}>{CONSORTIUM_DISTRIBUTION_MODES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div>
                   {expenseForm.distributionMode === "coefficient" && <div className="mb-3"><label className="form-label">Grupo de coeficientes</label><select className="form-select" value={expenseForm.coefficientGroupId || "general"} onChange={(e) => setExpenseForm((c) => ({ ...c, coefficientGroupId: e.target.value }))}>{(consortium.coefficientGroups || [{ id: "general", name: "Gastos generales" }]).filter((group) => group.active !== false).map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></div>}
                   {expenseForm.distributionMode === "specific" && <div className="mb-3"><label className="form-label">Unidad</label><select className="form-select" value={expenseForm.specificUnitId} onChange={(e) => setExpenseForm((c) => ({ ...c, specificUnitId: e.target.value }))}><option value="">Seleccionar...</option>{activeUnits.map((unit) => <option key={unit.id} value={unit.id}>{unit.code}</option>)}</select></div>}
                   <div className="mb-3"><label className="form-label">Notas</label><input className="form-control" value={expenseForm.notes} onChange={(e) => setExpenseForm((c) => ({ ...c, notes: e.target.value }))} /></div>
-                  <button className="btn btn-outline-primary w-100" type="submit">Agregar al borrador</button>
+                  <button className="btn btn-outline-primary w-100" type="submit">{editingExpenseId ? "Actualizar gasto" : "Agregar al borrador"}</button>
                 </form>
               </div>
               <div className="col-lg-7">
                 <div className="list-group consortium-expense-list mb-3">
                   {periodExpenses.map((expense) => (
                     <div className="list-group-item" key={expense.id}>
-                      <div className="d-flex justify-content-between gap-3"><div><strong>{expense.concept}</strong><div className="small text-muted">{CONSORTIUM_EXPENSE_CATEGORIES.find((item) => item.id === expense.category)?.label} · {CONSORTIUM_DISTRIBUTION_MODES.find((item) => item.id === expense.distributionMode)?.label}{expense.distributionMode === "coefficient" && ` · ${(consortium.coefficientGroups || []).find((group) => group.id === expense.coefficientGroupId)?.name || "Gastos generales"}`}</div></div><div className="text-end"><strong className="consortium-money">{formatConsortiumMoney(expense.amountMinor, selectedPeriod.currency)}</strong><div><button className="btn btn-sm btn-link text-danger p-0" type="button" onClick={() => setPeriodExpenses((current) => current.filter((item) => item.id !== expense.id))}>Quitar</button></div></div></div>
+                      <div className="d-flex justify-content-between gap-3"><div><strong>{expense.concept}</strong><div className="small text-muted">{CONSORTIUM_EXPENSE_CATEGORIES.find((item) => item.id === expense.category)?.label} · {CONSORTIUM_DISTRIBUTION_MODES.find((item) => item.id === expense.distributionMode)?.label}{expense.distributionMode === "coefficient" && ` · ${(consortium.coefficientGroups || []).find((group) => group.id === expense.coefficientGroupId)?.name || "Gastos generales"}`}</div>{expense.notes && <small className="text-muted d-block mt-1">{expense.notes}</small>}</div><div className="text-end"><strong className="consortium-money">{formatConsortiumMoney(expense.amountMinor, selectedPeriod.currency)}</strong><div className="d-flex justify-content-end gap-2"><button className="btn btn-sm btn-link p-0" type="button" onClick={() => editExpense(expense)}>Editar</button><button className="btn btn-sm btn-link text-danger p-0" type="button" onClick={() => removeExpense(expense.id)}>Quitar</button></div></div></div>
                     </div>
                   ))}
                   {!periodExpenses.length && <div className="list-group-item text-center text-muted py-4">Todavía no hay gastos.</div>}
                 </div>
-                <div className="d-flex flex-wrap justify-content-end gap-2"><button className="btn btn-outline-secondary" disabled={Boolean(operation)} type="button" onClick={handleSaveExpenses}>Guardar borrador</button><button className="btn btn-primary" disabled={Boolean(operation) || !periodExpenses.length || !activeUnits.length} type="button" onClick={issuePeriod}>Emitir expensas</button></div>
+                <div className="d-flex flex-wrap justify-content-end gap-2"><button className="btn btn-outline-secondary" disabled={Boolean(operation) || !draftExpensesDirty} type="button" onClick={handleSaveExpenses}>{draftExpensesDirty ? "Guardar borrador" : "Borrador guardado"}</button><button className="btn btn-primary" disabled={Boolean(operation) || !periodExpenses.length || !activeUnits.length} type="button" onClick={issuePeriod}>Emitir expensas</button></div>
               </div>
             </div>
           </div>

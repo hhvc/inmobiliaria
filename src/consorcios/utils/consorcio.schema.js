@@ -22,6 +22,7 @@ export const createEmptyConsortium = () => ({
     secondDueDaysAfter: 10,
     secondDueSurchargePercent: 0,
   },
+  recurringExpenses: [],
   interestPolicy: {
     enabled: false,
     annualRatePercent: 0,

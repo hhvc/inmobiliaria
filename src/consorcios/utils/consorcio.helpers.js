@@ -32,6 +32,77 @@ export const formatConsortiumMoney = (minor = 0, currency = "ARS") =>
     minimumFractionDigits: 2,
   }).format((Number(minor) || 0) / 100);
 
+const normalizeExpenseSignatureText = (value = "") => value
+  ?.toString?.()
+  .trim()
+  .replace(/\s+/g, " ")
+  .toLocaleLowerCase("es-AR") || "";
+
+export const getConsortiumExpenseIdentity = (expense = {}) => [
+  normalizeExpenseSignatureText(expense.concept),
+  expense.category === "extraordinary" ? "extraordinary" : "ordinary",
+  ["coefficient", "equal", "specific"].includes(expense.distributionMode)
+    ? expense.distributionMode
+    : "coefficient",
+  expense.coefficientGroupId || "general",
+  expense.specificUnitId || "",
+].join("|");
+
+export const getConsortiumExpenseSignature = (expense = {}) => [
+  getConsortiumExpenseIdentity(expense),
+  Math.max(0, Math.round(Number(expense.amountMinor) || 0)),
+  normalizeExpenseSignatureText(expense.notes),
+].join("|");
+
+export const mergeConsortiumDraftExpenses = ({
+  current = [],
+  incoming = [],
+  createId = (_, index) => `expense_${Date.now()}_${index + 1}`,
+  replaceMatching = false,
+} = {}) => {
+  const merged = [...(Array.isArray(current) ? current : [])];
+  const signatures = new Set(merged.map(getConsortiumExpenseSignature));
+  const identities = new Map(merged.map((item, index) => [getConsortiumExpenseIdentity(item), index]));
+  let addedCount = 0;
+  let updatedCount = 0;
+
+  (Array.isArray(incoming) ? incoming : []).forEach((expense, index) => {
+    const normalized = {
+      id: createId(expense, index),
+      concept: expense.concept?.toString?.().trim() || "",
+      category: expense.category === "extraordinary" ? "extraordinary" : "ordinary",
+      distributionMode: ["coefficient", "equal", "specific"].includes(expense.distributionMode)
+        ? expense.distributionMode
+        : "coefficient",
+      coefficientGroupId: expense.coefficientGroupId || "general",
+      specificUnitId: expense.specificUnitId || "",
+      amountMinor: Math.max(0, Math.round(Number(expense.amountMinor) || 0)),
+      notes: expense.notes?.toString?.().trim() || "",
+    };
+    if (!normalized.concept || normalized.amountMinor <= 0) return;
+    const signature = getConsortiumExpenseSignature(normalized);
+    if (signatures.has(signature)) return;
+    const identity = getConsortiumExpenseIdentity(normalized);
+    if (identities.has(identity)) {
+      if (replaceMatching) {
+        const currentIndex = identities.get(identity);
+        const currentExpense = merged[currentIndex];
+        signatures.delete(getConsortiumExpenseSignature(currentExpense));
+        merged[currentIndex] = { ...normalized, id: currentExpense.id };
+        signatures.add(signature);
+        updatedCount += 1;
+      }
+      return;
+    }
+    signatures.add(signature);
+    identities.set(identity, merged.length);
+    merged.push(normalized);
+    addedCount += 1;
+  });
+
+  return { expenses: merged, addedCount, updatedCount };
+};
+
 export const getConsortiumPeriodLabel = (periodKey = "") => {
   const match = /^(\d{4})-(\d{2})$/.exec(periodKey);
   if (!match) return periodKey || "Sin período";
