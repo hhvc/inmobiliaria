@@ -77,6 +77,7 @@ const ConsortiumBudgetPage = () => {
   const [operation, setOperation] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [approvalPending, setApprovalPending] = useState(false);
 
   const canManage = useMemo(() => {
     const role = getInternalRoleForInmobiliaria(user, activeInmobiliariaId);
@@ -225,9 +226,6 @@ const ConsortiumBudgetPage = () => {
 
   const save = async (status) => {
     if (!draft || !canManage) return;
-    if (status === "approved" && !window.confirm(
-      `¿Aprobar la versión del presupuesto ${selectedYear}? Quedará registrada en el historial.`,
-    )) return;
     try {
       setOperation(status);
       setError("");
@@ -240,6 +238,7 @@ const ConsortiumBudgetPage = () => {
       setSuccess(status === "approved"
         ? "Presupuesto aprobado y versionado correctamente."
         : "Borrador presupuestario guardado en una nueva versión.");
+      setApprovalPending(false);
       setDirty(false);
       await load();
     } catch (saveError) {
@@ -303,7 +302,41 @@ const ConsortiumBudgetPage = () => {
         })}</tbody></table></div>
       </div></section>
 
-      {canManage && <section className="card border-0 shadow-sm mb-4 consortium-no-print"><div className="card-body p-4"><div className="form-check mb-3"><input className="form-check-input" id="budget-owner-visible" type="checkbox" checked={draft.ownerVisible === true} onChange={(event) => updateDraft((current) => ({ ...current, ownerVisible: event.target.checked }))} /><label className="form-check-label" htmlFor="budget-owner-visible"><strong>Mostrar el presupuesto aprobado a los propietarios</strong><span className="d-block text-muted small">Los ocupantes no acceden. Un borrador nunca se publica.</span></label></div><div className="d-flex flex-wrap justify-content-end gap-2"><button className="btn btn-outline-secondary" disabled={Boolean(operation)} type="button" onClick={() => save("draft")}>{operation === "draft" ? "Guardando..." : "Guardar borrador y versión"}</button><button className="btn btn-primary" disabled={Boolean(operation) || comparison.plannedMinor <= 0} type="button" onClick={() => save("approved")}>{operation === "approved" ? "Aprobando..." : "Aprobar presupuesto"}</button></div></div></section>}
+      {canManage && <section className="card border-0 shadow-sm mb-4 consortium-no-print"><div className="card-body p-4">
+        <div className="form-check form-switch mb-3">
+          <input
+            aria-label="Mostrar el presupuesto aprobado a los propietarios"
+            checked={draft.ownerVisible === true}
+            className="form-check-input"
+            id="budget-owner-visible"
+            role="switch"
+            type="checkbox"
+            onChange={(event) => updateDraft((current) => ({
+              ...current,
+              ownerVisible: event.target.checked,
+            }))}
+          />
+          <label className="form-check-label" htmlFor="budget-owner-visible">
+            <strong>Mostrar el presupuesto aprobado a los propietarios</strong>
+            <span className="d-block text-muted small">Los ocupantes no acceden. Un borrador nunca se publica.</span>
+          </label>
+        </div>
+        {approvalPending && <div className="alert alert-primary" role="alert">
+          <strong className="d-block mb-1">Confirmar aprobación del presupuesto {selectedYear}</strong>
+          <span className="d-block mb-3">
+            Se registrará una nueva versión inalterable y el presupuesto quedará
+            {draft.ownerVisible ? " visible para los propietarios." : " disponible solo para la administración."}
+          </span>
+          <div className="d-flex flex-wrap gap-2">
+            <button className="btn btn-outline-secondary" disabled={Boolean(operation)} type="button" onClick={() => setApprovalPending(false)}>Cancelar</button>
+            <button className="btn btn-primary" disabled={Boolean(operation)} type="button" onClick={() => save("approved")}>{operation === "approved" ? "Aprobando..." : "Confirmar aprobación"}</button>
+          </div>
+        </div>}
+        <div className="d-flex flex-wrap justify-content-end gap-2">
+          <button className="btn btn-outline-secondary" disabled={Boolean(operation)} type="button" onClick={() => save("draft")}>{operation === "draft" ? "Guardando..." : "Guardar borrador y versión"}</button>
+          <button className="btn btn-primary" disabled={Boolean(operation) || approvalPending || comparison.plannedMinor <= 0} type="button" onClick={() => setApprovalPending(true)}>Aprobar presupuesto</button>
+        </div>
+      </div></section>}
 
       <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><h2 className="h5">Presupuestado vs. ejecutado</h2><p className="text-muted small">El ejecutado surge de los gastos de liquidaciones emitidas y cerradas del ejercicio.</p><div className="table-responsive"><table className="table table-hover align-middle"><thead><tr><th>Rubro</th><th className="text-end">Presupuestado</th><th className="text-end">Ejecutado</th><th className="text-end">Desvío</th><th className="text-end">%</th><th>Control</th></tr></thead><tbody>{comparison.categoryRows.map((row) => <tr key={row.id}><td>{row.label}</td><td className="text-end consortium-money">{formatConsortiumMoney(row.plannedMinor, currency)}</td><td className="text-end consortium-money">{formatConsortiumMoney(row.actualMinor, currency)}</td><td className={`text-end consortium-money ${row.varianceMinor > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(row.varianceMinor, currency)}</td><td className="text-end">{formatPercent(row.variancePercent)}</td><td>{row.overThreshold ? <span className="badge text-bg-danger">Revisar</span> : row.actualMinor > 0 ? <span className="badge text-bg-success">Dentro del margen</span> : <span className="badge text-bg-light border">Sin ejecución</span>}</td></tr>)}</tbody></table></div></div></section>
 

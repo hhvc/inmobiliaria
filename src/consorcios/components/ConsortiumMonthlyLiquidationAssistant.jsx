@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   calculateConsortiumAssessments,
@@ -7,13 +8,19 @@ import {
   majorToMinor,
   minorToMajorInput,
 } from "../utils/consorcio.helpers";
+import { buildConsortiumBudgetDraftComparison } from "../utils/consorcioBudget.helpers";
 
 const ConsortiumMonthlyLiquidationAssistant = ({
+  budget = null,
+  budgetError = "",
+  budgetLoading = false,
+  budgetUrl = "",
   currency = "ARS",
   disabled = false,
   documents = [],
   draftDirty = false,
   expenses = [],
+  periodKey = "",
   previousPeriod = null,
   recurringExpenses = [],
   units = [],
@@ -59,6 +66,16 @@ const ConsortiumMonthlyLiquidationAssistant = ({
   const selectedRecurringCount = recurringExpenses.filter(
     (item) => selectedTemplates[item.id] && majorToMinor(templateAmounts[item.id]) > 0,
   ).length;
+  const budgetComparison = useMemo(() => buildConsortiumBudgetDraftComparison({
+    budget,
+    expenses,
+    periodKey,
+  }), [budget, expenses, periodKey]);
+  const sameBudgetCurrency = !budgetComparison.available
+    || budgetComparison.budget.currency === currency;
+  const visibleBudgetRows = budgetComparison.categoryRows.filter((item) => (
+    item.plannedMinor > 0 || item.actualMinor > 0
+  ));
 
   const applyRecurring = () => {
     const selected = recurringExpenses
@@ -92,6 +109,13 @@ const ConsortiumMonthlyLiquidationAssistant = ({
       label: "Borrador guardado",
       detail: draftDirty ? "Hay cambios locales pendientes de guardar." : "El borrador coincide con la información almacenada.",
     },
+    ...(budgetComparison.available && sameBudgetCurrency ? [{
+      ok: !budgetComparison.overThreshold,
+      label: "Control presupuestario",
+      detail: budgetComparison.overThreshold
+        ? `El borrador supera el umbral de ${budgetComparison.budget.alertThresholdPercent}% configurado para el mes.`
+        : "El total del borrador se mantiene dentro del umbral mensual configurado.",
+    }] : []),
   ];
 
   return (
@@ -134,6 +158,34 @@ const ConsortiumMonthlyLiquidationAssistant = ({
               <button className="btn btn-outline-primary w-100" disabled={disabled || !selectedRecurringCount} type="button" onClick={applyRecurring}>Incorporar {selectedRecurringCount || ""} recurrente{selectedRecurringCount === 1 ? "" : "s"}</button>
             </div>
           </div>
+        </div>
+
+        <div className="rounded border bg-white p-3 mb-3">
+          <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div>
+              <h4 className="h6 mb-1">Presupuesto del mes</h4>
+              <p className="small text-muted mb-0">Comparación informativa: una diferencia no bloquea la emisión y queda visible antes de aprobarla.</p>
+            </div>
+            {budgetUrl && <Link className="btn btn-sm btn-outline-primary" to={budgetUrl}>Ver presupuesto anual</Link>}
+          </div>
+          {budgetLoading && <p className="small text-muted mb-0">Consultando la última versión aprobada...</p>}
+          {!budgetLoading && budgetError && <div className="alert alert-warning py-2 small mb-0">{budgetError}</div>}
+          {!budgetLoading && !budgetError && !budgetComparison.available && <div className="alert alert-light border py-2 small mb-0">No hay un presupuesto aprobado para este ejercicio. Podés continuar con la liquidación y prepararlo cuando corresponda.</div>}
+          {!budgetLoading && !budgetError && budgetComparison.available && !sameBudgetCurrency && <div className="alert alert-warning py-2 small mb-0">El presupuesto está expresado en {budgetComparison.budget.currency} y la liquidación en {currency}. No se comparan importes de monedas distintas.</div>}
+          {!budgetLoading && !budgetError && budgetComparison.available && sameBudgetCurrency && <>
+            <div className="row g-2 mb-3">
+              <div className="col-sm-4"><div className="rounded border p-2 h-100"><small className="text-muted d-block">Previsto</small><strong className="consortium-money">{formatConsortiumMoney(budgetComparison.plannedMinor, currency)}</strong></div></div>
+              <div className="col-sm-4"><div className="rounded border p-2 h-100"><small className="text-muted d-block">Borrador actual</small><strong className="consortium-money">{formatConsortiumMoney(budgetComparison.actualMinor, currency)}</strong></div></div>
+              <div className="col-sm-4"><div className={`rounded border p-2 h-100 ${budgetComparison.overThreshold ? "border-danger bg-danger-subtle" : "border-success-subtle"}`}><small className="text-muted d-block">Diferencia</small><strong className={`consortium-money ${budgetComparison.varianceMinor > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(budgetComparison.varianceMinor, currency)}</strong></div></div>
+            </div>
+            {budgetComparison.overThreshold && <div className="alert alert-warning py-2 small"><strong>Revisá el desvío antes de emitir.</strong> Se superó el umbral de {budgetComparison.budget.alertThresholdPercent}% en el total mensual o en uno de sus rubros.</div>}
+            <div className="table-responsive">
+              <table className="table table-sm align-middle mb-0">
+                <thead><tr><th>Rubro</th><th className="text-end">Previsto</th><th className="text-end">Borrador</th><th className="text-end">Diferencia</th><th>Control</th></tr></thead>
+                <tbody>{visibleBudgetRows.map((item) => <tr key={item.id}><td>{item.label}</td><td className="text-end consortium-money">{formatConsortiumMoney(item.plannedMinor, currency)}</td><td className="text-end consortium-money">{formatConsortiumMoney(item.actualMinor, currency)}</td><td className={`text-end consortium-money ${item.varianceMinor > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(item.varianceMinor, currency)}</td><td>{item.overThreshold ? <span className="badge text-bg-warning">Revisar</span> : <span className="badge text-bg-success">Dentro del margen</span>}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </>}
         </div>
 
         <div className="rounded border bg-white p-3 mb-3">

@@ -28,6 +28,7 @@ import {
   createConsortiumPeriod,
   createConsortiumUnit,
   createConsortiumUnitsBulk,
+  getConsortiumBudgetPublication,
   getConsortiumById,
   getConsortiumExpenseDocuments,
   getConsortiumMonthlyCloseChecklist,
@@ -123,6 +124,9 @@ const ConsortiumDetailPage = () => {
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [periodExpenses, setPeriodExpenses] = useState([]);
   const [draftExpensesDirty, setDraftExpensesDirty] = useState(false);
+  const [budgetPublication, setBudgetPublication] = useState(null);
+  const [budgetLoading, setBudgetLoading] = useState(false);
+  const [budgetError, setBudgetError] = useState("");
   const [unitForm, setUnitForm] = useState(createEmptyConsortiumUnit);
   const [editingUnitId, setEditingUnitId] = useState("");
   const [unitChangeForm, setUnitChangeForm] = useState(emptyUnitChangeForm);
@@ -240,6 +244,33 @@ const ConsortiumDetailPage = () => {
     () => periods.find((item) => item.id === selectedPeriodId) || null,
     [periods, selectedPeriodId],
   );
+
+  useEffect(() => {
+    let active = true;
+    const year = Number(selectedPeriod?.periodKey?.slice?.(0, 4));
+    if (!activeInmobiliariaId || !consortiumId || !Number.isInteger(year)) {
+      setBudgetPublication(null);
+      setBudgetError("");
+      setBudgetLoading(false);
+      return () => { active = false; };
+    }
+    setBudgetLoading(true);
+    setBudgetError("");
+    getConsortiumBudgetPublication({
+      inmobiliariaId: activeInmobiliariaId,
+      consortiumId,
+      year,
+    }).then((value) => {
+      if (active) setBudgetPublication(value);
+    }).catch((loadError) => {
+      if (!active) return;
+      setBudgetPublication(null);
+      setBudgetError(loadError.message || "No se pudo consultar el presupuesto aprobado.");
+    }).finally(() => {
+      if (active) setBudgetLoading(false);
+    });
+    return () => { active = false; };
+  }, [activeInmobiliariaId, consortiumId, selectedPeriod?.periodKey]);
 
   useEffect(() => {
     setPeriodExpenses(Array.isArray(selectedPeriod?.expenses) ? selectedPeriod.expenses : []);
@@ -1275,12 +1306,17 @@ const ConsortiumDetailPage = () => {
           <div className="card-body p-4">
             <div className="d-flex flex-wrap justify-content-between gap-2 mb-3"><div><h2 className="h5 mb-1">Gastos del borrador</h2><p className="text-muted small mb-0">Cada gasto puede prorratearse por coeficiente, partes iguales o una unidad determinada.</p></div><strong className="consortium-money">Total: {formatConsortiumMoney(draftTotal, selectedPeriod.currency)}</strong></div>
             <ConsortiumMonthlyLiquidationAssistant
+              budget={budgetPublication}
+              budgetError={budgetError}
+              budgetLoading={budgetLoading}
+              budgetUrl={`/admin/consorcios/${consortiumId}/presupuesto?year=${selectedPeriod.periodKey.slice(0, 4)}`}
               currency={selectedPeriod.currency || consortium.currency}
               disabled={Boolean(operation)}
               documents={selectedExpenseDocuments}
               draftDirty={draftExpensesDirty}
               expenses={periodExpenses}
               previousPeriod={previousMonthlyPeriod}
+              periodKey={selectedPeriod.periodKey}
               recurringExpenses={recurringExpenses}
               units={activeUnits}
               onApplyPrevious={applyPreviousPeriodExpenses}

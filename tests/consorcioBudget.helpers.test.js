@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildConsortiumBudgetComparison,
+  buildConsortiumBudgetDraftComparison,
   buildConsortiumBudgetFromPeriods,
   buildConsortiumBudgetUnitProjection,
   createConsortiumBudgetCategories,
@@ -79,4 +80,45 @@ test("proyecta el presupuesto mensual por coeficientes de las unidades", () => {
   assert.equal(projection.totalAssessedMinor, 100000);
   assert.equal(projection.assessments.find((item) => item.unitId === "a").totalAmountMinor, 60000);
   assert.equal(projection.assessments.find((item) => item.unitId === "b").totalAmountMinor, 40000);
+});
+
+test("compara el borrador mensual con el presupuesto aprobado por rubro", () => {
+  const categories = createConsortiumBudgetCategories();
+  categories.find((item) => item.id === "utilities").months["03"] = 100000;
+  categories.find((item) => item.id === "maintenance").months["03"] = 200000;
+  const comparison = buildConsortiumBudgetDraftComparison({
+    budget: { year: 2027, alertThresholdPercent: 10, categories },
+    periodKey: "2027-03",
+    expenses: [
+      { budgetCategory: "utilities", amountMinor: 115000 },
+      { budgetCategory: "maintenance", amountMinor: 180000 },
+      { category: "extraordinary", amountMinor: 50000 },
+    ],
+  });
+  assert.equal(comparison.available, true);
+  assert.equal(comparison.plannedMinor, 300000);
+  assert.equal(comparison.actualMinor, 345000);
+  assert.equal(comparison.overThreshold, true);
+  assert.equal(
+    comparison.categoryRows.find((item) => item.id === "utilities").overThreshold,
+    true,
+  );
+  assert.equal(
+    comparison.categoryRows.find((item) => item.id === "maintenance").overThreshold,
+    false,
+  );
+  assert.equal(
+    comparison.categoryRows.find((item) => item.id === "extraordinary").overThreshold,
+    true,
+  );
+});
+
+test("no compara un presupuesto con un período de otro ejercicio", () => {
+  const comparison = buildConsortiumBudgetDraftComparison({
+    budget: { year: 2027, categories: createConsortiumBudgetCategories() },
+    periodKey: "2026-12",
+    expenses: [{ budgetCategory: "utilities", amountMinor: 1000 }],
+  });
+  assert.equal(comparison.available, false);
+  assert.equal(comparison.actualMinor, 0);
 });

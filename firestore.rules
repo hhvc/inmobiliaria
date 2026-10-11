@@ -566,17 +566,30 @@ function adminCanOnlyChangeOwnInmobiliariaLinks() {
 }
 
       function selfCanChangeActiveInmobiliaria() {
-  return isSignedIn()
-    && request.auth.uid == userId
-    && request.resource.data
-      .diff(resource.data)
-      .affectedKeys()
-      .hasOnly([
-        "activeInmobiliariaId",
-        "updatedAt"
-      ])
-    && request.resource.data.activeInmobiliariaId in existingUserInmobiliarias();
-}
+        return isSignedIn()
+          && request.auth.uid == userId
+          && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "activeInmobiliariaId",
+              "updatedAt"
+            ])
+          && request.resource.data.activeInmobiliariaId is string
+          && exists(
+            inmobiliariaPath(request.resource.data.activeInmobiliariaId)
+          )
+          && (
+            isRoot()
+            || request.resource.data.activeInmobiliariaId
+              in existingUserInmobiliarias()
+            || request.resource.data.activeInmobiliariaId
+              in existingUserInmobiliariaRoles()
+            || inmobiliariaListsUserAsAdmin(
+              request.resource.data.activeInmobiliariaId
+            )
+          );
+      }
 
       function selfCanRequireEmailVerification() {
   return isRawSignedIn()

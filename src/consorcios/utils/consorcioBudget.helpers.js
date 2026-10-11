@@ -47,6 +47,15 @@ const emptyMonths = () => Object.fromEntries(
   CONSORTIUM_BUDGET_MONTHS.map((month) => [month.id, 0]),
 );
 
+const classifyBudgetVariance = (plannedMinor, actualMinor, thresholdPercent = 10) => {
+  const varianceMinor = actualMinor - plannedMinor;
+  const variancePercent = plannedMinor > 0 ? (varianceMinor / plannedMinor) * 100 : null;
+  const overThreshold = actualMinor > plannedMinor && (
+    plannedMinor === 0 || variancePercent > thresholdPercent
+  );
+  return { varianceMinor, variancePercent, overThreshold };
+};
+
 export const getDefaultConsortiumBudgetYear = (date = new Date()) => (
   date.getMonth() >= 9 ? date.getFullYear() + 1 : date.getFullYear()
 );
@@ -137,15 +146,6 @@ export const buildConsortiumBudgetComparison = ({ budget = {}, periods = [] } = 
       });
     });
 
-  const classify = (plannedMinor, actualMinor) => {
-    const varianceMinor = actualMinor - plannedMinor;
-    const variancePercent = plannedMinor > 0 ? (varianceMinor / plannedMinor) * 100 : null;
-    const overThreshold = actualMinor > plannedMinor && (
-      plannedMinor === 0 || variancePercent > normalized.alertThresholdPercent
-    );
-    return { varianceMinor, variancePercent, overThreshold };
-  };
-
   const categoryRows = normalized.categories.map((category) => {
     const plannedMinor = Object.values(category.months).reduce((sum, amount) => sum + amount, 0);
     const actualMinor = Object.values(actualByCategory[category.id]).reduce(
@@ -156,7 +156,11 @@ export const buildConsortiumBudgetComparison = ({ budget = {}, periods = [] } = 
       ...category,
       plannedMinor,
       actualMinor,
-      ...classify(plannedMinor, actualMinor),
+      ...classifyBudgetVariance(
+        plannedMinor,
+        actualMinor,
+        normalized.alertThresholdPercent,
+      ),
       actualMonths: actualByCategory[category.id],
     };
   });
@@ -169,7 +173,16 @@ export const buildConsortiumBudgetComparison = ({ budget = {}, periods = [] } = 
       (sum, category) => sum + actualByCategory[category.id][month.id],
       0,
     );
-    return { ...month, plannedMinor, actualMinor, ...classify(plannedMinor, actualMinor) };
+    return {
+      ...month,
+      plannedMinor,
+      actualMinor,
+      ...classifyBudgetVariance(
+        plannedMinor,
+        actualMinor,
+        normalized.alertThresholdPercent,
+      ),
+    };
   });
   const plannedMinor = categoryRows.reduce((sum, item) => sum + item.plannedMinor, 0);
   const actualMinor = categoryRows.reduce((sum, item) => sum + item.actualMinor, 0);
@@ -179,7 +192,85 @@ export const buildConsortiumBudgetComparison = ({ budget = {}, periods = [] } = 
     monthRows,
     plannedMinor,
     actualMinor,
-    ...classify(plannedMinor, actualMinor),
+    ...classifyBudgetVariance(
+      plannedMinor,
+      actualMinor,
+      normalized.alertThresholdPercent,
+    ),
+  };
+};
+
+export const buildConsortiumBudgetDraftComparison = ({
+  budget = null,
+  expenses = [],
+  periodKey = "",
+} = {}) => {
+  const periodMatch = /^(\d{4})-(\d{2})$/.exec(periodKey?.toString?.() || "");
+  if (!budget || !periodMatch) {
+    return {
+      available: false,
+      categoryRows: [],
+      plannedMinor: 0,
+      actualMinor: 0,
+      varianceMinor: 0,
+      variancePercent: null,
+      overThreshold: false,
+    };
+  }
+
+  const normalized = normalizeConsortiumBudget(budget);
+  const year = Number(periodMatch[1]);
+  const monthId = periodMatch[2];
+  if (normalized.year !== year || !monthIds.has(monthId)) {
+    return {
+      available: false,
+      budget: normalized,
+      categoryRows: [],
+      plannedMinor: 0,
+      actualMinor: 0,
+      varianceMinor: 0,
+      variancePercent: null,
+      overThreshold: false,
+    };
+  }
+
+  const actualByCategory = Object.fromEntries(
+    normalized.categories.map((category) => [category.id, 0]),
+  );
+  (Array.isArray(expenses) ? expenses : []).forEach((expense) => {
+    const categoryId = getConsortiumBudgetCategoryId(expense);
+    actualByCategory[categoryId] += asMinor(expense.amountMinor);
+  });
+
+  const categoryRows = normalized.categories.map((category) => {
+    const plannedMinor = asMinor(category.months?.[monthId]);
+    const actualMinor = actualByCategory[category.id];
+    return {
+      ...category,
+      plannedMinor,
+      actualMinor,
+      ...classifyBudgetVariance(
+        plannedMinor,
+        actualMinor,
+        normalized.alertThresholdPercent,
+      ),
+    };
+  });
+  const plannedMinor = categoryRows.reduce((sum, item) => sum + item.plannedMinor, 0);
+  const actualMinor = categoryRows.reduce((sum, item) => sum + item.actualMinor, 0);
+
+  return {
+    available: true,
+    budget: normalized,
+    monthId,
+    categoryRows,
+    plannedMinor,
+    actualMinor,
+    ...classifyBudgetVariance(
+      plannedMinor,
+      actualMinor,
+      normalized.alertThresholdPercent,
+    ),
   };
 };
 

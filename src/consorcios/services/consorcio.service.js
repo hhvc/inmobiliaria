@@ -4152,6 +4152,23 @@ export const getPortalConsortiumBudget = async ({
   return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
 };
 
+export const getConsortiumBudgetPublication = async ({
+  inmobiliariaId,
+  consortiumId,
+  year,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const normalizedYear = Math.trunc(Number(year) || 0);
+  if (!consortiumId || normalizedYear < 2000 || normalizedYear > 2100) return null;
+  const snapshot = await getDoc(agencyDoc(
+    inmobiliariaId,
+    "budgetPublications",
+    `${consortiumId}_${normalizedYear}`,
+  ));
+  if (!snapshot.exists() || snapshot.data().consortiumId !== consortiumId) return null;
+  return { id: snapshot.id, ...snapshot.data() };
+};
+
 export const registerConsortiumSupplierPayment = async ({
   inmobiliariaId,
   obligationId,
