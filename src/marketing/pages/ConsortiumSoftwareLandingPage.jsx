@@ -55,7 +55,7 @@ const BENEFITS = [
   },
   {
     title: "Control económico",
-    text: "Revisá tesorería, proveedores, conciliaciones, morosidad y cierre mensual desde un único circuito.",
+    text: "Planificá el presupuesto anual, proyectá expensas y controlá desvíos junto con tesorería, proveedores y cierre mensual.",
   },
 ];
 

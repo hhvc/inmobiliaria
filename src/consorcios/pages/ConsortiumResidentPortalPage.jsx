@@ -18,6 +18,7 @@ import {
   getConsortiumPenalties,
   getConsortiumPeriodById,
   getMyConsortiumUnits,
+  getPortalConsortiumBudget,
   getPortalUnitObligations,
   submitConsortiumPaymentReport,
 } from "../services/consorcio.service";
@@ -41,6 +42,7 @@ import {
   getPaymentReportStatus,
   isConsortiumDocumentFileValid,
 } from "../utils/consorcioPortal.helpers";
+import { buildConsortiumBudgetComparison } from "../utils/consorcioBudget.helpers";
 import "../consorcio.css";
 
 const todayKey = () => new Date().toISOString().slice(0, 10);
@@ -63,6 +65,7 @@ const ConsortiumResidentPortalPage = () => {
   const [reports, setReports] = useState([]);
   const [adjustments, setAdjustments] = useState([]);
   const [penalties, setPenalties] = useState([]);
+  const [ownerBudget, setOwnerBudget] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState(null);
   const [expenseDocuments, setExpenseDocuments] = useState([]);
@@ -108,12 +111,14 @@ const ConsortiumResidentPortalPage = () => {
       setReports([]);
       setAdjustments([]);
       setPenalties([]);
+      setOwnerBudget(null);
       return;
     }
     try {
       setDetailLoading(true);
       setError("");
-      const [obligationData, reportData, adjustmentData, penaltyData] = await Promise.all([
+      const currentYear = new Date().getFullYear();
+      const [obligationData, reportData, adjustmentData, penaltyData, budgetResults] = await Promise.all([
         getPortalUnitObligations({
           inmobiliariaId: selectedUnit.inmobiliariaId,
           unitId: selectedUnit.id,
@@ -128,11 +133,20 @@ const ConsortiumResidentPortalPage = () => {
           unitId: selectedUnit.id,
           portalOnly: true,
         }),
+        Promise.allSettled([currentYear, currentYear + 1].map((year) => getPortalConsortiumBudget({
+          inmobiliariaId: selectedUnit.inmobiliariaId,
+          consortiumId: selectedUnit.consortiumId,
+          year,
+        }))),
       ]);
       setObligations(obligationData);
       setReports(reportData);
       setAdjustments(adjustmentData);
       setPenalties(penaltyData);
+      setOwnerBudget(budgetResults
+        .filter((result) => result.status === "fulfilled" && result.value)
+        .map((result) => result.value)
+        .sort((first, second) => Number(second.year || 0) - Number(first.year || 0))[0] || null);
       setSelectedPeriodId((current) => (
         current && obligationData.some((item) => item.periodId === current)
           ? current
@@ -178,6 +192,9 @@ const ConsortiumResidentPortalPage = () => {
   );
   const availableCredit = Math.max(0, Number(selectedUnit?.creditBalanceMinor) || 0);
   const totalBalance = totalDebt - availableCredit;
+  const ownerBudgetComparison = useMemo(() => (
+    ownerBudget ? buildConsortiumBudgetComparison({ budget: ownerBudget, periods: [] }) : null
+  ), [ownerBudget]);
 
   const selectReport = (obligation) => {
     setError("");
@@ -272,6 +289,8 @@ const ConsortiumResidentPortalPage = () => {
           <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4"><div className="row g-3 align-items-end"><div className="col-lg-6"><label className="form-label">Unidad habilitada</label><select className="form-select" value={selectedUnitId} onChange={(event) => { setSelectedUnitId(event.target.value); setSelectedPeriodId(""); setReportForm(emptyReportForm()); }}>{units.map((unit) => <option key={`${unit.inmobiliariaId}_${unit.id}`} value={unit.id}>{unit.consortiumName || "Consorcio"} · Unidad {unit.code}</option>)}</select></div><div className="col-sm-6 col-lg-3"><span className="small text-muted text-uppercase">Saldo a favor</span><strong className="fs-5 d-block text-success consortium-money">{formatConsortiumMoney(availableCredit, selectedUnit.consortiumCurrency || "ARS")}</strong></div><div className="col-sm-6 col-lg-3"><span className="small text-muted text-uppercase">Saldo neto</span><strong className={`fs-4 d-block consortium-money ${totalBalance > 0 ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(totalBalance, selectedUnit.consortiumCurrency || "ARS")}</strong></div></div><div className="mt-3"><strong>{selectedUnit.consortiumName || "Consorcio"}</strong><div className="text-muted">{selectedUnit.consortiumAddress || "Domicilio no informado"} · Unidad {selectedUnit.code}</div>{availableCredit > 0 && <small className="text-muted">El saldo a favor se mantiene separado hasta que la administración confirme su imputación.</small>}</div></div></section>
 
           <ConsortiumBuildingInformation selectedUnit={selectedUnit} />
+
+          {ownerBudgetComparison && <section className="card border-primary-subtle shadow-sm mb-4"><div className="card-body p-4"><div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3"><div><span className="badge text-bg-primary mb-2">Información para propietarios</span><h2 className="h5 mb-1">Presupuesto anual {ownerBudget.year}</h2><p className="text-muted small mb-0">Versión {ownerBudget.publicationVersion} aprobada por la administración.</p></div><strong className="fs-4 consortium-money">{formatConsortiumMoney(ownerBudgetComparison.plannedMinor, ownerBudget.currency || selectedUnit.consortiumCurrency || "ARS")}</strong></div><div className="row g-2">{ownerBudgetComparison.categoryRows.filter((item) => item.plannedMinor > 0).map((item) => <div className="col-md-6 col-xl-4" key={item.id}><div className="rounded border bg-light p-2 h-100"><span className="small text-muted d-block">{item.label}</span><strong className="consortium-money">{formatConsortiumMoney(item.plannedMinor, ownerBudget.currency || "ARS")}</strong></div></div>)}</div>{ownerBudget.notes && <p className="small text-muted border-top mt-3 pt-3 mb-0">{ownerBudget.notes}</p>}</div></section>}
 
           <ConsortiumClaimsPanel
             inmobiliariaId={selectedUnit.inmobiliariaId}

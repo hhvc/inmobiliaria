@@ -76,6 +76,7 @@ export const createEmptyConsortiumExpense = () => ({
   id: "",
   concept: "",
   category: "ordinary",
+  budgetCategory: "other",
   distributionMode: "coefficient",
   coefficientGroupId: "general",
   specificUnitId: "",

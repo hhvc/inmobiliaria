@@ -221,6 +221,46 @@
   border-top: 1px solid #212529;
 }
 
+.consortium-budget-grid {
+  max-height: 70vh;
+}
+
+.consortium-budget-grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+.consortium-budget-grid .consortium-budget-rubro,
+.consortium-budget-grid tbody th {
+  min-width: 220px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bs-body-bg);
+}
+
+.consortium-budget-grid thead .consortium-budget-rubro {
+  z-index: 3;
+  background: var(--bs-table-bg);
+}
+
+.consortium-budget-input {
+  min-width: 92px;
+}
+
+.consortium-budget-group {
+  min-width: 150px;
+}
+
+@media (max-width: 767.98px) {
+  .consortium-budget-grid .consortium-budget-rubro,
+  .consortium-budget-grid tbody th {
+    min-width: 170px;
+  }
+}
+
 @media print {
   .consortium-no-print,
   .consortium-receipt-page nav,

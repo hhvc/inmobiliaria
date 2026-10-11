@@ -154,6 +154,7 @@ import ConsortiumResidentPortalPage from "./consorcios/pages/ConsortiumResidentP
 import ConsortiumAssessmentPage from "./consorcios/pages/ConsortiumAssessmentPage";
 import ConsortiumEconomicStatementPage from "./consorcios/pages/ConsortiumEconomicStatementPage";
 import ConsortiumCollectionsPage from "./consorcios/pages/ConsortiumCollectionsPage";
+import ConsortiumBudgetPage from "./consorcios/pages/ConsortiumBudgetPage";
 
 // Control tributario inmobiliario
 import TaxManagementPage from "./tributos/pages/TaxManagementPage";
@@ -757,6 +758,19 @@ function App() {
                       <InmobiliariaModuleGuard moduleId="consorcios">
                         <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
                           <ConsortiumEconomicStatementPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/consorcios/:id/presupuesto"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="consorcios">
+                        <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
+                          <ConsortiumBudgetPage />
                         </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>

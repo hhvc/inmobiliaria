@@ -50,6 +50,10 @@ import {
   normalizeConsortiumUnitAutomationMode,
   normalizeReminderDays,
 } from "../utils/consorcioNotification.helpers";
+import {
+  getConsortiumBudgetCategoryId,
+  normalizeConsortiumBudget,
+} from "../utils/consorcioBudget.helpers";
 
 const COLLECTIONS = {
   consortiums: "condominiums",
@@ -74,6 +78,9 @@ const COLLECTIONS = {
   claimEvents: "condominium_claim_events",
   collectionActions: "condominium_collection_actions",
   paymentAgreements: "condominium_payment_agreements",
+  budgets: "condominium_budgets",
+  budgetVersions: "condominium_budget_versions",
+  budgetPublications: "condominium_budget_publications",
 };
 
 const functions = getFunctions(app, "southamerica-east1");
@@ -91,6 +98,7 @@ const sanitizeRecurringExpense = (value = {}, fallbackId = "") => ({
   id: cleanText(value.id || fallbackId, 128),
   concept: cleanText(value.concept, 220),
   category: value.category === "extraordinary" ? "extraordinary" : "ordinary",
+  budgetCategory: getConsortiumBudgetCategoryId(value),
   distributionMode: ["coefficient", "equal", "specific"].includes(value.distributionMode)
     ? value.distributionMode
     : "coefficient",
@@ -300,6 +308,7 @@ const sanitizeExpense = (value = {}, fallbackId = "") => ({
   id: cleanText(value.id || fallbackId, 128),
   concept: cleanText(value.concept, 220),
   category: value.category === "extraordinary" ? "extraordinary" : "ordinary",
+  budgetCategory: getConsortiumBudgetCategoryId(value),
   distributionMode: ["coefficient", "equal", "specific"].includes(value.distributionMode)
     ? value.distributionMode
     : "coefficient",
@@ -4010,6 +4019,137 @@ export const closeConsortiumFinancialPeriod = async ({
     createdAt: serverTimestamp(),
   });
   return closureRef.id;
+};
+
+export const getConsortiumBudgets = async (inmobiliariaId, consortiumId = "") => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "budgets");
+  const source = consortiumId
+    ? query(baseCollection, where("consortiumId", "==", consortiumId))
+    : baseCollection;
+  const snapshot = await getDocs(source);
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .sort((first, second) => Number(second.year || 0) - Number(first.year || 0));
+};
+
+export const getConsortiumBudgetVersions = async (
+  inmobiliariaId,
+  { consortiumId = "", budgetId = "" } = {},
+) => {
+  if (!inmobiliariaId) return [];
+  const baseCollection = agencyCollection(inmobiliariaId, "budgetVersions");
+  const source = budgetId
+    ? query(baseCollection, where("budgetId", "==", budgetId))
+    : consortiumId
+      ? query(baseCollection, where("consortiumId", "==", consortiumId))
+      : baseCollection;
+  const snapshot = await getDocs(source);
+  return snapshot.docs
+    .map((item) => ({ id: item.id, ...item.data() }))
+    .filter((item) => !budgetId || item.budgetId === budgetId)
+    .filter((item) => !consortiumId || item.consortiumId === consortiumId)
+    .sort((first, second) => Number(second.version || 0) - Number(first.version || 0));
+};
+
+export const saveConsortiumBudget = async ({
+  inmobiliariaId,
+  consortiumId,
+  value,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const consortium = await getConsortiumById(inmobiliariaId, consortiumId);
+  if (!consortium) throw new Error("El consorcio no existe.");
+  const normalized = normalizeConsortiumBudget({
+    ...value,
+    currency: value?.currency || consortium.currency || "ARS",
+  });
+  const budgetId = `${consortiumId}_${normalized.year}`;
+  const budgetRef = agencyDoc(inmobiliariaId, "budgets", budgetId);
+  const publicationRef = agencyDoc(inmobiliariaId, "budgetPublications", budgetId);
+  await runTransaction(db, async (transaction) => {
+    const currentSnapshot = await transaction.get(budgetRef);
+    const current = currentSnapshot.exists() ? currentSnapshot.data() : null;
+    if (current && current.consortiumId !== consortiumId) {
+      throw new Error("El presupuesto pertenece a otro consorcio.");
+    }
+    const version = Number(current?.version || 0) + 1;
+    const versionRef = agencyDoc(
+      inmobiliariaId,
+      "budgetVersions",
+      `${budgetId}_v${version}`,
+    );
+    const payload = {
+      ...normalized,
+      id: budgetId,
+      consortiumId,
+      inmobiliariaId,
+      ownerInmobiliariaId: inmobiliariaId,
+      version,
+      publishedVersion: normalized.status === "approved"
+        ? version
+        : Math.max(0, Number(current?.publishedVersion) || 0),
+      publishedOwnerVisible: normalized.status === "approved"
+        ? normalized.ownerVisible
+        : current?.publishedOwnerVisible === true,
+      approvedAt: normalized.status === "approved" ? serverTimestamp() : null,
+      approvedBy: normalized.status === "approved" ? user.uid : "",
+      updatedBy: user.uid,
+      updatedAt: serverTimestamp(),
+      ...(current ? {
+        createdBy: current.createdBy || user.uid,
+        createdAt: current.createdAt || serverTimestamp(),
+      } : {
+        createdBy: user.uid,
+        createdAt: serverTimestamp(),
+      }),
+    };
+    transaction.set(budgetRef, payload);
+    transaction.set(versionRef, {
+      ...payload,
+      id: versionRef.id,
+      budgetId,
+      previousVersionId: version > 1 ? `${budgetId}_v${version - 1}` : "",
+      immutable: true,
+      createdBy: user.uid,
+      createdAt: serverTimestamp(),
+    });
+    if (normalized.status === "approved") {
+      transaction.set(publicationRef, {
+        schemaVersion: normalized.schemaVersion,
+        id: budgetId,
+        inmobiliariaId,
+        ownerInmobiliariaId: inmobiliariaId,
+        consortiumId,
+        year: normalized.year,
+        currency: normalized.currency,
+        status: "approved",
+        ownerVisible: normalized.ownerVisible,
+        alertThresholdPercent: normalized.alertThresholdPercent,
+        notes: normalized.notes,
+        categories: normalized.categories,
+        publicationVersion: version,
+        publishedAt: serverTimestamp(),
+      });
+    }
+  });
+  return budgetId;
+};
+
+export const getPortalConsortiumBudget = async ({
+  inmobiliariaId,
+  consortiumId,
+  year = new Date().getFullYear(),
+}) => {
+  assertPortalUser();
+  const snapshot = await getDoc(agencyDoc(
+    inmobiliariaId,
+    "budgetPublications",
+    `${consortiumId}_${year}`,
+  ));
+  return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
 };
 
 export const registerConsortiumSupplierPayment = async ({
