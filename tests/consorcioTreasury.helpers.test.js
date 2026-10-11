@@ -5,6 +5,8 @@ import {
   buildConsortiumPayableDraftFromDocument,
   buildConsortiumSupplierDraftFromDocument,
   findConsortiumPayableForDocument,
+  getConsortiumSupplierPaymentAgenda,
+  getConsortiumSupplierPaymentPlanMeta,
   findConsortiumSupplierForDocument,
 } from "../src/consorcios/utils/consorcioTreasury.helpers.js";
 
@@ -89,4 +91,25 @@ test("reconoce la obligación activa vinculada al gasto aunque provenga de otro 
     { id: "active", periodId: "period-1", expenseId: "expense-1", voided: false },
   ]);
   assert.equal(obligation.id, "active");
+});
+
+test("distingue pagos programados pendientes, autorizados y vencidos", () => {
+  assert.equal(getConsortiumSupplierPaymentPlanMeta({
+    paymentPlan: { status: "scheduled", scheduledDate: "2026-10-15" },
+  }, "2026-10-10").id, "scheduled");
+  assert.equal(getConsortiumSupplierPaymentPlanMeta({
+    paymentPlan: { status: "authorized", scheduledDate: "2026-10-10" },
+  }, "2026-10-10").id, "due_today");
+  assert.equal(getConsortiumSupplierPaymentPlanMeta({
+    paymentPlan: { status: "authorized", scheduledDate: "2026-10-09" },
+  }, "2026-10-10").id, "overdue");
+});
+
+test("ordena la agenda por fecha y omite programaciones finalizadas", () => {
+  const agenda = getConsortiumSupplierPaymentAgenda([
+    { id: "later", paymentPlan: { status: "authorized", scheduledDate: "2026-10-20" } },
+    { id: "done", paymentPlan: { status: "executed", scheduledDate: "2026-10-01" } },
+    { id: "first", paymentPlan: { status: "scheduled", scheduledDate: "2026-10-12" } },
+  ], "2026-10-10");
+  assert.deepEqual(agenda.map((item) => item.obligation.id), ["first", "later"]);
 });

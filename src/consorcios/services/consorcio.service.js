@@ -3415,6 +3415,154 @@ export const voidConsortiumSupplierObligation = async ({ inmobiliariaId, obligat
   });
 };
 
+const supplierPaymentPlanHistoryEntry = ({ action, user, note = "", date = "", amountMinor = 0 }) => ({
+  action,
+  actorUid: user.uid,
+  actorEmail: user.email || "",
+  note: cleanText(note, 500),
+  date,
+  amountMinor: Math.max(0, Math.round(Number(amountMinor) || 0)),
+  createdAtIso: new Date().toISOString(),
+});
+
+export const scheduleConsortiumSupplierPayment = async ({
+  inmobiliariaId,
+  obligationId,
+  accountId,
+  amountMinor,
+  scheduledDate,
+  method = "transfer",
+  reference = "",
+  notes = "",
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const targetRef = agencyDoc(inmobiliariaId, "supplierObligations", obligationId);
+  const obligationSnap = await getDoc(targetRef);
+  if (!obligationSnap.exists() || obligationSnap.data().voided === true) {
+    throw new Error("La obligación no está disponible.");
+  }
+  const obligation = obligationSnap.data();
+  const balance = Math.max(0, Number(obligation.balanceMinor) || 0);
+  const amount = Math.max(0, Math.round(Number(amountMinor) || 0));
+  if (!balance) throw new Error("La obligación ya no tiene saldo pendiente.");
+  if (!amount || amount > balance) throw new Error("El importe programado debe ser mayor a cero y no superar el saldo.");
+  if (!accountId) throw new Error("Seleccioná la cuenta prevista para el pago.");
+  const date = validDateOrThrow(scheduledDate, "la fecha programada");
+  if (date < new Date().toISOString().slice(0, 10)) {
+    throw new Error("La fecha programada no puede ser anterior a hoy.");
+  }
+  const accountSnap = await getDoc(agencyDoc(inmobiliariaId, "treasuryAccounts", accountId));
+  if (!accountSnap.exists() || accountSnap.data().active === false) {
+    throw new Error("Seleccioná una cuenta de tesorería activa.");
+  }
+  const account = accountSnap.data();
+  if (account.consortiumId !== obligation.consortiumId) {
+    throw new Error("La cuenta y la obligación pertenecen a consorcios diferentes.");
+  }
+  if ((account.currency || "ARS") !== (obligation.currency || "ARS")) {
+    throw new Error("La moneda de la cuenta no coincide con la obligación.");
+  }
+  const history = Array.isArray(obligation.paymentPlanHistory)
+    ? obligation.paymentPlanHistory : [];
+  await updateDoc(targetRef, {
+    paymentPlan: {
+      status: "scheduled",
+      scheduledDate: date,
+      amountMinor: amount,
+      remainingMinor: amount,
+      accountId,
+      accountSnapshot: { name: account.name || "", type: account.type || "bank" },
+      method: cleanText(method, 40) || "transfer",
+      reference: cleanText(reference, 220),
+      notes: cleanText(notes, 1000),
+      scheduledBy: user.uid,
+      scheduledByEmail: user.email || "",
+      scheduledAt: serverTimestamp(),
+    },
+    paymentPlanHistory: [...history, supplierPaymentPlanHistoryEntry({
+      action: "scheduled", user, note: notes, date, amountMinor: amount,
+    })],
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const authorizeConsortiumSupplierPayment = async ({ inmobiliariaId, obligationId }) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const targetRef = agencyDoc(inmobiliariaId, "supplierObligations", obligationId);
+  const obligationSnap = await getDoc(targetRef);
+  if (!obligationSnap.exists() || obligationSnap.data().voided === true) {
+    throw new Error("La obligación no está disponible.");
+  }
+  const obligation = obligationSnap.data();
+  const plan = obligation.paymentPlan || {};
+  if (plan.status !== "scheduled") throw new Error("El pago no tiene una programación pendiente de autorización.");
+  if (Number(plan.amountMinor || 0) > Number(obligation.balanceMinor || 0)) {
+    throw new Error("El saldo de la obligación cambió. Reprogramá el pago antes de autorizarlo.");
+  }
+  const history = Array.isArray(obligation.paymentPlanHistory)
+    ? obligation.paymentPlanHistory : [];
+  await updateDoc(targetRef, {
+    paymentPlan: {
+      ...plan,
+      status: "authorized",
+      authorizedBy: user.uid,
+      authorizedByEmail: user.email || "",
+      authorizedAt: serverTimestamp(),
+    },
+    paymentPlanHistory: [...history, supplierPaymentPlanHistoryEntry({
+      action: "authorized",
+      user,
+      date: plan.scheduledDate,
+      amountMinor: plan.amountMinor,
+    })],
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+};
+
+export const cancelConsortiumSupplierPaymentPlan = async ({
+  inmobiliariaId,
+  obligationId,
+  reason,
+}) => {
+  await assertAgency(inmobiliariaId);
+  const user = currentUserOrThrow();
+  const normalizedReason = cleanText(reason, 500);
+  if (!normalizedReason) throw new Error("Ingresá el motivo de la cancelación.");
+  const targetRef = agencyDoc(inmobiliariaId, "supplierObligations", obligationId);
+  const obligationSnap = await getDoc(targetRef);
+  if (!obligationSnap.exists()) throw new Error("La obligación no existe.");
+  const obligation = obligationSnap.data();
+  const plan = obligation.paymentPlan || {};
+  if (!plan.status || ["cancelled", "executed"].includes(plan.status)) {
+    throw new Error("No hay una programación activa para cancelar.");
+  }
+  const history = Array.isArray(obligation.paymentPlanHistory)
+    ? obligation.paymentPlanHistory : [];
+  await updateDoc(targetRef, {
+    paymentPlan: {
+      ...plan,
+      status: "cancelled",
+      cancelReason: normalizedReason,
+      cancelledBy: user.uid,
+      cancelledByEmail: user.email || "",
+      cancelledAt: serverTimestamp(),
+    },
+    paymentPlanHistory: [...history, supplierPaymentPlanHistoryEntry({
+      action: "cancelled",
+      user,
+      note: normalizedReason,
+      date: plan.scheduledDate,
+      amountMinor: plan.remainingMinor ?? plan.amountMinor,
+    })],
+    updatedBy: user.uid,
+    updatedAt: serverTimestamp(),
+  });
+};
+
 export const getConsortiumSupplierPayments = async (
   inmobiliariaId,
   { consortiumId = "", obligationId = "", includeVoided = true } = {},
@@ -3927,6 +4075,12 @@ export const registerConsortiumSupplierPayment = async ({
       }
       const obligation = obligationSnap.data();
       const account = accountSnap.data();
+      const paymentPlan = obligation.paymentPlan || {};
+      if (paymentPlan.status === "scheduled") {
+        throw new Error("El pago programado todavía requiere autorización.");
+      }
+      const activePaymentPlan = ["authorized", "partial"].includes(paymentPlan.status)
+        ? paymentPlan : null;
       if (account.consortiumId !== obligation.consortiumId) {
         throw new Error("La cuenta y la obligación pertenecen a consorcios diferentes.");
       }
@@ -3937,6 +4091,14 @@ export const registerConsortiumSupplierPayment = async ({
       const available = Math.max(0, Number(account.currentBalanceMinor) || 0);
       if (amount > balance) throw new Error("El pago no puede superar el saldo de la obligación.");
       if (amount > available) throw new Error("La cuenta seleccionada no tiene saldo suficiente.");
+      if (activePaymentPlan) {
+        if (activePaymentPlan.accountId !== accountId) {
+          throw new Error("Usá la cuenta autorizada en la programación del pago.");
+        }
+        if (amount > Number(activePaymentPlan.remainingMinor ?? activePaymentPlan.amountMinor ?? 0)) {
+          throw new Error("El pago no puede superar el importe pendiente de la programación.");
+        }
+      }
       const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor) || 0) + amount;
       const balanceMinor = Math.max(0, Number(obligation.amountMinor || 0) - paidAmountMinor);
       const currentBalanceMinor = available - amount;
@@ -3958,6 +4120,19 @@ export const registerConsortiumSupplierPayment = async ({
         reference: cleanText(reference, 220),
         notes: cleanText(notes, 1000),
         movementId: movementRef.id,
+        paymentPlanSnapshot: activePaymentPlan ? {
+          previousStatus: activePaymentPlan.status || "authorized",
+          scheduledDate: activePaymentPlan.scheduledDate || "",
+          amountMinor: activePaymentPlan.amountMinor || 0,
+          remainingMinor: activePaymentPlan.remainingMinor ?? activePaymentPlan.amountMinor ?? 0,
+          accountId: activePaymentPlan.accountId || "",
+          accountSnapshot: activePaymentPlan.accountSnapshot || {},
+          method: activePaymentPlan.method || "transfer",
+          reference: activePaymentPlan.reference || "",
+          notes: activePaymentPlan.notes || "",
+          authorizedBy: activePaymentPlan.authorizedBy || "",
+          authorizedByEmail: activePaymentPlan.authorizedByEmail || "",
+        } : {},
         voided: false,
         ...proof,
         createdBy: user.uid,
@@ -3990,6 +4165,34 @@ export const registerConsortiumSupplierPayment = async ({
         balanceMinor,
         status: balanceMinor <= 0 ? "paid" : "partial",
         paymentIds: [...(Array.isArray(obligation.paymentIds) ? obligation.paymentIds : []), paymentRef.id],
+        ...(activePaymentPlan ? {
+          paymentPlan: {
+            ...activePaymentPlan,
+            status: amount >= Number(activePaymentPlan.remainingMinor ?? activePaymentPlan.amountMinor ?? 0)
+              ? "executed" : "partial",
+            remainingMinor: Math.max(
+              0,
+              Number(activePaymentPlan.remainingMinor ?? activePaymentPlan.amountMinor ?? 0) - amount,
+            ),
+            executedPaymentIds: [
+              ...(Array.isArray(activePaymentPlan.executedPaymentIds)
+                ? activePaymentPlan.executedPaymentIds : []),
+              paymentRef.id,
+            ],
+            lastExecutedAt: serverTimestamp(),
+            lastExecutedBy: user.uid,
+          },
+          paymentPlanHistory: [
+            ...(Array.isArray(obligation.paymentPlanHistory)
+              ? obligation.paymentPlanHistory : []),
+            supplierPaymentPlanHistoryEntry({
+              action: "payment_registered",
+              user,
+              date: paymentDate,
+              amountMinor: amount,
+            }),
+          ],
+        } : {}),
         updatedBy: user.uid,
         updatedAt: serverTimestamp(),
       });
@@ -4034,6 +4237,18 @@ export const voidConsortiumSupplierPayment = async ({ inmobiliariaId, paymentId,
     const account = accountSnap.data();
     const paidAmountMinor = Math.max(0, Number(obligation.paidAmountMinor || 0) - amount);
     const balanceMinor = Math.max(0, Number(obligation.amountMinor || 0) - paidAmountMinor);
+    const planSnapshot = payment.paymentPlanSnapshot || {};
+    const currentPlan = obligation.paymentPlan || {};
+    const planPaymentIds = Array.isArray(currentPlan.executedPaymentIds)
+      ? currentPlan.executedPaymentIds : [];
+    const restoresPaymentPlan = Boolean(planSnapshot.scheduledDate)
+      && planPaymentIds.includes(paymentId);
+    const restoredRemainingMinor = restoresPaymentPlan
+      ? Math.min(
+        Number(planSnapshot.amountMinor || currentPlan.amountMinor || balanceMinor),
+        Math.max(0, Number(currentPlan.remainingMinor || 0)) + amount,
+      )
+      : 0;
     transaction.update(paymentRef, {
       voided: true,
       voidReason,
@@ -4067,6 +4282,27 @@ export const voidConsortiumSupplierPayment = async ({ inmobiliariaId, paymentId,
       paidAmountMinor,
       balanceMinor,
       status: paidAmountMinor > 0 ? "partial" : "pending",
+      ...(restoresPaymentPlan ? {
+        paymentPlan: {
+          ...currentPlan,
+          status: "authorized",
+          remainingMinor: restoredRemainingMinor,
+          executedPaymentIds: planPaymentIds.filter((id) => id !== paymentId),
+          restoredAt: serverTimestamp(),
+          restoredBy: user.uid,
+        },
+        paymentPlanHistory: [
+          ...(Array.isArray(obligation.paymentPlanHistory)
+            ? obligation.paymentPlanHistory : []),
+          supplierPaymentPlanHistoryEntry({
+            action: "payment_voided",
+            user,
+            note: voidReason,
+            date: new Date().toISOString().slice(0, 10),
+            amountMinor: amount,
+          }),
+        ],
+      } : {}),
       updatedBy: user.uid,
       updatedAt: serverTimestamp(),
     });

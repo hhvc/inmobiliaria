@@ -119,3 +119,45 @@ export const buildConsortiumSupplierDraftFromDocument = ({
   active: true,
   deleted: false,
 });
+
+export const getConsortiumSupplierPaymentPlanMeta = (
+  obligation = {},
+  dateKey = new Date().toISOString().slice(0, 10),
+) => {
+  const plan = obligation.paymentPlan || {};
+  if (!plan.status || ["cancelled", "executed"].includes(plan.status)) return null;
+  if (plan.status === "partial") {
+    return { id: "partial", label: "Programación parcial", badge: "text-bg-warning" };
+  }
+  if (plan.status === "scheduled") {
+    return { id: "scheduled", label: "Pendiente de autorización", badge: "text-bg-secondary" };
+  }
+  if (plan.status === "authorized" && plan.scheduledDate < dateKey) {
+    return { id: "overdue", label: "Pago programado vencido", badge: "text-bg-danger" };
+  }
+  if (plan.status === "authorized" && plan.scheduledDate === dateKey) {
+    return { id: "due_today", label: "Pagar hoy", badge: "text-bg-warning" };
+  }
+  if (plan.status === "authorized") {
+    return { id: "authorized", label: "Pago autorizado", badge: "text-bg-primary" };
+  }
+  return { id: plan.status, label: plan.status, badge: "text-bg-light" };
+};
+
+export const getConsortiumSupplierPaymentAgenda = (
+  obligations = [],
+  dateKey = new Date().toISOString().slice(0, 10),
+) => (Array.isArray(obligations) ? obligations : [])
+  .map((obligation) => ({
+    obligation,
+    plan: obligation.paymentPlan || {},
+    meta: getConsortiumSupplierPaymentPlanMeta(obligation, dateKey),
+  }))
+  .filter((item) => item.meta && item.obligation.voided !== true)
+  .sort((left, right) => (
+    (left.plan.scheduledDate || "9999-12-31").localeCompare(right.plan.scheduledDate || "9999-12-31")
+    || (left.obligation.supplierSnapshot?.name || "").localeCompare(
+      right.obligation.supplierSnapshot?.name || "",
+      "es",
+    )
+  ));
