@@ -218,6 +218,15 @@ service firebase.storage {
         );
     }
 
+    function isValidTreasuryStatement() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 10 * 1024 * 1024
+        && request.resource.contentType.matches(
+          '^(application/pdf|image/jpeg|image/png|image/webp|text/csv|application/csv|text/plain|application/vnd.ms-excel)$'
+        );
+    }
+
     /* ================= Inmobiliarias - documentación privada ================= */
 
     match /inmobiliarias/{inmobiliariaId}/verificacion/{userId}/{fileName} {
@@ -487,7 +496,7 @@ service firebase.storage {
 
       allow create: if
         isAgencyAdmin(inmobiliariaId)
-        && isValidConsortiumDocument();
+        && isValidTreasuryStatement();
 
       allow update: if false;
 

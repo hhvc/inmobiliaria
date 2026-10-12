@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildConsortiumBankStatementReviewCsv,
   buildConsortiumPayableDraftFromDocument,
   buildConsortiumSupplierDraftFromDocument,
   findConsortiumPayableForDocument,
   getConsortiumSupplierPaymentAgenda,
   getConsortiumSupplierPaymentPlanMeta,
   findConsortiumSupplierForDocument,
+  matchConsortiumBankStatementRows,
+  parseConsortiumBankStatementCsv,
 } from "../src/consorcios/utils/consorcioTreasury.helpers.js";
 
 test("prioriza la coincidencia exacta de proveedor por CUIT", () => {
@@ -112,4 +115,76 @@ test("ordena la agenda por fecha y omite programaciones finalizadas", () => {
     { id: "first", paymentPlan: { status: "scheduled", scheduledDate: "2026-10-12" } },
   ], "2026-10-10");
   assert.deepEqual(agenda.map((item) => item.obligation.id), ["first", "later"]);
+});
+
+test("interpreta extractos CSV con importes argentinos y columnas separadas", () => {
+  const result = parseConsortiumBankStatementCsv([
+    "fecha;concepto;referencia;ingreso;egreso",
+    "01/10/2026;Transferencia unidad 1;TRX-1;150.000,50;",
+    "02/10/2026;Pago limpieza;OP-2;;85.000,00",
+  ].join("\n"));
+  assert.deepEqual(result.summary, {
+    total: 2,
+    valid: 2,
+    invalid: 0,
+    inflowsMinor: 15000050,
+    outflowsMinor: 8500000,
+  });
+  assert.equal(result.validRows[0].date, "2026-10-01");
+  assert.equal(result.validRows[1].direction, "outflow");
+});
+
+test("interpreta una columna de importe con signo y señala filas inválidas", () => {
+  const result = parseConsortiumBankStatementCsv([
+    "fecha,concepto,importe",
+    "2026-10-01,Cobro,1200.50",
+    "31/02/2026,Fecha imposible,-200",
+  ].join("\n"));
+  assert.equal(result.rows[0].direction, "inflow");
+  assert.equal(result.rows[0].amountMinor, 120050);
+  assert.equal(result.rows[1].direction, "outflow");
+  assert.match(result.rows[1].errors.join(" "), /Fecha inválida/);
+});
+
+test("sugiere solo coincidencias bancarias exactas y no reutiliza movimientos", () => {
+  const parsed = parseConsortiumBankStatementCsv([
+    "fecha;concepto;referencia;ingreso;egreso",
+    "01/10/2026;Expensas unidad 1;TRX-1;1500,00;",
+    "01/10/2026;Otro cobro igual;;1500,00;",
+  ].join("\n"));
+  const matches = matchConsortiumBankStatementRows({
+    rows: parsed.rows,
+    accountId: "bank",
+    currency: "ARS",
+    movements: [{
+      id: "movement-1",
+      accountId: "bank",
+      currency: "ARS",
+      direction: "inflow",
+      amountMinor: 150000,
+      date: "2026-10-01",
+      concept: "Cobro de expensas unidad 1",
+      reference: "TRX-1",
+    }],
+  });
+  assert.equal(matches[0].confidence, "high");
+  assert.equal(matches[0].suggestedMovementId, "movement-1");
+  assert.equal(matches[1].suggestedMovementId, "");
+});
+
+test("exporta la revisión protegiendo fórmulas de planilla", () => {
+  const csv = buildConsortiumBankStatementReviewCsv({
+    rows: [{
+      id: "line-1",
+      date: "2026-10-01",
+      concept: "=HIPERVINCULO()",
+      reference: "TRX-1",
+      direction: "inflow",
+      amountMinor: 150000,
+      errors: [],
+    }],
+    selections: { "line-1": "movement-1" },
+  });
+  assert.match(csv, /'=HIPERVINCULO/);
+  assert.match(csv, /movement-1/);
 });

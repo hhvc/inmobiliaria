@@ -156,6 +156,7 @@ import ConsortiumEconomicStatementPage from "./consorcios/pages/ConsortiumEconom
 import ConsortiumCollectionsPage from "./consorcios/pages/ConsortiumCollectionsPage";
 import ConsortiumBudgetPage from "./consorcios/pages/ConsortiumBudgetPage";
 import ConsortiumCashFlowPage from "./consorcios/pages/ConsortiumCashFlowPage";
+import ConsortiumBankReconciliationPage from "./consorcios/pages/ConsortiumBankReconciliationPage";
 
 // Control tributario inmobiliario
 import TaxManagementPage from "./tributos/pages/TaxManagementPage";
@@ -785,6 +786,19 @@ function App() {
                       <InmobiliariaModuleGuard moduleId="consorcios">
                         <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
                           <ConsortiumCashFlowPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/consorcios/:id/conciliacion-bancaria"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="consorcios">
+                        <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
+                          <ConsortiumBankReconciliationPage />
                         </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>

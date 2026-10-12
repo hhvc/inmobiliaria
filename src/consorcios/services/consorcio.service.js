@@ -2114,8 +2114,24 @@ const validateConsortiumFileOrThrow = (file) => {
   }
 };
 
-const uploadPrivateFile = async ({ file, path, metadata = {} }) => {
-  validateConsortiumFileOrThrow(file);
+const validateTreasuryStatementFileOrThrow = (file) => {
+  const csvTypes = ["text/csv", "application/csv", "text/plain", "application/vnd.ms-excel", ""];
+  const isCsv = /\.csv$/i.test(file?.name || "")
+    && csvTypes.includes(file?.type || "")
+    && Number(file?.size || 0) > 0
+    && Number(file?.size || 0) <= 10 * 1024 * 1024;
+  if (!isCsv && !isConsortiumDocumentFileValid(file)) {
+    throw new Error("Adjuntá el CSV original, o un PDF, JPG, PNG o WEBP de hasta 10 MB.");
+  }
+};
+
+const uploadPrivateFile = async ({
+  file,
+  path,
+  metadata = {},
+  validator = validateConsortiumFileOrThrow,
+}) => {
+  validator(file);
   const targetRef = storageRef(storage, path);
   await uploadBytes(targetRef, file, {
     contentType: file.type,
@@ -2980,6 +2996,16 @@ const validDateOrThrow = (value, label) => {
   return normalized;
 };
 
+const validDateOrEmpty = (value) => {
+  const normalized = cleanText(value, 10);
+  if (!normalized) return "";
+  const parsed = new Date(`${normalized}T00:00:00.000Z`);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+    && !Number.isNaN(parsed.getTime())
+    && parsed.toISOString().slice(0, 10) === normalized
+    ? normalized : "";
+};
+
 const sanitizeSupplier = (value = {}) => ({
   schemaVersion: 1,
   consortiumId: cleanText(value.consortiumId, 128),
@@ -3828,6 +3854,7 @@ export const createConsortiumTreasuryReconciliation = async ({
   statementBalanceMinor,
   notes = "",
   file = null,
+  statementImport = null,
 }) => {
   await assertAgency(inmobiliariaId);
   const user = currentUserOrThrow();
@@ -3856,7 +3883,7 @@ export const createConsortiumTreasuryReconciliation = async ({
     statementSize: 0,
   };
   if (file) {
-    validateConsortiumFileOrThrow(file);
+    validateTreasuryStatementFileOrThrow(file);
     const safeName = safeConsortiumFileName(file.name);
     const path = `consorcios/${inmobiliariaId}/${consortiumId}/treasury-reconciliations/${reconciliationRef.id}/${safeName}`;
     await uploadPrivateFile({
@@ -3868,6 +3895,7 @@ export const createConsortiumTreasuryReconciliation = async ({
         reconciliationId: reconciliationRef.id,
         uploadedBy: user.uid,
       },
+      validator: validateTreasuryStatementFileOrThrow,
     });
     attachment = {
       statementStoragePath: path,
@@ -3876,6 +3904,36 @@ export const createConsortiumTreasuryReconciliation = async ({
       statementSize: Number(file.size || 0),
     };
   }
+  const matchedMovementIds = [...new Set(
+    (Array.isArray(statementImport?.matchedMovementIds)
+      ? statementImport.matchedMovementIds : [])
+      .map((value) => cleanText(value, 120))
+      .filter(Boolean),
+  )].slice(0, 500);
+  const matchedPairs = (Array.isArray(statementImport?.matchedPairs)
+    ? statementImport.matchedPairs : [])
+    .slice(0, 500)
+    .map((item) => ({
+      lineNumber: Math.max(1, Math.trunc(Number(item?.lineNumber) || 1)),
+      movementId: cleanText(item?.movementId, 120),
+      date: validDateOrEmpty(item?.date),
+      direction: item?.direction === "outflow" ? "outflow" : "inflow",
+      amountMinor: Math.max(0, Math.round(Number(item?.amountMinor) || 0)),
+    }))
+    .filter((item) => item.movementId && item.date && item.amountMinor > 0);
+  const normalizedStatementImport = statementImport ? {
+    source: cleanText(statementImport.source, 40) || "csv",
+    fileHash: cleanText(statementImport.fileHash, 128),
+    rowCount: Math.max(0, Math.min(500, Math.trunc(Number(statementImport.rowCount) || 0))),
+    validRowCount: Math.max(0, Math.min(500, Math.trunc(Number(statementImport.validRowCount) || 0))),
+    matchedRowCount: Math.max(0, Math.min(500, Math.trunc(Number(statementImport.matchedRowCount) || 0))),
+    unmatchedRowCount: Math.max(0, Math.min(500, Math.trunc(Number(statementImport.unmatchedRowCount) || 0))),
+    invalidRowCount: Math.max(0, Math.min(500, Math.trunc(Number(statementImport.invalidRowCount) || 0))),
+    periodStart: validDateOrEmpty(statementImport.periodStart),
+    periodEnd: validDateOrEmpty(statementImport.periodEnd),
+    matchedMovementIds,
+    matchedPairs,
+  } : null;
   try {
     await setDoc(reconciliationRef, {
       id: reconciliationRef.id,
@@ -3895,6 +3953,7 @@ export const createConsortiumTreasuryReconciliation = async ({
       differenceMinor,
       status: differenceMinor === 0 ? "matched" : "difference",
       notes: cleanText(notes, 2000),
+      ...(normalizedStatementImport ? { statementImport: normalizedStatementImport } : {}),
       voided: false,
       ...attachment,
       createdBy: user.uid,

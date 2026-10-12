@@ -983,6 +983,7 @@ const ConsortiumTreasuryPanel = ({
               <div><h3 className="h6 mb-1">Cajas y cuentas bancarias</h3><small className="text-muted">El saldo cambia únicamente mediante movimientos registrados.</small></div>
               <div className="d-flex flex-wrap gap-2">
                 <Link className="btn btn-sm btn-outline-dark" to={`/admin/consorcios/${consortiumId}/estado-economico`}>Estado económico</Link>
+                <Link className="btn btn-sm btn-outline-success" to={`/admin/consorcios/${consortiumId}/conciliacion-bancaria`}>Conciliación asistida</Link>
                 {canManage && <><button className="btn btn-sm btn-outline-primary" disabled={!activeAccounts.length} type="button" onClick={() => openTreasuryAction("movement")}>Nuevo movimiento</button><button className="btn btn-sm btn-outline-primary" disabled={activeAccounts.length < 2} type="button" onClick={() => openTreasuryAction("transfer")}>Transferir</button><button className="btn btn-sm btn-outline-primary" disabled={!activeAccounts.length} type="button" onClick={() => openTreasuryAction("reconciliation")}>Conciliar</button><button className="btn btn-sm btn-primary" type="button" onClick={openNewAccount}>Nueva cuenta</button></>}
               </div>
             </div>
