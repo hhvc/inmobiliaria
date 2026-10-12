@@ -75,6 +75,64 @@ test("completa meses futuros con el presupuesto aprobado sin duplicar lo emitido
   assert.equal(probable.hasDeficit, true);
 });
 
+test("no desplaza cobros presupuestados si la política de pagos está desactivada", () => {
+  const projection = buildConsortiumCashFlowProjection({
+    accounts: [{ active: true, currency: "ARS", currentBalanceMinor: 0 }],
+    currency: "ARS",
+    startDate: "2026-10-01",
+    horizonDays: 60,
+    dueDay: 10,
+    budgets: [{
+      year: 2026,
+      status: "approved",
+      currency: "ARS",
+      categories: [{ id: "utilities", months: { "11": 100000 } }],
+    }],
+  });
+  projection.scenarios.forEach((scenario) => {
+    const budgetRow = scenario.rows.find((row) => row.details.some(
+      (detail) => detail.source === "budget_receivable",
+    ));
+    assert.equal(budgetRow.date, "2026-11-10");
+  });
+});
+
+test("aplica días e importes de pronto pago y segundo vencimiento configurados", () => {
+  const projection = buildConsortiumCashFlowProjection({
+    accounts: [{ active: true, currency: "ARS", currentBalanceMinor: 0 }],
+    currency: "ARS",
+    startDate: "2026-10-01",
+    horizonDays: 60,
+    dueDay: 10,
+    paymentPolicy: {
+      earlyPaymentEnabled: true,
+      earlyPaymentDaysBefore: 3,
+      earlyPaymentDiscountPercent: 10,
+      secondDueEnabled: true,
+      secondDueDaysAfter: 12,
+      secondDueSurchargePercent: 5,
+    },
+    budgets: [{
+      year: 2026,
+      status: "approved",
+      currency: "ARS",
+      categories: [{ id: "utilities", months: { "11": 100000 } }],
+    }],
+  });
+  const optimistic = projection.scenarios.find((item) => item.id === "optimistic");
+  const conservative = projection.scenarios.find((item) => item.id === "conservative");
+  const optimisticRow = optimistic.rows.find((row) => row.details.some(
+    (detail) => detail.source === "budget_receivable",
+  ));
+  const conservativeRow = conservative.rows.find((row) => row.details.some(
+    (detail) => detail.source === "budget_receivable",
+  ));
+  assert.equal(optimisticRow.date, "2026-11-07");
+  assert.equal(optimisticRow.inflowMinor, 90000);
+  assert.equal(conservativeRow.date, "2026-11-22");
+  assert.equal(conservativeRow.inflowMinor, 63000);
+});
+
 test("respeta una programación de pago y exporta el escenario seleccionado", () => {
   const projection = buildConsortiumCashFlowProjection({
     accounts,

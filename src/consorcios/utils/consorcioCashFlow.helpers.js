@@ -1,4 +1,5 @@
 import { normalizeConsortiumBudget } from "./consorcioBudget.helpers.js";
+import { normalizeConsortiumPaymentPolicy } from "./consorcio.helpers.js";
 
 export const CONSORTIUM_CASH_FLOW_SCENARIOS = [
   { id: "conservative", label: "Conservador", defaultCollectionPercent: 60 },
@@ -68,12 +69,42 @@ const scenarioCollectionDate = (obligation, scenarioId, startDate) => {
   return clampProjectionDate(preferred, startDate);
 };
 
-const scenarioBudgetCollectionDate = ({ monthKey, dueDay, scenarioId, startDate }) => {
-  const offset = scenarioId === "optimistic" ? -5 : scenarioId === "conservative" ? 10 : 0;
-  return clampProjectionDate(addConsortiumCashFlowDays(
-    dateForMonthDay(monthKey, dueDay),
-    offset,
-  ), startDate);
+const scenarioBudgetCollectionTerms = ({
+  monthKey,
+  dueDay,
+  scenarioId,
+  startDate,
+  amountMinor,
+  paymentPolicy,
+}) => {
+  const dueDate = dateForMonthDay(monthKey, dueDay);
+  const policy = normalizeConsortiumPaymentPolicy(paymentPolicy);
+  if (scenarioId === "optimistic" && policy.earlyPaymentEnabled) {
+    return {
+      date: clampProjectionDate(
+        addConsortiumCashFlowDays(dueDate, -policy.earlyPaymentDaysBefore),
+        startDate,
+      ),
+      amountMinor: Math.max(0, Math.round(
+        asMinor(amountMinor) * (1 - policy.earlyPaymentDiscountPercent / 100),
+      )),
+    };
+  }
+  if (scenarioId === "conservative" && policy.secondDueEnabled) {
+    return {
+      date: clampProjectionDate(
+        addConsortiumCashFlowDays(dueDate, policy.secondDueDaysAfter),
+        startDate,
+      ),
+      amountMinor: Math.round(
+        asMinor(amountMinor) * (1 + policy.secondDueSurchargePercent / 100),
+      ),
+    };
+  }
+  return {
+    date: clampProjectionDate(dueDate, startDate),
+    amountMinor: asMinor(amountMinor),
+  };
 };
 
 const activePaymentPlan = (obligation = {}) => {
@@ -207,6 +238,7 @@ export const buildConsortiumCashFlowProjection = ({
   startDate = new Date().toISOString().slice(0, 10),
   horizonDays = 90,
   dueDay = 10,
+  paymentPolicy = {},
   scenarioRates = {},
 } = {}) => {
   const safeStartDate = datePattern.test(startDate || "")
@@ -289,17 +321,19 @@ export const buildConsortiumCashFlowProjection = ({
       if (!planned.available || planned.amountMinor <= 0 || monthsWithIssuedAssessments.has(monthKey)) {
         return;
       }
-      const date = scenarioBudgetCollectionDate({
+      const collectionTerms = scenarioBudgetCollectionTerms({
         monthKey,
         dueDay,
         scenarioId: definition.id,
         startDate: safeStartDate,
+        amountMinor: planned.amountMinor,
+        paymentPolicy,
       });
-      if (!withinRange(date, safeStartDate, endDate)) return;
+      if (!withinRange(collectionTerms.date, safeStartDate, endDate)) return;
       inflows.push({
-        date,
+        date: collectionTerms.date,
         direction: "inflow",
-        amountMinor: Math.round(planned.amountMinor * collectionPercent / 100),
+        amountMinor: Math.round(collectionTerms.amountMinor * collectionPercent / 100),
         label: `Expensas futuras estimadas por presupuesto · ${monthKey}`,
         source: "budget_receivable",
       });
