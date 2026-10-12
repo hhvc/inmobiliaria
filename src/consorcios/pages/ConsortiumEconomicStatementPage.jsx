@@ -228,6 +228,7 @@ const ConsortiumEconomicStatementPage = () => {
           <div><label className="form-label small">Período</label><select className="form-select" value={selectedPeriodKey} onChange={(event) => setSearchParams({ period: event.target.value })}>{periods.map((period) => <option key={period.id} value={period.periodKey}>{getConsortiumPeriodLabel(period.periodKey)}</option>)}</select></div>
           <button className="btn btn-outline-secondary" disabled={!selectedPeriod} type="button" onClick={() => downloadCsv(buildConsortiumEconomicStatementCsv(statement), selectedPeriodKey)}>Exportar CSV</button>
           <Link className="btn btn-outline-primary" to={`/admin/consorcios/${consortiumId}/presupuesto?year=${selectedPeriodKey?.slice(0, 4) || new Date().getFullYear()}`}>Ver presupuesto</Link>
+          <Link className="btn btn-outline-success" to={`/admin/consorcios/${consortiumId}/flujo-fondos`}>Ver proyección</Link>
           <button className="btn btn-primary" disabled={!selectedPeriod} type="button" onClick={() => window.print()}>Imprimir / guardar PDF</button>
           {canManage && <button className="btn btn-dark" disabled={!selectedPeriod || selectedPeriod.status === "draft" || operation === "close" || (latestClosure && !statementChangedAfterClose)} type="button" onClick={closeFinancialStatement}>{operation === "close" ? "Cerrando..." : latestClosure ? "Cerrar rectificación" : "Cerrar versión"}</button>}
         </div>

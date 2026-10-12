@@ -187,6 +187,30 @@
   max-width: 1100px;
 }
 
+.consortium-cash-flow-page {
+  max-width: 1240px;
+}
+
+.consortium-cash-flow-scenario {
+  color: inherit;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.consortium-cash-flow-scenario:hover,
+.consortium-cash-flow-scenario.active {
+  transform: translateY(-2px);
+  box-shadow: 0 0.75rem 1.5rem rgba(13, 110, 253, 0.14) !important;
+}
+
+.consortium-cash-flow-scenario.active {
+  outline: 2px solid var(--bs-primary);
+}
+
+.consortium-cash-flow-table td:nth-last-child(-n + 3),
+.consortium-cash-flow-table th:nth-last-child(-n + 3) {
+  white-space: nowrap;
+}
+
 .consortium-economic-sheet {
   padding: 2.5rem;
   background: #fff;

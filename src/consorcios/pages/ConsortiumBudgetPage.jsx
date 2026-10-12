@@ -271,6 +271,7 @@ const ConsortiumBudgetPage = () => {
         <div className="d-flex flex-wrap align-items-end gap-2">
           <div><label className="form-label small">Ejercicio</label><select className="form-select" value={selectedYear} onChange={(event) => changeYear(event.target.value)}>{yearOptions.map((year) => <option key={year} value={year}>{year}</option>)}</select></div>
           <button className="btn btn-outline-secondary" type="button" onClick={() => downloadCsv(buildConsortiumBudgetCsv(comparison), selectedYear)}>Exportar CSV</button>
+          <Link className="btn btn-outline-success" to={`/admin/consorcios/${consortiumId}/flujo-fondos`}>Flujo de fondos</Link>
           <button className="btn btn-outline-primary" type="button" onClick={() => window.print()}>Imprimir / PDF</button>
         </div>
       </header>

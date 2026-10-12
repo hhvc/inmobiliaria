@@ -1090,6 +1090,7 @@ const ConsortiumDetailPage = () => {
         </div>
         <div className="d-flex flex-wrap gap-2">
           <Link className="btn btn-primary" to={`/admin/consorcios/${consortiumId}/cobranzas`}>Cobranzas</Link>
+          <Link className="btn btn-outline-success" to={`/admin/consorcios/${consortiumId}/flujo-fondos`}>Flujo de fondos</Link>
           <Link className="btn btn-outline-primary" to={`/admin/consorcios/${consortiumId}/presupuesto`}>Presupuesto</Link>
           <Link className="btn btn-outline-primary" to="/guias/administracion-consorcios">Manual</Link>
           {canManage && <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/editar`}>Editar consorcio</Link>}

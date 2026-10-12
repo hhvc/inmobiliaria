@@ -155,6 +155,7 @@ import ConsortiumAssessmentPage from "./consorcios/pages/ConsortiumAssessmentPag
 import ConsortiumEconomicStatementPage from "./consorcios/pages/ConsortiumEconomicStatementPage";
 import ConsortiumCollectionsPage from "./consorcios/pages/ConsortiumCollectionsPage";
 import ConsortiumBudgetPage from "./consorcios/pages/ConsortiumBudgetPage";
+import ConsortiumCashFlowPage from "./consorcios/pages/ConsortiumCashFlowPage";
 
 // Control tributario inmobiliario
 import TaxManagementPage from "./tributos/pages/TaxManagementPage";
@@ -771,6 +772,19 @@ function App() {
                       <InmobiliariaModuleGuard moduleId="consorcios">
                         <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
                           <ConsortiumBudgetPage />
+                        </InmobiliariaInternalPermissionGuard>
+                      </InmobiliariaModuleGuard>
+                    </ProtectedRoute>
+                  }
+                />
+
+                <Route
+                  path="/admin/consorcios/:id/flujo-fondos"
+                  element={
+                    <ProtectedRoute role="admin">
+                      <InmobiliariaModuleGuard moduleId="consorcios">
+                        <InmobiliariaInternalPermissionGuard permission="canViewConsortiums">
+                          <ConsortiumCashFlowPage />
                         </InmobiliariaInternalPermissionGuard>
                       </InmobiliariaModuleGuard>
                     </ProtectedRoute>
