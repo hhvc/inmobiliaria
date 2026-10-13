@@ -141,13 +141,16 @@ const ConsortiumBankReconciliationPage = () => {
       .map((row) => [row.id, row.suggestedMovementId])));
   }, [matchedRows]);
 
+  const hasStatementBalance = statementBalanceMajor.toString().trim() !== "";
   const statementBalanceMinor = majorToMinor(statementBalanceMajor);
   const bookBalanceMinor = accountId ? getConsortiumTreasuryBookBalance({
     accountId,
     movements,
     dateKey: statementDate,
   }) : 0;
-  const differenceMinor = statementBalanceMinor - bookBalanceMinor;
+  const differenceMinor = hasStatementBalance
+    ? statementBalanceMinor - bookBalanceMinor
+    : null;
   const selectedCount = Object.values(selections).filter(Boolean).length;
   const validRowCount = preview?.summary?.valid || 0;
   const unmatchedCount = Math.max(0, validRowCount - selectedCount);
@@ -196,6 +199,10 @@ const ConsortiumBankReconciliationPage = () => {
     if (!canManage) return;
     if (!accountId || !statementFile || !preview?.rows?.length) {
       setError("Seleccioná la cuenta y cargá el extracto CSV.");
+      return;
+    }
+    if (!statementDate || !hasStatementBalance) {
+      setError("Ingresá la fecha y el saldo final informado por el extracto.");
       return;
     }
     if (preview.globalErrors.length || preview.summary.invalid > 0) {
@@ -321,11 +328,11 @@ const ConsortiumBankReconciliationPage = () => {
             <div className="col-md-3"><label className="form-label">Fecha del saldo *</label><input className="form-control" type="date" max={todayKey()} value={statementDate} onChange={(event) => setStatementDate(event.target.value)} required /></div>
             <div className="col-md-3"><label className="form-label">Saldo final del extracto *</label><input className="form-control" inputMode="decimal" value={statementBalanceMajor} onChange={(event) => setStatementBalanceMajor(event.target.value)} required /></div>
             <div className="col-md-3"><label className="form-label">Saldo según ONO Prop</label><div className="form-control bg-light consortium-money">{formatConsortiumMoney(bookBalanceMinor, currency)}</div></div>
-            <div className="col-md-3"><label className="form-label">Diferencia</label><div className={`form-control bg-light consortium-money ${differenceMinor === 0 ? "text-success" : "text-danger"}`}>{formatConsortiumMoney(differenceMinor, currency)}</div></div>
+            <div className="col-md-3"><label className="form-label">Diferencia</label><div className={`form-control bg-light consortium-money ${differenceMinor === null ? "text-muted" : differenceMinor === 0 ? "text-success" : "text-danger"}`}>{differenceMinor === null ? "—" : formatConsortiumMoney(differenceMinor, currency)}</div></div>
             <div className="col-12"><label className="form-label">Observaciones</label><textarea className="form-control" rows="2" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder={unmatchedCount ? "Explicá cómo se revisarán los movimientos pendientes." : "Opcional"} /></div>
           </div>
-          <div className={`alert mt-3 ${differenceMinor === 0 ? "alert-success" : "alert-warning"}`}>{differenceMinor === 0 ? "El saldo del extracto coincide con el sistema." : "La diferencia quedará visible. Registrá los movimientos faltantes con su respaldo y realizá un nuevo control."}</div>
-          <div className="text-end"><button className="btn btn-primary" disabled={!canManage || operation === "save" || Boolean(duplicateImport) || preview.summary.invalid > 0 || preview.globalErrors.length > 0} type="submit">{operation === "save" ? "Guardando..." : "Guardar conciliación"}</button></div>
+          <div className={`alert mt-3 ${differenceMinor === null ? "alert-info" : differenceMinor === 0 ? "alert-success" : "alert-warning"}`}>{differenceMinor === null ? "Ingresá el saldo final informado por el banco para calcular la diferencia." : differenceMinor === 0 ? "El saldo del extracto coincide con el sistema." : "La diferencia quedará visible. Registrá los movimientos faltantes con su respaldo y realizá un nuevo control."}</div>
+          <div className="text-end"><button className="btn btn-primary" disabled={!canManage || !statementDate || !hasStatementBalance || operation === "save" || Boolean(duplicateImport) || preview.summary.invalid > 0 || preview.globalErrors.length > 0} type="submit">{operation === "save" ? "Guardando..." : "Guardar conciliación"}</button></div>
         </div></section>}
       </form>
 
