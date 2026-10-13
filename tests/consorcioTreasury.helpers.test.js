@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   buildConsortiumBankStatementReviewCsv,
+  buildConsortiumTreasuryMovementDraftFromStatementRow,
   buildConsortiumPayableDraftFromDocument,
   buildConsortiumSupplierDraftFromDocument,
   findConsortiumPayableForDocument,
@@ -170,6 +171,30 @@ test("sugiere solo coincidencias bancarias exactas y no reutiliza movimientos", 
   assert.equal(matches[0].confidence, "high");
   assert.equal(matches[0].suggestedMovementId, "movement-1");
   assert.equal(matches[1].suggestedMovementId, "");
+});
+
+test("prepara un movimiento faltante con trazabilidad del extracto bancario", () => {
+  const draft = buildConsortiumTreasuryMovementDraftFromStatementRow({
+    consortiumId: "consortium-1",
+    accountId: "bank-1",
+    statementFileHash: "A1B2C3D4".repeat(8),
+    row: {
+      id: "line-7",
+      lineNumber: 7,
+      date: "2026-10-13",
+      direction: "outflow",
+      amountMinor: 850050,
+      concept: "  Pago   limpieza  ",
+      reference: " OP-77 ",
+    },
+  });
+  assert.equal(draft.direction, "outflow");
+  assert.equal(draft.amountMajor, "8500.50");
+  assert.equal(draft.concept, "Pago limpieza");
+  assert.equal(draft.reference, "OP-77");
+  assert.equal(draft.statementFileHash, "a1b2c3d4".repeat(8));
+  assert.match(draft.reason, /fila 7/);
+  assert.match(draft.reason, /OP-77/);
 });
 
 test("exporta la revisión protegiendo fórmulas de planilla", () => {

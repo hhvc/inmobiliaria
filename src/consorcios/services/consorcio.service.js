@@ -3642,6 +3642,7 @@ export const registerConsortiumTreasuryMovement = async ({
   reason,
   reference = "",
   file = null,
+  bankStatementTrace = null,
 }) => {
   await assertAgency(inmobiliariaId);
   const user = currentUserOrThrow();
@@ -3650,9 +3651,27 @@ export const registerConsortiumTreasuryMovement = async ({
   const normalizedConcept = cleanText(concept, 220);
   const normalizedReason = cleanText(reason, 1000);
   const normalizedDirection = direction === "outflow" ? "outflow" : "inflow";
+  const bankStatementTraceCandidate = bankStatementTrace && typeof bankStatementTrace === "object"
+    ? {
+      fileHash: cleanText(bankStatementTrace.fileHash, 64)
+        .toLowerCase()
+        .replace(/[^a-f0-9]/g, ""),
+      lineNumber: Math.max(0, Math.round(Number(bankStatementTrace.lineNumber) || 0)),
+      rowId: cleanText(bankStatementTrace.rowId, 160),
+    }
+    : null;
+  const normalizedBankStatementTrace = bankStatementTraceCandidate
+    && /^[a-f0-9]{64}$/.test(bankStatementTraceCandidate.fileHash)
+    && bankStatementTraceCandidate.lineNumber > 0
+    && bankStatementTraceCandidate.rowId
+    ? bankStatementTraceCandidate
+    : null;
   if (!amount) throw new Error("Ingresá un importe mayor a cero.");
   if (!normalizedConcept) throw new Error("Ingresá el concepto del movimiento.");
   if (!normalizedReason) throw new Error("Explicá el motivo del movimiento.");
+  if (bankStatementTrace && !normalizedBankStatementTrace) {
+    throw new Error("No se pudo verificar la trazabilidad del extracto. Volvé a cargar el archivo e intentá nuevamente.");
+  }
   if (movementDate > new Date().toISOString().slice(0, 10)) {
     throw new Error("No se puede registrar un movimiento con fecha futura.");
   }
@@ -3703,7 +3722,7 @@ export const registerConsortiumTreasuryMovement = async ({
         consortiumId,
         accountId,
         accountSnapshot: { name: account.name || "", type: account.type || "bank" },
-        source: "manual_movement",
+        source: normalizedBankStatementTrace ? "bank_statement_review" : "manual_movement",
         sourceId: movementRef.id,
         direction: normalizedDirection,
         amountMinor: amount,
@@ -3712,6 +3731,7 @@ export const registerConsortiumTreasuryMovement = async ({
         concept: normalizedConcept,
         reason: normalizedReason,
         reference: cleanText(reference, 220),
+        ...(normalizedBankStatementTrace ? { bankStatementTrace: normalizedBankStatementTrace } : {}),
         voided: false,
         ...evidence,
         createdBy: user.uid,

@@ -16,6 +16,7 @@ import {
   getConsortiumTreasuryAccounts,
   getConsortiumTreasuryMovements,
   getConsortiumTreasuryReconciliations,
+  registerConsortiumTreasuryMovement,
 } from "../services/consorcio.service";
 import {
   formatConsortiumMoney,
@@ -24,6 +25,7 @@ import {
 } from "../utils/consorcio.helpers";
 import {
   buildConsortiumBankStatementReviewCsv,
+  buildConsortiumTreasuryMovementDraftFromStatementRow,
   CONSORTIUM_BANK_STATEMENT_TEMPLATE,
   matchConsortiumBankStatementRows,
   parseConsortiumBankStatementCsv,
@@ -80,6 +82,7 @@ const ConsortiumBankReconciliationPage = () => {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [preview, setPreview] = useState(null);
   const [selections, setSelections] = useState({});
+  const [movementDraft, setMovementDraft] = useState(null);
   const [statementDate, setStatementDate] = useState(todayKey());
   const [statementBalanceMajor, setStatementBalanceMajor] = useState("");
   const [notes, setNotes] = useState("");
@@ -136,9 +139,19 @@ const ConsortiumBankReconciliationPage = () => {
   }), [accountId, currency, excludedMovementIds, movements, preview?.rows]);
 
   useEffect(() => {
-    setSelections(Object.fromEntries(matchedRows
-      .filter((row) => row.suggestedMovementId)
-      .map((row) => [row.id, row.suggestedMovementId])));
+    setSelections((current) => {
+      const availableByRow = new Map(matchedRows.map((row) => [
+        row.id,
+        new Set(row.candidates.map(({ movement }) => movement.id)),
+      ]));
+      const next = Object.fromEntries(Object.entries(current).filter(([rowId, movementId]) => (
+        movementId && availableByRow.get(rowId)?.has(movementId)
+      )));
+      matchedRows.forEach((row) => {
+        if (!next[row.id] && row.suggestedMovementId) next[row.id] = row.suggestedMovementId;
+      });
+      return next;
+    });
   }, [matchedRows]);
 
   const hasStatementBalance = statementBalanceMajor.toString().trim() !== "";
@@ -166,6 +179,7 @@ const ConsortiumBankReconciliationPage = () => {
     setStatementFileHash("");
     setPreview(null);
     setSelections({});
+    setMovementDraft(null);
     if (!file) return;
     if (!/\.csv$/i.test(file.name || "") || Number(file.size || 0) > 10 * 1024 * 1024) {
       setError("Seleccioná un archivo CSV de hasta 10 MB.");
@@ -192,6 +206,65 @@ const ConsortiumBankReconciliationPage = () => {
       next[rowId] = movementId;
       return next;
     });
+  };
+
+  const prepareMissingMovement = (row) => {
+    setError("");
+    setSuccess("");
+    setMovementDraft(buildConsortiumTreasuryMovementDraftFromStatementRow({
+      row,
+      accountId,
+      consortiumId,
+      statementFileHash,
+    }));
+    globalThis.requestAnimationFrame?.(() => {
+      document.getElementById("bank-movement-review")?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  };
+
+  const registerMissingMovement = async () => {
+    if (!canManage || !movementDraft) return;
+    if (!movementDraft.concept?.trim() || !movementDraft.reason?.trim()) {
+      setError("Completá el concepto y el motivo antes de registrar el movimiento.");
+      return;
+    }
+    try {
+      setOperation(`movement-${movementDraft.rowId}`);
+      setError("");
+      setSuccess("");
+      const movementId = await registerConsortiumTreasuryMovement({
+        inmobiliariaId: activeInmobiliariaId,
+        consortiumId,
+        accountId: movementDraft.accountId,
+        direction: movementDraft.direction,
+        amountMinor: movementDraft.amountMinor,
+        date: movementDraft.date,
+        concept: movementDraft.concept,
+        reason: movementDraft.reason,
+        reference: movementDraft.reference,
+        bankStatementTrace: {
+          fileHash: movementDraft.statementFileHash,
+          lineNumber: movementDraft.lineNumber,
+          rowId: movementDraft.rowId,
+        },
+      });
+      const [accountData, movementData] = await Promise.all([
+        getConsortiumTreasuryAccounts(activeInmobiliariaId, consortiumId),
+        getConsortiumTreasuryMovements(activeInmobiliariaId, consortiumId),
+      ]);
+      setAccounts(accountData);
+      setMovements(movementData);
+      setSelections((current) => ({ ...current, [movementDraft.rowId]: movementId }));
+      setSuccess("Movimiento registrado y vinculado a la fila del extracto. Revisalo antes de guardar la conciliación.");
+      setMovementDraft(null);
+    } catch (movementError) {
+      setError(movementError.message || "No se pudo registrar el movimiento faltante.");
+    } finally {
+      setOperation("");
+    }
   };
 
   const submitReconciliation = async (event) => {
@@ -302,13 +375,13 @@ const ConsortiumBankReconciliationPage = () => {
       {!canManage && <div className="alert alert-info">Tu rol permite consultar conciliaciones, pero no importar ni guardar extractos.</div>}
       {error && <div className="alert alert-danger">{error}</div>}
       {success && <div className="alert alert-success">{success}</div>}
-      <div className="alert alert-info"><strong>Control humano obligatorio.</strong> El asistente propone coincidencias, pero no crea, modifica ni elimina movimientos contables.</div>
+      <div className="alert alert-info"><strong>Control humano obligatorio.</strong> El asistente propone coincidencias. Un movimiento faltante solo se registra después de que el administrador revise y confirme sus datos.</div>
 
       <form onSubmit={submitReconciliation}>
         <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4">
           <div className="d-flex align-items-start gap-3 mb-3"><span className="consortium-step-number">1</span><div><h2 className="h5 mb-1">Cargar el extracto</h2><p className="text-muted small mb-0">Usá CSV con fecha, concepto, referencia y columnas de ingreso/egreso o un importe con signo.</p></div></div>
           <div className="row g-3">
-            <div className="col-md-5"><label className="form-label">Cuenta *</label><select className="form-select" value={accountId} onChange={(event) => setAccountId(event.target.value)} required><option value="">Seleccionar...</option>{activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {formatConsortiumMoney(account.currentBalanceMinor, account.currency)}</option>)}</select></div>
+            <div className="col-md-5"><label className="form-label">Cuenta *</label><select className="form-select" value={accountId} onChange={(event) => { setAccountId(event.target.value); setMovementDraft(null); }} required><option value="">Seleccionar...</option>{activeAccounts.map((account) => <option key={account.id} value={account.id}>{account.name} · {formatConsortiumMoney(account.currentBalanceMinor, account.currency)}</option>)}</select></div>
             <div className="col-md-7"><label className="form-label">Extracto CSV *</label><input key={fileInputKey} className="form-control" type="file" accept=".csv,text/csv" disabled={!canManage} onChange={selectFile} /><small className="text-muted">Máximo 500 movimientos y 10 MB. El archivo original quedará archivado.</small></div>
           </div>
           {preview && <div className="row g-3 mt-2"><div className="col-sm-6 col-lg-3"><div className="rounded border p-3"><small className="text-muted d-block">Filas válidas</small><strong>{preview.summary.valid}</strong></div></div><div className="col-sm-6 col-lg-3"><div className="rounded border p-3"><small className="text-muted d-block">Con errores</small><strong className={preview.summary.invalid ? "text-danger" : "text-success"}>{preview.summary.invalid}</strong></div></div><div className="col-sm-6 col-lg-3"><div className="rounded border p-3"><small className="text-muted d-block">Ingresos</small><strong className="consortium-money text-success">{formatConsortiumMoney(preview.summary.inflowsMinor, currency)}</strong></div></div><div className="col-sm-6 col-lg-3"><div className="rounded border p-3"><small className="text-muted d-block">Egresos</small><strong className="consortium-money text-danger">{formatConsortiumMoney(preview.summary.outflowsMinor, currency)}</strong></div></div></div>}
@@ -318,7 +391,46 @@ const ConsortiumBankReconciliationPage = () => {
 
         {preview?.rows?.length > 0 && <section className="card border-0 shadow-sm mb-4"><div className="card-body p-4">
           <div className="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3"><div className="d-flex align-items-start gap-3"><span className="consortium-step-number">2</span><div><h2 className="h5 mb-1">Revisar coincidencias</h2><p className="text-muted small mb-0">Las sugerencias de confianza alta se preseleccionan. Podés cambiarlas o dejarlas pendientes.</p></div></div><button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => downloadCsv(buildConsortiumBankStatementReviewCsv({ rows: matchedRows, selections }), "revision-conciliacion.csv")}>Exportar revisión</button></div>
-          <div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Fila</th><th>Fecha</th><th>Detalle del banco</th><th className="text-end">Importe</th><th>Confianza</th><th>Movimiento del sistema</th></tr></thead><tbody>{matchedRows.map((row) => { const meta = confidenceMeta[row.confidence] || confidenceMeta.none; return <tr className={row.errors.length ? "table-danger" : ""} key={row.id}><td>{row.lineNumber}</td><td>{formatDate(row.date)}</td><td><strong>{row.concept || "Sin concepto"}</strong><small className="d-block text-muted">{row.reference || "Sin referencia"}</small>{row.errors.map((message) => <small className="d-block text-danger" key={message}>{message}</small>)}</td><td className={`text-end consortium-money ${row.direction === "outflow" ? "text-danger" : "text-success"}`}>{row.direction === "outflow" ? "− " : "+ "}{formatConsortiumMoney(row.amountMinor, currency)}</td><td><span className={`badge ${meta.badge}`}>{meta.label}</span></td><td>{row.errors.length ? "—" : <select className="form-select form-select-sm" value={selections[row.id] || ""} onChange={(event) => selectMovement(row.id, event.target.value)}><option value="">Dejar pendiente</option>{row.candidates.map(({ movement, score }) => <option key={movement.id} value={movement.id}>{formatDate(movement.date)} · {movement.concept || "Movimiento"} · {score}%</option>)}</select>}</td></tr>; })}</tbody></table></div>
+          <div className="table-responsive"><table className="table table-sm align-middle"><thead><tr><th>Fila</th><th>Fecha</th><th>Detalle del banco</th><th className="text-end">Importe</th><th>Confianza</th><th>Movimiento del sistema</th></tr></thead><tbody>{matchedRows.map((row) => {
+            const meta = confidenceMeta[row.confidence] || confidenceMeta.none;
+            const selectedMovementId = selections[row.id] || "";
+            const canRegisterMissing = canManage
+              && !duplicateImport
+              && !row.errors.length
+              && !selectedMovementId;
+            return <tr className={row.errors.length ? "table-danger" : ""} key={row.id}>
+              <td>{row.lineNumber}</td>
+              <td>{formatDate(row.date)}</td>
+              <td><strong>{row.concept || "Sin concepto"}</strong><small className="d-block text-muted">{row.reference || "Sin referencia"}</small>{row.errors.map((message) => <small className="d-block text-danger" key={message}>{message}</small>)}</td>
+              <td className={`text-end consortium-money ${row.direction === "outflow" ? "text-danger" : "text-success"}`}>{row.direction === "outflow" ? "− " : "+ "}{formatConsortiumMoney(row.amountMinor, currency)}</td>
+              <td><span className={`badge ${meta.badge}`}>{meta.label}</span></td>
+              <td>{row.errors.length ? "—" : <>
+                <select className="form-select form-select-sm" value={selectedMovementId} onChange={(event) => selectMovement(row.id, event.target.value)}>
+                  <option value="">Dejar pendiente</option>
+                  {row.candidates.map(({ movement, score }) => <option key={movement.id} value={movement.id}>{formatDate(movement.date)} · {movement.concept || "Movimiento"} · {score}%</option>)}
+                </select>
+                {canRegisterMissing && <button className="btn btn-sm btn-link px-0 mt-1" type="button" onClick={() => prepareMissingMovement(row)}>Registrar faltante</button>}
+              </>}</td>
+            </tr>;
+          })}</tbody></table></div>
+          {movementDraft && <div className="rounded border bg-light p-3 mt-3" id="bank-movement-review">
+            <div className="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+              <div><h3 className="h6 mb-1">Confirmar movimiento de la fila {movementDraft.lineNumber}</h3><p className="small text-muted mb-0">Fecha, tipo e importe provienen del extracto y no se modifican aquí.</p></div>
+              <button className="btn btn-sm btn-outline-secondary" type="button" onClick={() => setMovementDraft(null)}>Cancelar</button>
+            </div>
+            <div className="row g-3">
+              <div className="col-sm-4"><label className="form-label">Fecha</label><div className="form-control bg-white">{formatDate(movementDraft.date)}</div></div>
+              <div className="col-sm-4"><label className="form-label">Tipo</label><div className="form-control bg-white">{movementDraft.direction === "outflow" ? "Egreso" : "Ingreso"}</div></div>
+              <div className="col-sm-4"><label className="form-label">Importe</label><div className={`form-control bg-white consortium-money ${movementDraft.direction === "outflow" ? "text-danger" : "text-success"}`}>{formatConsortiumMoney(movementDraft.amountMinor, currency)}</div></div>
+              <div className="col-md-7"><label className="form-label">Concepto *</label><input className="form-control" maxLength="220" value={movementDraft.concept} onChange={(event) => setMovementDraft((current) => ({ ...current, concept: event.target.value }))} /></div>
+              <div className="col-md-5"><label className="form-label">Referencia</label><input className="form-control" maxLength="220" value={movementDraft.reference} onChange={(event) => setMovementDraft((current) => ({ ...current, reference: event.target.value }))} /></div>
+              <div className="col-12"><label className="form-label">Motivo / respaldo interno *</label><textarea className="form-control" maxLength="1000" rows="2" value={movementDraft.reason} onChange={(event) => setMovementDraft((current) => ({ ...current, reason: event.target.value }))} /></div>
+            </div>
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mt-3">
+              <small className="text-muted">Se registrará con trazabilidad al archivo y la fila importada.</small>
+              <button className="btn btn-primary" disabled={operation === `movement-${movementDraft.rowId}`} type="button" onClick={registerMissingMovement}>{operation === `movement-${movementDraft.rowId}` ? "Registrando..." : "Confirmar y vincular"}</button>
+            </div>
+          </div>}
           <div className="d-flex flex-wrap gap-3 small"><span><strong>{selectedCount}</strong> vinculados</span><span><strong>{unmatchedCount}</strong> pendientes</span><span className="text-muted">Un mismo movimiento no puede utilizarse en dos filas.</span></div>
         </div></section>}
 

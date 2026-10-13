@@ -34,6 +34,7 @@ const movementSourceLabels = {
   supplier_payment: "Pago a proveedor",
   supplier_payment_reversal: "Anulación de pago",
   manual_movement: "Movimiento manual",
+  bank_statement_review: "Extracto bancario",
   account_transfer: "Transferencia entre cuentas",
 };
 

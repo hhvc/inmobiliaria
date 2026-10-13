@@ -439,6 +439,40 @@ export const matchConsortiumBankStatementRows = ({
   });
 };
 
+export const buildConsortiumTreasuryMovementDraftFromStatementRow = ({
+  row = {},
+  accountId = "",
+  consortiumId = "",
+  statementFileHash = "",
+} = {}) => {
+  const lineNumber = Math.max(0, Math.round(Number(row.lineNumber) || 0));
+  const amountMinor = Math.max(0, Math.round(Number(row.amountMinor) || 0));
+  const reference = cleanText(row.reference, 220);
+  const concept = cleanText(row.concept, 220)
+    || `Movimiento bancario${lineNumber ? ` · fila ${lineNumber}` : ""}`;
+  const traceLabel = [
+    lineNumber ? `fila ${lineNumber}` : "fila sin número",
+    reference ? `referencia ${reference}` : "",
+  ].filter(Boolean).join(" · ");
+
+  return {
+    consortiumId: cleanText(consortiumId, 160),
+    accountId: cleanText(accountId, 160),
+    rowId: cleanText(row.id, 160),
+    lineNumber,
+    direction: row.direction === "outflow" ? "outflow" : "inflow",
+    amountMinor,
+    amountMajor: (amountMinor / 100).toFixed(2),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(row.date || "") ? row.date : "",
+    concept,
+    reference,
+    reason: `Registrado durante la revisión del extracto bancario · ${traceLabel}.`,
+    statementFileHash: cleanText(statementFileHash, 64)
+      .toLowerCase()
+      .replace(/[^a-f0-9]/g, ""),
+  };
+};
+
 const csvCell = (value) => {
   const text = value?.toString?.() || "";
   const safe = /^[=+\-@]/.test(text) ? `'${text}` : text;
