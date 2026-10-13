@@ -238,7 +238,9 @@ const toDate = (value) => {
 };
 
 const toLastmod = (value) => {
-    const date = toDate(value) || new Date();
+    const date = toDate(value);
+
+    if (!date) return null;
 
     return date.toISOString().slice(0, 10);
 };
@@ -331,11 +333,13 @@ const buildSitemapEntry = ({
     return [
         "  <url>",
         `    <loc>${escapeXml(loc)}</loc>`,
-        `    <lastmod>${escapeXml(lastmod)}</lastmod>`,
+        lastmod ? `    <lastmod>${escapeXml(lastmod)}</lastmod>` : null,
         `    <changefreq>${escapeXml(changefreq)}</changefreq>`,
         `    <priority>${escapeXml(priority)}</priority>`,
         "  </url>",
-    ].join("\n");
+    ]
+        .filter(Boolean)
+        .join("\n");
 };
 
 const uniqueByLoc = (entries) => {
@@ -396,11 +400,8 @@ const main = async () => {
     initializeFirebaseAdmin();
 
     const db = admin.firestore();
-    const today = new Date().toISOString().slice(0, 10);
-
     const entries = STATIC_ROUTES.map((route) => ({
         loc: buildUrl(route.path),
-        lastmod: today,
         changefreq: route.changefreq,
         priority: route.priority,
     }));
