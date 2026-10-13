@@ -56,6 +56,7 @@ import {
   formatConsortiumMoney,
   addConsortiumDays,
   buildConsortiumOperationalSummary,
+  buildConsortiumSetupChecklist,
   getConsortiumAccountingPeriodLabel,
   getConsortiumExpenseIdentity,
   getConsortiumObligationStatus,
@@ -125,6 +126,7 @@ const ConsortiumDetailPage = () => {
   const [operationalClaimsReady, setOperationalClaimsReady] = useState(false);
   const [operationalTreasuryReady, setOperationalTreasuryReady] = useState(false);
   const [treasuryRefreshKey, setTreasuryRefreshKey] = useState(0);
+  const [treasuryNavigationRequest, setTreasuryNavigationRequest] = useState(null);
   const [payableRequest, setPayableRequest] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
   const [periodExpenses, setPeriodExpenses] = useState([]);
@@ -394,6 +396,12 @@ const ConsortiumDetailPage = () => {
     treasuryAccounts,
     treasuryReconciliations,
   ]);
+  const setupChecklist = useMemo(() => buildConsortiumSetupChecklist({
+    consortium,
+    units: activeUnits,
+    treasuryAccounts,
+    periods,
+  }), [activeUnits, consortium, periods, treasuryAccounts]);
 
   const resetMessages = () => {
     setError("");
@@ -1137,6 +1145,28 @@ const ConsortiumDetailPage = () => {
     (item) => item.id === activeWorkspace,
   );
   const operationalPeriodState = getConsortiumPeriodStatus(operationalPeriod?.status);
+  const openSetupStep = (step) => {
+    if (!step) return;
+    if (step.id === "profile") {
+      navigate(`/admin/consorcios/${consortiumId}/editar`);
+      return;
+    }
+    if (step.id === "units") {
+      if (activeUnits.length) openWorkspace("units");
+      else openUnitImport();
+      return;
+    }
+    if (step.id === "treasury") {
+      setTreasuryNavigationRequest({
+        view: "treasury",
+        action: step.complete ? "" : "new_account",
+        nonce: Date.now(),
+      });
+      openWorkspace("treasury");
+      return;
+    }
+    openWorkspace("liquidations");
+  };
 
   return (
     <main className="container py-4 consortium-workspace">
@@ -1186,6 +1216,42 @@ const ConsortiumDetailPage = () => {
       </nav>
 
       {activeWorkspace === "summary" && <>
+        {canManage && operationalTreasuryReady && !setupChecklist.isComplete && (
+          <section className="card border-primary-subtle shadow-sm mb-4 consortium-setup-assistant" aria-labelledby="consortium-setup-title">
+            <div className="card-body p-4">
+              <div className="d-flex flex-wrap justify-content-between align-items-start gap-3">
+                <div>
+                  <span className="badge text-bg-primary mb-2">Puesta en marcha</span>
+                  <h2 className="h5 mb-1" id="consortium-setup-title">Dejá el consorcio listo para operar</h2>
+                  <p className="small text-muted mb-0">Solo mostramos la próxima tarea necesaria. Podés completar el resto cuando corresponda.</p>
+                </div>
+                <strong>{setupChecklist.completedCount} de {setupChecklist.totalCount} listos</strong>
+              </div>
+              <div className="progress mt-3" role="progressbar" aria-label="Avance de la puesta en marcha" aria-valuemin="0" aria-valuemax="100" aria-valuenow={setupChecklist.progressPercent}>
+                <div className="progress-bar" style={{ width: `${setupChecklist.progressPercent}%` }}>{setupChecklist.progressPercent}%</div>
+              </div>
+              {setupChecklist.nextStep && (
+                <div className="consortium-setup-next rounded-3 p-3 mt-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+                  <div><small className="text-uppercase text-muted fw-semibold">Próximo paso</small><strong className="d-block">{setupChecklist.nextStep.title}</strong><small className="text-muted">{setupChecklist.nextStep.detail}</small></div>
+                  <button className="btn btn-primary" type="button" onClick={() => openSetupStep(setupChecklist.nextStep)}>{setupChecklist.nextStep.actionLabel}</button>
+                </div>
+              )}
+              <details className="mt-3">
+                <summary className="small fw-semibold">Ver los {setupChecklist.totalCount} pasos</summary>
+                <div className="list-group list-group-flush mt-2">
+                  {setupChecklist.steps.map((step) => (
+                    <div className="list-group-item px-0 py-2" key={step.id}>
+                      <div className="d-flex justify-content-between align-items-center gap-3">
+                        <div><span className={`me-2 ${step.complete ? "text-success" : "text-secondary"}`} aria-hidden="true">{step.complete ? "✓" : "○"}</span><strong className={step.complete ? "text-success" : ""}>{step.title}</strong><small className="text-muted d-block ms-4">{step.detail}</small></div>
+                        {!step.complete && <button className="btn btn-sm btn-outline-primary flex-shrink-0" type="button" onClick={() => openSetupStep(step)}>{step.actionLabel}</button>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          </section>
+        )}
         <section className="row g-3 mb-4" aria-label="Resumen operativo">
           <div className="col-lg-7"><div className="card border-0 shadow-sm h-100"><div className="card-body p-4">
             <div className="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h2 className="h5 mb-1">Qué requiere atención</h2><p className="small text-muted mb-0">Pendientes agrupados para decidir el próximo paso.</p></div>{operationalSummary.tasks.length > 0 && <span className="badge text-bg-warning">{operationalSummary.tasks.length + operationalSummary.hiddenTaskCount}</span>}</div>
@@ -1210,7 +1276,7 @@ const ConsortiumDetailPage = () => {
               <Link className="btn btn-outline-secondary" to="/guias/administracion-consorcios">Manual</Link>
               {canManage && <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/editar`}>Editar consorcio</Link>}
             </div>
-            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 small text-muted"><span>{activeUnits.length} unidades activas · coeficientes {totalCoefficient.toLocaleString("es-AR", { maximumFractionDigits: 6 })}</span>{canManage && consortium.status !== "archived" && <button className="btn btn-sm btn-outline-danger" type="button" disabled={Boolean(operation)} onClick={handleArchiveConsortium}>Archivar consorcio</button>}</div>
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 small text-muted"><span>{activeUnits.length} unidades activas · coeficientes {totalCoefficient.toLocaleString("es-AR", { maximumFractionDigits: 6 })}{setupChecklist.isComplete ? " · puesta en marcha completa" : ""}</span>{canManage && consortium.status !== "archived" && <button className="btn btn-sm btn-outline-danger" type="button" disabled={Boolean(operation)} onClick={handleArchiveConsortium}>Archivar consorcio</button>}</div>
           </div>
         </details>
       </>}
@@ -1355,6 +1421,7 @@ const ConsortiumDetailPage = () => {
           canManage={canManage}
           refreshKey={treasuryRefreshKey}
           payableRequest={payableRequest}
+          navigationRequest={treasuryNavigationRequest}
           onAccountsChanged={setTreasuryAccounts}
           onObligationsChanged={setSupplierObligations}
           onReconciliationsChanged={handleReconciliationsChanged}

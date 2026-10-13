@@ -159,6 +159,7 @@ const ConsortiumTreasuryPanel = ({
   canManage = false,
   refreshKey = 0,
   payableRequest = null,
+  navigationRequest = null,
   onAccountsChanged,
   onObligationsChanged,
   onReconciliationsChanged,
@@ -204,6 +205,7 @@ const ConsortiumTreasuryPanel = ({
   const accountFormRef = useRef(null);
   const treasuryActionFormRef = useRef(null);
   const processedPayableRequestRef = useRef("");
+  const processedNavigationRequestRef = useRef("");
 
   const load = useCallback(async () => {
     if (!inmobiliariaId || !consortiumId) return;
@@ -435,6 +437,22 @@ const ConsortiumTreasuryPanel = ({
     }
     focusForm(treasuryActionFormRef);
   };
+
+  useEffect(() => {
+    const requestKey = navigationRequest?.nonce?.toString?.() || "";
+    if (!requestKey || loading || processedNavigationRequestRef.current === requestKey) return;
+    processedNavigationRequestRef.current = requestKey;
+    const requestedView = ["obligations", "suppliers", "treasury"].includes(navigationRequest.view)
+      ? navigationRequest.view
+      : "treasury";
+    setActiveView(requestedView);
+    if (navigationRequest.action === "new_account" && canManage) {
+      clearMessages();
+      setAccountForm(emptyAccountForm(consortiumId, currency));
+      setShowAccountForm(true);
+      focusForm(accountFormRef);
+    }
+  }, [canManage, consortiumId, currency, loading, navigationRequest]);
 
   const exportObligations = () => {
     const content = buildConsortiumSupplierObligationsCsv(visibleObligations);

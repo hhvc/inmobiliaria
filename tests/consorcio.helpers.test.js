@@ -6,6 +6,7 @@ import {
   buildConsortiumEconomicStatementCsv,
   buildConsortiumMonthlyCloseChecklist,
   buildConsortiumOperationalSummary,
+  buildConsortiumSetupChecklist,
   buildConsortiumSupplierObligationsCsv,
   buildConsortiumLiquidationLines,
   calculateConsortiumAssessments,
@@ -221,6 +222,32 @@ test("resume pendientes operativos sin mostrar una tarea por cada registro", () 
   assert.equal(summary.tasks[0].id, "urgent_messages");
   assert.equal(summary.tasks[1].id, "pending_payment_reports");
   assert.equal(summary.tasks.filter((item) => item.id === "overdue_collections").length, 1);
+});
+
+test("guía la puesta en marcha sin bloquear por contactos incompletos", () => {
+  const initial = buildConsortiumSetupChecklist({
+    consortium: { name: "Consorcio Centro", address: "San Martín 100", city: "Córdoba", currency: "ARS", dueDay: 10 },
+    units: [
+      { id: "unit-1", coefficient: 60, ownerEmail: "titular@ejemplo.com", active: true },
+      { id: "unit-2", coefficient: 40, active: true },
+    ],
+    treasuryAccounts: [],
+    periods: [],
+  });
+  assert.equal(initial.completedCount, 2);
+  assert.equal(initial.progressPercent, 50);
+  assert.equal(initial.nextStep.id, "treasury");
+  assert.equal(initial.contactedUnitCount, 1);
+
+  const ready = buildConsortiumSetupChecklist({
+    consortium: { name: "Consorcio Centro", address: "San Martín 100", city: "Córdoba", currency: "ARS", dueDay: 10 },
+    units: [{ id: "unit-1", coefficients: { general: 100 }, active: true }],
+    treasuryAccounts: [{ id: "account-1", active: true }],
+    periods: [{ id: "period-1", periodKey: "2026-10", status: "draft" }],
+  });
+  assert.equal(ready.isComplete, true);
+  assert.equal(ready.nextStep, null);
+  assert.equal(ready.progressPercent, 100);
 });
 
 test("distingue saldos iniciales y calcula el saldo neto con créditos", () => {

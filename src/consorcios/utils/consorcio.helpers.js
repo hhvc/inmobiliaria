@@ -1201,6 +1201,101 @@ export const buildConsortiumOperationalSummary = ({
   };
 };
 
+const hasConsortiumUnitContact = (unit = {}) => [
+  unit.email,
+  unit.ownerEmail,
+  unit.occupantEmail,
+  ...(Array.isArray(unit.portalEmails) ? unit.portalEmails : []),
+  ...(Array.isArray(unit.ownerPortalEmails) ? unit.ownerPortalEmails : []),
+  ...(Array.isArray(unit.occupantPortalEmails) ? unit.occupantPortalEmails : []),
+].some((value) => value?.toString?.().trim());
+
+export const buildConsortiumSetupChecklist = ({
+  consortium = {},
+  units = [],
+  treasuryAccounts = [],
+  periods = [],
+} = {}) => {
+  const safeConsortium = consortium || {};
+  const activeUnits = units.filter((item) => item.active !== false && item.deleted !== true);
+  const activeAccounts = treasuryAccounts.filter(
+    (item) => item.active !== false && item.deleted !== true,
+  );
+  const monthlyPeriods = periods.filter((item) => !item.source && item.voided !== true);
+  const totalCoefficient = activeUnits.reduce(
+    (sum, unit) => sum + Math.max(
+      0,
+      asNumber(unit.coefficient),
+      asNumber(unit.coefficients?.general),
+    ),
+    0,
+  );
+  const contactedUnitCount = activeUnits.filter(hasConsortiumUnitContact).length;
+  const dueDay = Math.round(asNumber(safeConsortium.dueDay));
+  const profileComplete = Boolean(
+    safeConsortium.name?.toString?.().trim()
+    && safeConsortium.address?.toString?.().trim()
+    && safeConsortium.city?.toString?.().trim()
+    && safeConsortium.currency?.toString?.().trim()
+    && dueDay >= 1
+    && dueDay <= 31,
+  );
+  const unitsComplete = activeUnits.length > 0 && totalCoefficient > 0;
+
+  const steps = [
+    {
+      id: "profile",
+      title: "Revisar los datos básicos",
+      detail: profileComplete
+        ? "Domicilio, moneda y vencimiento habitual configurados."
+        : "Completá domicilio, moneda y día habitual de vencimiento.",
+      complete: profileComplete,
+      actionLabel: "Editar consorcio",
+    },
+    {
+      id: "units",
+      title: "Cargar unidades y coeficientes",
+      detail: activeUnits.length === 0
+        ? "Importá una planilla o agregá la primera unidad."
+        : totalCoefficient <= 0
+          ? `${activeUnits.length} unidad(es) cargada(s), pero falta definir los coeficientes.`
+          : `${activeUnits.length} unidad(es) · ${contactedUnitCount} con contacto habilitado.`,
+      complete: unitsComplete,
+      actionLabel: activeUnits.length ? "Revisar padrón" : "Cargar unidades",
+    },
+    {
+      id: "treasury",
+      title: "Configurar una cuenta de cobro",
+      detail: activeAccounts.length
+        ? `${activeAccounts.length} caja(s) o cuenta(s) disponible(s) para registrar movimientos.`
+        : "Agregá la cuenta bancaria o caja que utilizará el consorcio.",
+      complete: activeAccounts.length > 0,
+      actionLabel: activeAccounts.length ? "Ver tesorería" : "Agregar cuenta",
+    },
+    {
+      id: "period",
+      title: "Preparar la primera liquidación",
+      detail: monthlyPeriods.length
+        ? "El circuito mensual ya fue iniciado."
+        : "Creá el período y revisá sus gastos antes de emitir.",
+      complete: monthlyPeriods.length > 0,
+      actionLabel: monthlyPeriods.length ? "Ver liquidaciones" : "Crear liquidación",
+    },
+  ];
+  const completedCount = steps.filter((step) => step.complete).length;
+
+  return {
+    steps,
+    completedCount,
+    totalCount: steps.length,
+    progressPercent: steps.length ? Math.round((completedCount / steps.length) * 100) : 100,
+    isComplete: completedCount === steps.length,
+    nextStep: steps.find((step) => !step.complete) || null,
+    contactedUnitCount,
+    activeUnitCount: activeUnits.length,
+  };
+};
+
 export const getConsortiumExpenseCategoryLabel = (category = "ordinary") => (
   category === "penalty"
     ? "Multa / penalidad"
