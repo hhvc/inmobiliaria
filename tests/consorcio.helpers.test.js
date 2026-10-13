@@ -5,6 +5,7 @@ import {
   buildConsortiumEconomicStatement,
   buildConsortiumEconomicStatementCsv,
   buildConsortiumMonthlyCloseChecklist,
+  buildConsortiumOperationalSummary,
   buildConsortiumSupplierObligationsCsv,
   buildConsortiumLiquidationLines,
   calculateConsortiumAssessments,
@@ -197,6 +198,29 @@ test("bloquea el cierre si la liquidación no está emitida o hay pagos sin revi
   });
   assert.equal(pendingPaymentChecklist.canClose, false);
   assert.equal(pendingPaymentChecklist.blockers.some((item) => item.code === "pending_payment_reports"), true);
+});
+
+test("resume pendientes operativos sin mostrar una tarea por cada registro", () => {
+  const summary = buildConsortiumOperationalSummary({
+    dateKey: "2026-10-13",
+    period: { id: "period-1", periodKey: "2026-10", status: "draft" },
+    obligations: [
+      { id: "debt-1", periodId: "period-1", balanceMinor: 50000, dueDate: "2026-10-01" },
+      { id: "debt-2", periodId: "period-1", balanceMinor: 25000, dueDate: "2026-10-02" },
+    ],
+    paymentReports: [{ id: "report-1", status: "pending" }],
+    supplierObligations: [{ id: "supplier-1", balanceMinor: 40000, dueDate: "2026-10-15" }],
+    claims: [{ id: "claim-1", status: "open", priority: "urgent" }],
+    treasuryAccounts: [{ id: "bank-1", active: true, currentBalanceMinor: 100000 }],
+    treasuryReconciliations: [],
+  });
+  assert.equal(summary.tasks.length, 5);
+  assert.equal(summary.hiddenTaskCount, 1);
+  assert.equal(summary.periodBalanceMinor, 75000);
+  assert.equal(summary.periodOverdueCount, 2);
+  assert.equal(summary.tasks[0].id, "urgent_messages");
+  assert.equal(summary.tasks[1].id, "pending_payment_reports");
+  assert.equal(summary.tasks.filter((item) => item.id === "overdue_collections").length, 1);
 });
 
 test("distingue saldos iniciales y calcula el saldo neto con créditos", () => {

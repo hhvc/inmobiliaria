@@ -1074,6 +1074,133 @@ export const isConsortiumClaimOpen = (claim = {}) => ![
   "resolved", "closed", "rejected",
 ].includes(claim.status);
 
+export const buildConsortiumOperationalSummary = ({
+  period = null,
+  obligations = [],
+  paymentReports = [],
+  supplierObligations = [],
+  claims = [],
+  treasuryAccounts = [],
+  treasuryReconciliations = [],
+  dateKey = new Date().toISOString().slice(0, 10),
+} = {}) => {
+  const activeObligations = obligations.filter((item) => item.voided !== true);
+  const periodObligations = period?.id
+    ? activeObligations.filter((item) => item.periodId === period.id)
+    : [];
+  const periodBalanceMinor = periodObligations.reduce(
+    (sum, item) => sum + Math.max(0, Number(item.balanceMinor) || 0),
+    0,
+  );
+  const overdueObligations = activeObligations.filter(
+    (item) => getConsortiumObligationStatus(item, dateKey) === "overdue",
+  );
+  const pendingReports = paymentReports.filter((item) => item.status === "pending");
+  const openClaims = claims.filter(isConsortiumClaimOpen);
+  const urgentClaims = openClaims.filter((item) => item.priority === "urgent");
+  const supplierDueLimit = addConsortiumDays(dateKey, 7);
+  const supplierDue = supplierObligations.filter((item) => (
+    item.voided !== true
+    && Number(item.balanceMinor || 0) > 0
+    && item.dueDate
+    && item.dueDate <= supplierDueLimit
+  ));
+  const activeAccounts = treasuryAccounts.filter((item) => (
+    item.active !== false && item.deleted !== true
+  ));
+  const latestReconciliationByAccount = new Map();
+  treasuryReconciliations.filter((item) => item.voided !== true).forEach((item) => {
+    const current = latestReconciliationByAccount.get(item.accountId);
+    if (!current || (item.statementDate || "") > (current.statementDate || "")) {
+      latestReconciliationByAccount.set(item.accountId, item);
+    }
+  });
+  const reconciliationIssues = activeAccounts.filter((account) => {
+    const latest = latestReconciliationByAccount.get(account.id);
+    return latest
+      ? Number(latest.differenceMinor || 0) !== 0
+      : Number(account.currentBalanceMinor || 0) !== 0;
+  });
+  const tasks = [];
+
+  if (urgentClaims.length) tasks.push({
+    id: "urgent_messages",
+    tone: "danger",
+    title: `${urgentClaims.length} mensaje(s) urgente(s)`,
+    detail: "Revisá primero los avisos que requieren atención inmediata.",
+    workspace: "messages",
+  });
+  if (pendingReports.length) tasks.push({
+    id: "pending_payment_reports",
+    tone: "danger",
+    title: `${pendingReports.length} pago(s) informado(s) por revisar`,
+    detail: "Aprobá o rechazá los comprobantes enviados por consorcistas.",
+    workspace: "liquidations",
+  });
+  if (overdueObligations.length) tasks.push({
+    id: "overdue_collections",
+    tone: "warning",
+    title: `${overdueObligations.length} deuda(s) vencida(s)`,
+    detail: "Gestioná las cobranzas pendientes sin perder su antigüedad.",
+    href: "collections",
+    amountMinor: overdueObligations.reduce(
+      (sum, item) => sum + Math.max(0, Number(item.balanceMinor) || 0),
+      0,
+    ),
+  });
+  if (supplierDue.length) tasks.push({
+    id: "supplier_payments_due",
+    tone: "warning",
+    title: `${supplierDue.length} pago(s) a proveedor próximos o vencidos`,
+    detail: "Revisá vencimientos y fondos antes de autorizar pagos.",
+    workspace: "treasury",
+    amountMinor: supplierDue.reduce(
+      (sum, item) => sum + Math.max(0, Number(item.balanceMinor) || 0),
+      0,
+    ),
+  });
+  if (!period) tasks.push({
+    id: "missing_period",
+    tone: "primary",
+    title: "Todavía no hay una liquidación mensual",
+    detail: "Creá el primer borrador cuando tengas los gastos del período.",
+    workspace: "liquidations",
+  });
+  if (period?.status === "draft") tasks.push({
+    id: "period_draft",
+    tone: "primary",
+    title: "Liquidación mensual en borrador",
+    detail: "Completá los gastos y emitila cuando esté revisada.",
+    workspace: "liquidations",
+  });
+  if (reconciliationIssues.length) tasks.push({
+    id: "reconciliation_issues",
+    tone: "warning",
+    title: `${reconciliationIssues.length} cuenta(s) por conciliar`,
+    detail: "Hay saldos sin control o conciliaciones con diferencias.",
+    href: "reconciliation",
+  });
+  if (!urgentClaims.length && openClaims.length) tasks.push({
+    id: "open_messages",
+    tone: "info",
+    title: `${openClaims.length} mensaje(s) abierto(s)`,
+    detail: "Consultas, solicitudes o reclamos que siguen en gestión.",
+    workspace: "messages",
+  });
+
+  return {
+    tasks: tasks.slice(0, 5),
+    hiddenTaskCount: Math.max(0, tasks.length - 5),
+    periodBalanceMinor,
+    periodObligationCount: periodObligations.length,
+    periodOverdueCount: periodObligations.filter(
+      (item) => getConsortiumObligationStatus(item, dateKey) === "overdue",
+    ).length,
+    pendingPaymentReportCount: pendingReports.length,
+    openClaimCount: openClaims.length,
+  };
+};
+
 export const getConsortiumExpenseCategoryLabel = (category = "ordinary") => (
   category === "penalty"
     ? "Multa / penalidad"

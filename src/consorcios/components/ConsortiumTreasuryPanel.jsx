@@ -161,6 +161,7 @@ const ConsortiumTreasuryPanel = ({
   payableRequest = null,
   onAccountsChanged,
   onObligationsChanged,
+  onReconciliationsChanged,
   onSuppliersChanged,
 }) => {
   const consortiumId = consortium?.id || "";
@@ -232,12 +233,13 @@ const ConsortiumTreasuryPanel = ({
       setPayments(paymentData);
       setMovements(movementData);
       setReconciliations(reconciliationData);
+      onReconciliationsChanged?.(reconciliationData);
     } catch (loadError) {
       setError(loadError.message || "No se pudo cargar proveedores y tesorería.");
     } finally {
       setLoading(false);
     }
-  }, [consortiumId, inmobiliariaId, onAccountsChanged, onObligationsChanged, onSuppliersChanged]);
+  }, [consortiumId, inmobiliariaId, onAccountsChanged, onObligationsChanged, onReconciliationsChanged, onSuppliersChanged]);
 
   useEffect(() => { load(); }, [load, refreshKey]);
   useEffect(() => {

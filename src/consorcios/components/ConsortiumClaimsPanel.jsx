@@ -108,6 +108,7 @@ const ConsortiumClaimsPanel = ({
   selectedUnit = null,
   portalMode = false,
   canManage = false,
+  onClaimsChanged,
 }) => {
   const consortiumId = consortium?.id || selectedUnit?.consortiumId || "";
   const fixedUnitId = portalMode ? selectedUnit?.id || "" : "";
@@ -144,6 +145,7 @@ const ConsortiumClaimsPanel = ({
         includeClosed: true,
       });
       setClaims(data);
+      onClaimsChanged?.(data);
       setSelectedClaimId((current) => (
         current && data.some((item) => item.id === current)
           ? current
@@ -154,7 +156,7 @@ const ConsortiumClaimsPanel = ({
     } finally {
       setLoading(false);
     }
-  }, [consortiumId, fixedUnitId, inmobiliariaId, portalMode]);
+  }, [consortiumId, fixedUnitId, inmobiliariaId, onClaimsChanged, portalMode]);
 
   useEffect(() => { loadClaims(); }, [loadClaims]);
   useEffect(() => {

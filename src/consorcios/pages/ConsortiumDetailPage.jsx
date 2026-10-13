@@ -55,6 +55,7 @@ import {
 import {
   formatConsortiumMoney,
   addConsortiumDays,
+  buildConsortiumOperationalSummary,
   getConsortiumAccountingPeriodLabel,
   getConsortiumExpenseIdentity,
   getConsortiumObligationStatus,
@@ -119,6 +120,10 @@ const ConsortiumDetailPage = () => {
   const [treasuryAccounts, setTreasuryAccounts] = useState([]);
   const [consortiumSuppliers, setConsortiumSuppliers] = useState([]);
   const [supplierObligations, setSupplierObligations] = useState([]);
+  const [consortiumClaims, setConsortiumClaims] = useState([]);
+  const [treasuryReconciliations, setTreasuryReconciliations] = useState([]);
+  const [operationalClaimsReady, setOperationalClaimsReady] = useState(false);
+  const [operationalTreasuryReady, setOperationalTreasuryReady] = useState(false);
   const [treasuryRefreshKey, setTreasuryRefreshKey] = useState(0);
   const [payableRequest, setPayableRequest] = useState(null);
   const [selectedPeriodId, setSelectedPeriodId] = useState("");
@@ -130,7 +135,7 @@ const ConsortiumDetailPage = () => {
   const [unitForm, setUnitForm] = useState(createEmptyConsortiumUnit);
   const [editingUnitId, setEditingUnitId] = useState("");
   const [unitChangeForm, setUnitChangeForm] = useState(emptyUnitChangeForm);
-  const [activeWorkspace, setActiveWorkspace] = useState("liquidations");
+  const [activeWorkspace, setActiveWorkspace] = useState("summary");
   const [showUnitForm, setShowUnitForm] = useState(false);
   const [showUnitImport, setShowUnitImport] = useState(false);
   const [showOpeningBalanceForm, setShowOpeningBalanceForm] = useState(false);
@@ -173,6 +178,16 @@ const ConsortiumDetailPage = () => {
     return getInternalPermissions(role, isGlobalRoot(user)).canManageConsortiums;
   }, [activeInmobiliariaId, user]);
 
+  const handleClaimsChanged = useCallback((items) => {
+    setConsortiumClaims(items);
+    setOperationalClaimsReady(true);
+  }, []);
+
+  const handleReconciliationsChanged = useCallback((items) => {
+    setTreasuryReconciliations(items);
+    setOperationalTreasuryReady(true);
+  }, []);
+
   const load = useCallback(async () => {
     if (!activeInmobiliariaId || !consortiumId) {
       setLoading(false);
@@ -181,6 +196,10 @@ const ConsortiumDetailPage = () => {
     try {
       setLoading(true);
       setError("");
+      setOperationalClaimsReady(false);
+      setOperationalTreasuryReady(false);
+      setConsortiumClaims([]);
+      setTreasuryReconciliations([]);
       const [
         consortiumData,
         unitData,
@@ -353,11 +372,44 @@ const ConsortiumDetailPage = () => {
       secondDueDate: paymentObligation.secondDueDate,
       secondDueSurchargePercent: paymentObligation.secondDueSurchargePercent,
     }) : null, [paymentObligation]);
+  const operationalPeriod = useMemo(
+    () => periods.find((item) => !item.source) || selectedPeriod,
+    [periods, selectedPeriod],
+  );
+  const operationalSummary = useMemo(() => buildConsortiumOperationalSummary({
+    period: operationalPeriod,
+    obligations,
+    paymentReports,
+    supplierObligations,
+    claims: consortiumClaims,
+    treasuryAccounts,
+    treasuryReconciliations,
+    dateKey: todayKey(),
+  }), [
+    consortiumClaims,
+    obligations,
+    operationalPeriod,
+    paymentReports,
+    supplierObligations,
+    treasuryAccounts,
+    treasuryReconciliations,
+  ]);
 
   const resetMessages = () => {
     setError("");
     setSuccess("");
     setLastPaymentId("");
+  };
+
+  const openWorkspace = (workspace) => {
+    if (workspace === "liquidations" && operationalPeriod?.id) {
+      setSelectedPeriodId(operationalPeriod.id);
+    }
+    setActiveWorkspace(workspace);
+    setTimeout(() => {
+      document.getElementById("consortium-workspace-navigation")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   const resetUnitForm = () => {
@@ -1071,13 +1123,20 @@ const ConsortiumDetailPage = () => {
   const periodState = getConsortiumPeriodStatus(selectedPeriod?.status);
   const draftTotal = periodExpenses.reduce((sum, item) => sum + Number(item.amountMinor || 0), 0);
   const workspaceItems = [
+    { id: "summary", label: "Resumen", hint: "Lo importante de hoy" },
     { id: "liquidations", label: "Liquidaciones", hint: "Expensas, cobros y comprobantes" },
     { id: "treasury", label: "Tesorería", hint: "Cuentas, proveedores y conciliación" },
     { id: "messages", label: "Mensajes", hint: "Consultas, avisos y reclamos" },
+  ];
+  const secondaryWorkspaceItems = [
     { id: "penalties", label: "Multas", hint: "Débitos y seguimiento" },
     { id: "information", label: "Edificio", hint: "Información para consorcistas" },
     { id: "units", label: "Unidades", hint: "Padrón y configuración inicial" },
   ];
+  const activeSecondaryWorkspace = secondaryWorkspaceItems.find(
+    (item) => item.id === activeWorkspace,
+  );
+  const operationalPeriodState = getConsortiumPeriodStatus(operationalPeriod?.status);
 
   return (
     <main className="container py-4 consortium-workspace">
@@ -1090,13 +1149,7 @@ const ConsortiumDetailPage = () => {
         </div>
         <div className="d-flex flex-wrap gap-2">
           <Link className="btn btn-primary" to={`/admin/consorcios/${consortiumId}/cobranzas`}>Cobranzas</Link>
-          <Link className="btn btn-outline-success" to={`/admin/consorcios/${consortiumId}/flujo-fondos`}>Flujo de fondos</Link>
-          <Link className="btn btn-outline-primary" to={`/admin/consorcios/${consortiumId}/presupuesto`}>Presupuesto</Link>
-          <Link className="btn btn-outline-primary" to="/guias/administracion-consorcios">Manual</Link>
-          {canManage && <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/editar`}>Editar consorcio</Link>}
-          {canManage && consortium.status !== "archived" && (
-            <button className="btn btn-outline-danger" type="button" disabled={Boolean(operation)} onClick={handleArchiveConsortium}>Archivar</button>
-          )}
+          {activeWorkspace !== "summary" && <button className="btn btn-outline-primary" type="button" onClick={() => openWorkspace("summary")}>Ver resumen</button>}
         </div>
       </header>
 
@@ -1111,14 +1164,7 @@ const ConsortiumDetailPage = () => {
       )}
       {!canManage && <div className="alert alert-info">Tu rol permite consultar unidades, liquidaciones y cuentas corrientes, pero no registrar ni modificar movimientos.</div>}
 
-      <section className="row g-3 mb-4">
-        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><span className="small text-muted text-uppercase">Unidades activas</span><strong className="fs-4 d-block">{activeUnits.length}</strong></div></div></div>
-        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><span className="small text-muted text-uppercase">Coeficientes</span><strong className="fs-4 d-block">{totalCoefficient.toLocaleString("es-AR", { maximumFractionDigits: 6 })}</strong><small className={Math.abs(totalCoefficient - 100) < 0.001 ? "text-success" : "text-warning"}>{Math.abs(totalCoefficient - 100) < 0.001 ? "Suman 100" : "Se normalizan al liquidar"}</small></div></div></div>
-        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><span className="small text-muted text-uppercase">Saldo seleccionado</span><strong className="fs-4 d-block consortium-money">{formatConsortiumMoney(periodSummary.balance, consortium.currency)}</strong></div></div></div>
-        <div className="col-sm-6 col-xl-3"><div className="card border-0 shadow-sm h-100"><div className="card-body"><span className="small text-muted text-uppercase">Vencidas</span><strong className="fs-4 d-block">{periodSummary.overdue}</strong></div></div></div>
-      </section>
-
-      <nav className="consortium-workspace-nav card border-0 shadow-sm mb-4" aria-label="Áreas de administración del consorcio">
+      <nav className="consortium-workspace-nav card border-0 shadow-sm mb-4" id="consortium-workspace-navigation" aria-label="Áreas de administración del consorcio">
         <div className="card-body p-2">
           <div className="nav nav-pills nav-fill gap-2" role="tablist">
             {workspaceItems.map((item) => (
@@ -1126,7 +1172,7 @@ const ConsortiumDetailPage = () => {
                 aria-selected={activeWorkspace === item.id}
                 className={`nav-link text-start ${activeWorkspace === item.id ? "active" : ""}`}
                 key={item.id}
-                onClick={() => setActiveWorkspace(item.id)}
+                onClick={() => openWorkspace(item.id)}
                 role="tab"
                 type="button"
               >
@@ -1135,8 +1181,39 @@ const ConsortiumDetailPage = () => {
               </button>
             ))}
           </div>
+          {activeSecondaryWorkspace && <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 px-2 pt-2"><small className="text-muted">Área abierta: <strong>{activeSecondaryWorkspace.label}</strong></small><button className="btn btn-sm btn-link" type="button" onClick={() => openWorkspace("summary")}>Volver al resumen</button></div>}
         </div>
       </nav>
+
+      {activeWorkspace === "summary" && <>
+        <section className="row g-3 mb-4" aria-label="Resumen operativo">
+          <div className="col-lg-7"><div className="card border-0 shadow-sm h-100"><div className="card-body p-4">
+            <div className="d-flex justify-content-between align-items-start gap-2 mb-3"><div><h2 className="h5 mb-1">Qué requiere atención</h2><p className="small text-muted mb-0">Pendientes agrupados para decidir el próximo paso.</p></div>{operationalSummary.tasks.length > 0 && <span className="badge text-bg-warning">{operationalSummary.tasks.length + operationalSummary.hiddenTaskCount}</span>}</div>
+            {operationalSummary.tasks.length > 0 ? <div className="list-group list-group-flush">{operationalSummary.tasks.map((task) => <div className="list-group-item px-0 py-3" key={task.id}><div className="d-flex flex-wrap justify-content-between align-items-center gap-3"><div><div className="d-flex align-items-center gap-2"><span className={`badge text-bg-${task.tone}`}>●</span><strong>{task.title}</strong></div><small className="text-muted d-block mt-1">{task.detail}</small>{task.amountMinor > 0 && <small className="consortium-money d-block mt-1">{formatConsortiumMoney(task.amountMinor, consortium.currency)}</small>}</div>{task.href === "collections" ? <Link className="btn btn-sm btn-outline-primary" to={`/admin/consorcios/${consortiumId}/cobranzas`}>Revisar</Link> : task.href === "reconciliation" ? <Link className="btn btn-sm btn-outline-primary" to={`/admin/consorcios/${consortiumId}/conciliacion-bancaria`}>Revisar</Link> : <button className="btn btn-sm btn-outline-primary" type="button" onClick={() => openWorkspace(task.workspace)}>Revisar</button>}</div></div>)}</div> : !operationalClaimsReady || !operationalTreasuryReady ? <div className="alert alert-light border mb-0">Preparando las prioridades del consorcio...</div> : <div className="alert alert-success mb-0"><strong>Todo al día.</strong> No detectamos pendientes operativos para mostrar.</div>}
+            {operationalSummary.hiddenTaskCount > 0 && <small className="text-muted d-block mt-3">Hay {operationalSummary.hiddenTaskCount} control(es) adicional(es) disponible(s) en las áreas correspondientes.</small>}
+          </div></div></div>
+          <div className="col-lg-5"><div className="card border-0 shadow-sm h-100"><div className="card-body p-4">
+            <h2 className="h5 mb-1">Período mensual</h2>
+            {operationalPeriod ? <><div className="d-flex flex-wrap align-items-center gap-2 mt-3"><strong className="fs-5">{getConsortiumAccountingPeriodLabel(operationalPeriod)}</strong><span className={`badge ${operationalPeriodState.badge}`}>{operationalPeriodState.label}</span></div><div className="row g-3 mt-1"><div className="col-7"><small className="text-muted d-block">Saldo pendiente</small><strong className="consortium-money">{formatConsortiumMoney(operationalSummary.periodBalanceMinor, operationalPeriod.currency || consortium.currency)}</strong></div><div className="col-5"><small className="text-muted d-block">Vencidas</small><strong>{operationalSummary.periodOverdueCount}</strong></div></div><button className="btn btn-outline-primary w-100 mt-4" type="button" onClick={() => openWorkspace("liquidations")}>{operationalPeriod.status === "draft" ? "Continuar liquidación" : "Ver liquidación"}</button></> : <><p className="text-muted mt-3">Todavía no hay liquidaciones mensuales.</p><button className="btn btn-outline-primary w-100" type="button" onClick={() => openWorkspace("liquidations")}>Preparar primera liquidación</button></>}
+          </div></div></div>
+        </section>
+
+        <details className="card border-0 shadow-sm mb-4" id="consortium-more-tools">
+          <summary className="card-body p-4 d-flex justify-content-between align-items-center gap-2"><span><strong>Más herramientas y configuración</strong><small className="text-muted d-block">Abrí esta sección solo cuando necesites una tarea menos frecuente.</small></span><span aria-hidden="true">⌄</span></summary>
+          <div className="card-body border-top p-4">
+            <div className="d-flex flex-wrap gap-2 mb-3">
+              {secondaryWorkspaceItems.map((item) => <button className="btn btn-outline-secondary" type="button" key={item.id} onClick={() => openWorkspace(item.id)}>{item.label}</button>)}
+              <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/estado-economico`}>Estado económico</Link>
+              <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/flujo-fondos`}>Flujo de fondos</Link>
+              <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/presupuesto`}>Presupuesto</Link>
+              <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/conciliacion-bancaria`}>Conciliación bancaria</Link>
+              <Link className="btn btn-outline-secondary" to="/guias/administracion-consorcios">Manual</Link>
+              {canManage && <Link className="btn btn-outline-secondary" to={`/admin/consorcios/${consortiumId}/editar`}>Editar consorcio</Link>}
+            </div>
+            <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 small text-muted"><span>{activeUnits.length} unidades activas · coeficientes {totalCoefficient.toLocaleString("es-AR", { maximumFractionDigits: 6 })}</span>{canManage && consortium.status !== "archived" && <button className="btn btn-sm btn-outline-danger" type="button" disabled={Boolean(operation)} onClick={handleArchiveConsortium}>Archivar consorcio</button>}</div>
+          </div>
+        </details>
+      </>}
 
       {activeWorkspace === "units" && <section className="card border-0 shadow-sm mb-4 consortium-section-anchor" id="unidades">
         <div className="card-body p-4">
@@ -1228,6 +1305,7 @@ const ConsortiumDetailPage = () => {
           units={activeUnits}
           suppliers={consortiumSuppliers}
           canManage={canManage}
+          onClaimsChanged={handleClaimsChanged}
         />
       </div>
 
@@ -1279,6 +1357,7 @@ const ConsortiumDetailPage = () => {
           payableRequest={payableRequest}
           onAccountsChanged={setTreasuryAccounts}
           onObligationsChanged={setSupplierObligations}
+          onReconciliationsChanged={handleReconciliationsChanged}
           onSuppliersChanged={setConsortiumSuppliers}
         />
       </div>
