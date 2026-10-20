@@ -59,8 +59,31 @@ const BENEFITS = [
   },
 ];
 
+const DEMO_AGENDA = [
+  {
+    time: "0–3 min",
+    title: "Puesta en marcha",
+    text: "Cómo cargar el consorcio, importar unidades y dejar definidos los coeficientes.",
+  },
+  {
+    time: "3–7 min",
+    title: "Liquidación mensual",
+    text: "Gastos, comprobantes, distribución, controles y emisión de expensas.",
+  },
+  {
+    time: "7–11 min",
+    title: "Cobros y tesorería",
+    text: "Cuentas corrientes, recibos, proveedores, bancos y conciliación.",
+  },
+  {
+    time: "11–15 min",
+    title: "Portal y próximos pasos",
+    text: "Experiencia del consorcista, comunicaciones y preguntas sobre tu administración.",
+  },
+];
+
 const INITIAL_FORM = {
-  requestType: "pilot",
+  requestType: "demo",
   agencyName: "",
   contactName: "",
   city: "",
@@ -90,7 +113,7 @@ const ConsortiumSoftwareLandingPage = () => {
   const [success, setSuccess] = useState("");
   const siteUrl = import.meta.env.VITE_PUBLIC_SITE_URL || "https://onoprop.com";
   const canonicalUrl = `${siteUrl}/software-administracion-consorcios`;
-  const socialImageUrl = `${siteUrl}/assets/img/og/onoprop-administracion-consorcios.png?v=20260924`;
+  const socialImageUrl = `${siteUrl}/assets/img/og/onoprop-administracion-consorcios.png?v=20261020`;
   const pilotEstimate = calculateConsortiumPilotEstimate(form.unitCount);
 
   useEffect(() => {
@@ -219,7 +242,7 @@ const ConsortiumSoftwareLandingPage = () => {
                   href="#solicitar-demo-consorcios"
                   onClick={() => trackConsortiumCta("demo_form")}
                 >
-                  Solicitar piloto
+                  Coordinar demostración
                 </a>
                 <button className="btn btn-outline-light btn-lg" onClick={openWhatsApp} type="button">
                   Consultar por WhatsApp
@@ -283,20 +306,30 @@ const ConsortiumSoftwareLandingPage = () => {
         <div className="container py-lg-4">
           <div className="row g-5 align-items-start">
             <div className="col-lg-5">
-              <p className="marketing-eyebrow text-primary">Piloto acompañado</p>
-              <h2 className="display-6 fw-bold">Empezá con un consorcio real.</h2>
+              <p className="marketing-eyebrow text-primary">Demostración guiada</p>
+              <h2 className="display-6 fw-bold">Conocé el circuito completo en 15 minutos.</h2>
               <p className="lead text-muted">
-                Revisamos juntos la configuración inicial, las unidades y el primer circuito
-                mensual. Antes podés coordinar una demostración gratuita.
+                Compartimos pantalla y recorremos un consorcio de ejemplo. Nos concentramos
+                en el trabajo cotidiano, sin una presentación comercial extensa.
               </p>
-              <ol className="marketing-step-list">
-                <li><span>1</span><p>Nos contás cómo administrás y coordinamos la demostración.</p></li>
-                <li><span>2</span><p>Recibís y aceptás una propuesta sin cargos automáticos.</p></li>
-                <li><span>3</span><p>Configuramos un consorcio real y te acompañamos durante 30 días.</p></li>
-              </ol>
+              <div className="marketing-demo-agenda">
+                {DEMO_AGENDA.map((item) => (
+                  <article className="marketing-demo-agenda-item" key={item.time}>
+                    <span>{item.time}</span>
+                    <div>
+                      <h3 className="h6 mb-1">{item.title}</h3>
+                      <p className="text-muted mb-0">{item.text}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
               <div className="card border-0 shadow-sm mt-4">
                 <div className="card-body p-4">
-                  <h3 className="h5">El piloto se considera exitoso cuando</h3>
+                  <h3 className="h5">Si te resulta útil, seguimos con un piloto</h3>
+                  <p className="text-muted">
+                    La demostración no genera cargos ni compromisos. El piloto comienza
+                    únicamente después de aceptar una propuesta.
+                  </p>
                   <ul className="marketing-check-list text-dark mb-0">
                     <li>El consorcio y sus unidades quedaron configurados.</li>
                     <li>Se completó una liquidación mensual real.</li>
@@ -318,10 +351,18 @@ const ConsortiumSoftwareLandingPage = () => {
 
             <div className="col-lg-7">
               <div className="marketing-lead-card" id="solicitar-demo-consorcios">
-                <p className="marketing-eyebrow text-success">Piloto comercial</p>
-                <h2 className="h3 mb-2">Empezá con un consorcio real</h2>
+                <p className="marketing-eyebrow text-success">
+                  {form.requestType === "pilot" ? "Piloto acompañado" : "Demostración gratuita"}
+                </p>
+                <h2 className="h3 mb-2">
+                  {form.requestType === "pilot"
+                    ? "Empezá con un consorcio real"
+                    : "Coordiná una demostración de 15 minutos"}
+                </h2>
                 <p className="text-muted mb-4">
-                  Elegí si querés solicitar el piloto o coordinar primero una demostración gratuita.
+                  {form.requestType === "pilot"
+                    ? "Contanos lo necesario para preparar una propuesta concreta."
+                    : "Solo necesitamos saber quién sos y cómo contactarte. Sin cargos ni tarjeta."}
                 </p>
                 {success ? (
                   <div className="alert alert-success mb-0" role="status">
@@ -338,19 +379,6 @@ const ConsortiumSoftwareLandingPage = () => {
                         <div className="d-flex flex-column flex-md-row gap-2 gap-md-4">
                           <div className="form-check">
                             <input
-                              checked={form.requestType === "pilot"}
-                              className="form-check-input"
-                              id="consortiumRequestPilot"
-                              name="consortiumRequestType"
-                              onChange={() => updateForm("requestType", "pilot")}
-                              type="radio"
-                            />
-                            <label className="form-check-label" htmlFor="consortiumRequestPilot">
-                              Solicitar el piloto de 30 días
-                            </label>
-                          </div>
-                          <div className="form-check">
-                            <input
                               checked={form.requestType === "demo"}
                               className="form-check-input"
                               id="consortiumRequestDemo"
@@ -360,6 +388,19 @@ const ConsortiumSoftwareLandingPage = () => {
                             />
                             <label className="form-check-label" htmlFor="consortiumRequestDemo">
                               Coordinar una demostración gratuita
+                            </label>
+                          </div>
+                          <div className="form-check">
+                            <input
+                              checked={form.requestType === "pilot"}
+                              className="form-check-input"
+                              id="consortiumRequestPilot"
+                              name="consortiumRequestType"
+                              onChange={() => updateForm("requestType", "pilot")}
+                              type="radio"
+                            />
+                            <label className="form-check-label" htmlFor="consortiumRequestPilot">
+                              Solicitar el piloto de 30 días
                             </label>
                           </div>
                         </div>
@@ -388,7 +429,7 @@ const ConsortiumSoftwareLandingPage = () => {
                       />
                     </div>
                     <div className="col-md-8">
-                      <label className="form-label" htmlFor="consortiumCity">Ciudad</label>
+                      <label className="form-label" htmlFor="consortiumCity">Ciudad (opcional)</label>
                       <input
                         autoComplete="address-level2"
                         className="form-control"
@@ -398,7 +439,9 @@ const ConsortiumSoftwareLandingPage = () => {
                       />
                     </div>
                     <div className="col-md-4">
-                      <label className="form-label" htmlFor="consortiumUnits">Unidades aproximadas</label>
+                      <label className="form-label" htmlFor="consortiumUnits">
+                        Unidades aproximadas{form.requestType === "demo" && " (opcional)"}
+                      </label>
                       <input
                         className="form-control"
                         id="consortiumUnits"
@@ -409,86 +452,90 @@ const ConsortiumSoftwareLandingPage = () => {
                         value={form.unitCount}
                       />
                     </div>
-                    <div className="col-md-4">
-                      <label className="form-label" htmlFor="consortiumCount">
-                        Consorcios administrados
-                      </label>
-                      <input
-                        className="form-control"
-                        id="consortiumCount"
-                        min="1"
-                        onChange={(event) => updateForm("consortiumCount", event.target.value)}
-                        required
-                        type="number"
-                        value={form.consortiumCount}
-                      />
-                    </div>
-                    <div className="col-md-8">
-                      <label className="form-label" htmlFor="consortiumCurrentMethod">
-                        ¿Cómo administrás actualmente?
-                      </label>
-                      <select
-                        className="form-select"
-                        id="consortiumCurrentMethod"
-                        onChange={(event) => updateForm("currentManagementMethod", event.target.value)}
-                        required
-                        value={form.currentManagementMethod}
-                      >
-                        <option value="">Seleccioná una opción</option>
-                        {CONSORTIUM_CURRENT_MANAGEMENT_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label" htmlFor="consortiumMainPain">
-                        Principal dificultad a resolver
-                      </label>
-                      <select
-                        className="form-select"
-                        id="consortiumMainPain"
-                        onChange={(event) => updateForm("mainPain", event.target.value)}
-                        required
-                        value={form.mainPain}
-                      >
-                        <option value="">Seleccioná una opción</option>
-                        {CONSORTIUM_MAIN_PAIN_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-md-6">
-                      <label className="form-label" htmlFor="consortiumStartTiming">
-                        ¿Cuándo te gustaría comenzar?
-                      </label>
-                      <select
-                        className="form-select"
-                        id="consortiumStartTiming"
-                        onChange={(event) => updateForm("startTiming", event.target.value)}
-                        required
-                        value={form.startTiming}
-                      >
-                        <option value="">Seleccioná una opción</option>
-                        {CONSORTIUM_START_TIMING_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {form.requestType === "pilot" && pilotEstimate.unitCount > 0 && (
-                      <div className="col-12">
-                        <div className="alert alert-light border mb-0">
-                          <strong>Estimación mensual:</strong>{" "}
-                          {formatMoneyMinor(
-                            pilotEstimate.estimatedMonthlyAmountMinor,
-                            CONSORTIUM_PILOT_OFFER.currency,
-                          )}
-                          {pilotEstimate.minimumApplied && " (se aplica el mínimo mensual)"}.
-                          <div className="small text-muted mt-1">
-                            Es una referencia sin cargo ni reserva. Confirmaremos por escrito alcance,
-                            disponibilidad y condiciones antes de activar el piloto.
-                          </div>
+                    {form.requestType === "pilot" && (
+                      <>
+                        <div className="col-md-4">
+                          <label className="form-label" htmlFor="consortiumCount">
+                            Consorcios administrados
+                          </label>
+                          <input
+                            className="form-control"
+                            id="consortiumCount"
+                            min="1"
+                            onChange={(event) => updateForm("consortiumCount", event.target.value)}
+                            required
+                            type="number"
+                            value={form.consortiumCount}
+                          />
                         </div>
-                      </div>
+                        <div className="col-md-8">
+                          <label className="form-label" htmlFor="consortiumCurrentMethod">
+                            ¿Cómo administrás actualmente?
+                          </label>
+                          <select
+                            className="form-select"
+                            id="consortiumCurrentMethod"
+                            onChange={(event) => updateForm("currentManagementMethod", event.target.value)}
+                            required
+                            value={form.currentManagementMethod}
+                          >
+                            <option value="">Seleccioná una opción</option>
+                            {CONSORTIUM_CURRENT_MANAGEMENT_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label" htmlFor="consortiumMainPain">
+                            Principal dificultad a resolver
+                          </label>
+                          <select
+                            className="form-select"
+                            id="consortiumMainPain"
+                            onChange={(event) => updateForm("mainPain", event.target.value)}
+                            required
+                            value={form.mainPain}
+                          >
+                            <option value="">Seleccioná una opción</option>
+                            {CONSORTIUM_MAIN_PAIN_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="col-md-6">
+                          <label className="form-label" htmlFor="consortiumStartTiming">
+                            ¿Cuándo te gustaría comenzar?
+                          </label>
+                          <select
+                            className="form-select"
+                            id="consortiumStartTiming"
+                            onChange={(event) => updateForm("startTiming", event.target.value)}
+                            required
+                            value={form.startTiming}
+                          >
+                            <option value="">Seleccioná una opción</option>
+                            {CONSORTIUM_START_TIMING_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {pilotEstimate.unitCount > 0 && (
+                          <div className="col-12">
+                            <div className="alert alert-light border mb-0">
+                              <strong>Estimación mensual:</strong>{" "}
+                              {formatMoneyMinor(
+                                pilotEstimate.estimatedMonthlyAmountMinor,
+                                CONSORTIUM_PILOT_OFFER.currency,
+                              )}
+                              {pilotEstimate.minimumApplied && " (se aplica el mínimo mensual)"}.
+                              <div className="small text-muted mt-1">
+                                Es una referencia sin cargo ni reserva. Confirmaremos por escrito alcance,
+                                disponibilidad y condiciones antes de activar el piloto.
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                     <div className="col-sm-6">
                       <label className="form-label" htmlFor="consortiumPhone">WhatsApp</label>
@@ -599,7 +646,7 @@ const ConsortiumSoftwareLandingPage = () => {
             href="#solicitar-demo-consorcios"
             onClick={() => trackConsortiumCta("final_demo_form")}
           >
-            Solicitar piloto
+            Coordinar demostración
           </a>
         </div>
       </section>

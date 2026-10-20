@@ -4,7 +4,7 @@ import { useEffect } from "react";
 const DEFAULT_TITLE = "ONO Prop | Portal inmobiliario";
 const DEFAULT_DESCRIPTION =
     "Portal inmobiliario para publicar, administrar y consultar propiedades.";
-const DEFAULT_IMAGE = "/assets/img/logoONOProp3.png";
+const DEFAULT_IMAGE = "/assets/img/og/onoprop-social-preview.png?v=20261020";
 const DEFAULT_SITE_NAME = "ONO Prop";
 
 const upsertMeta = (selector, attributes) => {

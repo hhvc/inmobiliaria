@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const DEFAULT_SITE_URL = "https://onoprop.com";
-export const DEFAULT_IMAGE_PATH = "/assets/img/logoONOProp3.png";
+export const DEFAULT_IMAGE_PATH = "/assets/img/og/onoprop-social-preview.png?v=20261020";
 
 export const STATIC_SEO_ROUTES = {
   "/": {
@@ -79,12 +79,12 @@ export const STATIC_SEO_ROUTES = {
   "/software-administracion-consorcios": {
     title: "Software para administración de consorcios | ONO Prop",
     description:
-      "Liquidá expensas, administrá cobranzas, cuentas corrientes, documentación y comunicación con consorcistas desde ONO Prop.",
-    image: "/assets/img/og/onoprop-administracion-consorcios.png?v=20260924",
+      "Liquidá expensas, administrá cobranzas, cuentas corrientes, documentación y comunicación con consorcistas. Coordiná una demostración guiada de 15 minutos.",
+    image: "/assets/img/og/onoprop-administracion-consorcios.png?v=20261020",
     heading: "Administración de Consorcios con ONO Prop",
     summary:
       "Un circuito conectado para liquidaciones, cobranzas, documentación, control económico y comunicación con consorcistas.",
-    facts: ["Expensas y cobranzas", "Portal para consorcistas", "Puesta en marcha acompañada"],
+    facts: ["Demostración guiada de 15 minutos", "Expensas y cobranzas", "Portal para consorcistas"],
     links: [
       { href: "/guias/administracion-consorcios", label: "Consultar manual" },
       { href: "/software-para-inmobiliarias", label: "Conocer toda la plataforma" },

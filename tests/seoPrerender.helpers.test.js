@@ -22,6 +22,12 @@ test("publica metadatos específicos para Administración de Consorcios", () => 
   assert.equal(route.jsonLd?.offers?.priceCurrency, "ARS");
 });
 
+test("usa una tarjeta social institucional como imagen predeterminada", () => {
+  const route = buildStaticSeoRoute("/software-para-inmobiliarias");
+
+  assert.match(route.image, /onoprop-social-preview\.png\?v=20261020$/);
+});
+
 test("prerenderiza los manuales comerciales con metadatos propios", () => {
   const paths = [
     "/guias/administracion-inmuebles",

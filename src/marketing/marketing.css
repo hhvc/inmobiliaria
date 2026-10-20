@@ -188,6 +188,31 @@
   margin: 0.4rem 0 0;
 }
 
+.marketing-demo-agenda {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.marketing-demo-agenda-item {
+  align-items: start;
+  background: #fff;
+  border: 1px solid #d9e9e2;
+  border-radius: 1rem;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: 5.25rem minmax(0, 1fr);
+  padding: 1rem;
+}
+
+.marketing-demo-agenda-item > span {
+  color: #0d664d;
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  padding-top: 0.1rem;
+  white-space: nowrap;
+}
+
 .marketing-proof-grid {
   display: grid;
   gap: 1rem;
@@ -258,6 +283,11 @@
   }
 
   .marketing-proof-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .marketing-demo-agenda-item {
+    gap: 0.35rem;
     grid-template-columns: 1fr;
   }
 }
